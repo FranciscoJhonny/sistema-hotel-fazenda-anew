@@ -1,0 +1,6 @@
+{
+  "name": "Hotel Fazenda Anew",
+  "description": "Sistema profissional de gestão hoteleira para o Hotel Fazenda Anew em Corguinho - MS, com controle de quartos, reservas sem conflito, check-in, check-out e financeiro.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

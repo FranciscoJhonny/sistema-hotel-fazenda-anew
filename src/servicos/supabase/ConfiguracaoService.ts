@@ -1,0 +1,99 @@
+import { BaseService } from './BaseService';
+import { Configuracao, ConfiguracaoSistema } from '../../tipos';
+import { ResultadoSupabase } from './types';
+
+export interface IConfiguracaoService {
+  listar(filtros?: any): Promise<ResultadoSupabase<Configuracao[]>>;
+  obterPorId(id: number | string): Promise<ResultadoSupabase<Configuracao>>;
+  obterPorChave(chave: string): Promise<ResultadoSupabase<Configuracao>>;
+  obterTodasComoObjeto(): Promise<ResultadoSupabase<Record<string, string>>>;
+  salvarConfiguracao(chave: string, valor: string, descricao?: string): Promise<ResultadoSupabase<Configuracao>>;
+  salvarMultiplas(configuracoes: Record<string, string>): Promise<ResultadoSupabase<boolean>>;
+  criar(config: Partial<Configuracao>): Promise<ResultadoSupabase<Configuracao>>;
+  atualizar(id: number | string, config: Partial<Configuracao>): Promise<ResultadoSupabase<Configuracao>>;
+  desativar(id: number | string): Promise<ResultadoSupabase<Configuracao>>;
+  excluir(id: number | string): Promise<ResultadoSupabase<boolean>>;
+}
+
+export class ConfiguracaoService extends BaseService<Configuracao> implements IConfiguracaoService {
+  constructor() {
+    super('Configuracao', 'ConfiguracaoId');
+  }
+
+  public async obterPorChave(chave: string): Promise<ResultadoSupabase<Configuracao>> {
+    const client = this.getClient();
+    if (!client) return { sucesso: false, erro: 'Supabase não conectado.' };
+
+    try {
+      const { data, error } = await client
+        .from('Configuracao')
+        .select('*')
+        .eq('Chave', chave)
+        .maybeSingle();
+
+      if (error) return { sucesso: false, erro: error.message };
+      if (!data) return { sucesso: false, erro: 'Configuração não encontrada.' };
+
+      return { sucesso: true, dados: data as unknown as Configuracao };
+    } catch (err: any) {
+      return { sucesso: false, erro: err?.message || 'Erro ao buscar configuração' };
+    }
+  }
+
+  public async obterTodasComoObjeto(): Promise<ResultadoSupabase<Record<string, string>>> {
+    const res = await this.listar({ apenasAtivos: true });
+    if (!res.sucesso || !res.dados) {
+      return { sucesso: false, erro: res.erro || 'Falha ao listar configurações' };
+    }
+
+    const mapa: Record<string, string> = {};
+    for (const item of res.dados) {
+      if (item.Chave) {
+        mapa[item.Chave] = item.Valor;
+      }
+    }
+
+    return { sucesso: true, dados: mapa };
+  }
+
+  public async salvarConfiguracao(
+    chave: string,
+    valor: string,
+    descricao?: string
+  ): Promise<ResultadoSupabase<Configuracao>> {
+    const client = this.getClient();
+    if (!client) return { sucesso: false, erro: 'Supabase não conectado.' };
+
+    try {
+      const existente = await this.obterPorChave(chave);
+
+      if (existente.sucesso && existente.dados) {
+        return this.atualizar(existente.dados.ConfiguracaoId, {
+          Valor: valor,
+          Descricao: descricao ?? existente.dados.Descricao,
+        });
+      } else {
+        return this.criar({
+          Chave: chave,
+          Valor: valor,
+          Descricao: descricao || '',
+          Ativo: true,
+        });
+      }
+    } catch (err: any) {
+      return { sucesso: false, erro: err?.message || 'Erro ao salvar configuração' };
+    }
+  }
+
+  public async salvarMultiplas(configuracoes: Record<string, string>): Promise<ResultadoSupabase<boolean>> {
+    try {
+      const promises = Object.entries(configuracoes).map(([chave, valor]) =>
+        this.salvarConfiguracao(chave, valor)
+      );
+      await Promise.all(promises);
+      return { sucesso: true, dados: true };
+    } catch (err: any) {
+      return { sucesso: false, erro: err?.message || 'Erro ao salvar múltiplas configurações' };
+    }
+  }
+}
