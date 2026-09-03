@@ -43,7 +43,7 @@ export class ProdutoService extends BaseService<Produto> implements IProdutoServ
     isDelta: boolean = false
   ): Promise<ResultadoSupabase<Produto>> {
     if (!isDelta) {
-      return this.atualizar(produtoId, { Estoque: quantidade });
+      return this.atualizar(produtoId, { estoque: quantidade });
     }
 
     const produtoRes = await this.obterPorId(produtoId);
@@ -51,7 +51,7 @@ export class ProdutoService extends BaseService<Produto> implements IProdutoServ
       return { sucesso: false, erro: produtoRes.erro || 'Produto não encontrado' };
     }
 
-    const novoEstoque = Math.max(0, (produtoRes.dados.Estoque || 0) + quantidade);
-    return this.atualizar(produtoId, { Estoque: novoEstoque });
+    const novoEstoque = Math.max(0, (produtoRes.dados.estoque || 0) + quantidade);
+    return this.atualizar(produtoId, { estoque: novoEstoque });
   }
 }

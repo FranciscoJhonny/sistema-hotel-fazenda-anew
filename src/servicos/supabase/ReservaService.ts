@@ -102,22 +102,22 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
   }
 
   public async atualizarStatus(id: number | string, status: StatusReserva): Promise<ResultadoSupabase<Reserva>> {
-    return this.atualizar(id, { Status: status });
+    return this.atualizar(id, { status: status });
   }
 
   public async realizarCheckin(id: number | string, usuario: string): Promise<ResultadoSupabase<Reserva>> {
     return this.atualizar(id, {
-      Status: 'HOSPEDADO',
-      CheckinRealizadoEm: new Date().toISOString(),
-      CheckinUsuario: usuario,
+      status: 'HOSPEDADO',
+      checkoutrealizadoem: new Date().toISOString(),
+      checkinusuario: usuario,
     });
   }
 
   public async realizarCheckout(id: number | string, usuario: string): Promise<ResultadoSupabase<Reserva>> {
     return this.atualizar(id, {
-      Status: 'FINALIZADA',
-      CheckoutRealizadoEm: new Date().toISOString(),
-      CheckoutUsuario: usuario,
+      status: 'FINALIZADA',
+      checkoutrealizadoem: new Date().toISOString(),
+      checkoutusuario: usuario,
     });
   }
 }

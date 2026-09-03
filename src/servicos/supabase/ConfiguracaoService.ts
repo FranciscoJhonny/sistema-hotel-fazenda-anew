@@ -48,8 +48,8 @@ export class ConfiguracaoService extends BaseService<Configuracao> implements IC
 
     const mapa: Record<string, string> = {};
     for (const item of res.dados) {
-      if (item.Chave) {
-        mapa[item.Chave] = item.Valor;
+      if (item.chave) {
+        mapa[item.chave] = item.valor;
       }
     }
 
@@ -68,16 +68,16 @@ export class ConfiguracaoService extends BaseService<Configuracao> implements IC
       const existente = await this.obterPorChave(chave);
 
       if (existente.sucesso && existente.dados) {
-        return this.atualizar(existente.dados.ConfiguracaoId, {
-          Valor: valor,
-          Descricao: descricao ?? existente.dados.Descricao,
+        return this.atualizar(existente.dados.configuracaoid, {
+          valor: valor,
+          descricao: descricao ?? existente.dados.descricao,
         });
       } else {
         return this.criar({
-          Chave: chave,
-          Valor: valor,
-          Descricao: descricao || '',
-          Ativo: true,
+          chave: chave,
+          valor: valor,
+          descricao: descricao || '',
+          ativo: true,
         });
       }
     } catch (err: any) {

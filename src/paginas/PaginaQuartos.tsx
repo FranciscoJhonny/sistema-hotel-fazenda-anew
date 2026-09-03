@@ -19,27 +19,27 @@ export const PaginaQuartos: React.FC = () => {
 
   // Contagens para os botões de filtro no topo
   const total = quartos.length;
-  const disponiveis = quartos.filter((q) => q.Status === 'DISPONIVEL').length;
-  const reservados = quartos.filter((q) => q.Status === 'RESERVADO').length;
-  const ocupados = quartos.filter((q) => q.Status === 'OCUPADO').length;
-  const agCheckin = quartos.filter((q) => q.Status === 'AGUARDANDO_CHECKIN').length;
-  const manutencao = quartos.filter((q) => q.Status === 'MANUTENCAO').length;
+  const disponiveis = quartos.filter((q: Quarto) => q.status === 'DISPONIVEL').length;
+  const reservados = quartos.filter((q: Quarto) => q.status === 'RESERVADO').length;
+  const ocupados = quartos.filter((q: Quarto) => q.status === 'OCUPADO').length;
+  const agCheckin = quartos.filter((q: Quarto) => q.status === 'AGUARDANDO_CHECKIN').length;
+  const manutencao = quartos.filter((q: Quarto) => q.status === 'MANUTENCAO').length;
 
   // Filtragem dos quartos
-  const quartosFiltrados = quartos.filter((q) => {
+  const quartosFiltrados = quartos.filter((q: Quarto) => {
     // Filtro por status
-    if (filtroStatus === 'DISPONIVEL' && q.Status !== 'DISPONIVEL') return false;
-    if (filtroStatus === 'RESERVADO' && q.Status !== 'RESERVADO') return false;
-    if (filtroStatus === 'OCUPADO' && q.Status !== 'OCUPADO') return false;
-    if (filtroStatus === 'AG_CHECKIN' && q.Status !== 'AGUARDANDO_CHECKIN') return false;
-    if (filtroStatus === 'MANUTENCAO' && q.Status !== 'MANUTENCAO') return false;
+    if (filtroStatus === 'DISPONIVEL' && q.status !== 'DISPONIVEL') return false;
+    if (filtroStatus === 'RESERVADO' && q.status !== 'RESERVADO') return false;
+    if (filtroStatus === 'OCUPADO' && q.status !== 'OCUPADO') return false;
+    if (filtroStatus === 'AG_CHECKIN' && q.status !== 'AGUARDANDO_CHECKIN') return false;
+    if (filtroStatus === 'MANUTENCAO' && q.status !== 'MANUTENCAO') return false;
 
     // Filtro por termo de busca
     if (busca.trim()) {
       const termo = busca.toLowerCase();
-      const bateNumero = q.Numero.toLowerCase().includes(termo);
-      const bateHospede = q.HospedeAtualNome?.toLowerCase().includes(termo);
-      const bateCategoria = q.Categoria.toLowerCase().includes(termo);
+      const bateNumero = q.numero?.toLowerCase().includes(termo);
+      const bateHospede = q.hospedeatualnome?.toLowerCase().includes(termo);
+      const bateCategoria = q.categoria?.toLowerCase().includes(termo);
       if (!bateNumero && !bateHospede && !bateCategoria) return false;
     }
 
@@ -166,9 +166,9 @@ export const PaginaQuartos: React.FC = () => {
           Linha 4: D6
       */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {quartosFiltrados.map((quarto) => (
+        {quartosFiltrados.map((quarto: Quarto) => (
           <CardQuartoGerenciamento
-            key={quarto.QuartoId}
+            key={quarto.quartoid}
             quarto={quarto}
             aoClicar={handleAbrirDetalhes}
             aoNovaReserva={handleNovaReserva}

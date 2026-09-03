@@ -1,3 +1,5 @@
+// src/tipos/index.ts
+
 export type StatusQuarto = 'DISPONIVEL' | 'RESERVADO' | 'OCUPADO' | 'AGUARDANDO_CHECKIN' | 'MANUTENCAO';
 
 export type CategoriaQuarto = 
@@ -39,216 +41,215 @@ export type TipoVenda = 'LOJA' | 'ALMOCO' | 'DAY_USE' | 'CONSUMO_QUARTO';
 // INTERFACES AUDITORIA
 // =============================================================================
 export interface EntidadeAuditavel {
-  Ativo: boolean;
-  UsuarioInclusao?: string;
-  DataInclusao: string;
-  UsuarioOperacao?: string;
-  DataOperacao: string;
-  NaturezaOperacao?: string;
+  ativo: boolean;
+  usuarioinclusao?: number | string;
+  datainclusao: string;
+  usuariooperacao?: number | string;
+  dataoperacao: string;
+  naturezaoperacao?: string;
 }
 
 // =============================================================================
 // 1. Perfil
 // =============================================================================
 export interface Perfil extends EntidadeAuditavel {
-  PerfilId: number | string;
-  Descricao: string;
+  perfilid: number | string;
+  descricao: string;
 }
 
 // =============================================================================
 // 2. Usuario
 // =============================================================================
 export interface Usuario extends EntidadeAuditavel {
-  UsuarioId: number | string;
-  PerfilId: number | string;
-  Nome: string;
-  Email: string;
-  Senha?: string;
-  TokenRecuperacaoSenha?: string;
-  DataRecuperacaoSenha?: string;
-  Perfil?: PerfilUsuario;
-  AvatarUrl?: string;
+  usuarioid: number | string;
+  perfilid: number | string;
+  nome: string;
+  email: string;
+  senha?: string;
+  tokenrecuperacaosenha?: string;
+  datarecuperacaosenha?: string;
+  perfil?: PerfilUsuario;
+  avatarurl?: string;
 }
 
 // =============================================================================
 // 3. Quarto
 // =============================================================================
 export interface Quarto extends EntidadeAuditavel {
-  QuartoId: number | string;
-  Numero: string; // "B1", "B2", "C4", "D3", etc.
-  CodigoIdentificador: string; // "B1", "B2", etc.
-  Bloco: BlocoQuarto;
-  Categoria: CategoriaQuarto;
-  CapacidadeAdultos: number;
-  CapacidadeCriancas: number;
-  ValorDiariaPadrao: number;
-  Status: StatusQuarto;
-  MotivoBloqueio?: string;
-  Descricao?: string;
-  Comodidades?: string[];
-  ReservaAtualId?: number | string;
-  HospedeAtualNome?: string;
-  DataEntradaAtual?: string;
-  DataSaidaAtual?: string;
-  AdultosAtual?: number;
-  CriancasAtual?: number;
+  quartoid: number | string;
+  numero: string; // "B1", "B2", "C4", "D3", etc.
+  codigoidentificador: string; // "B1", "B2", etc.
+  bloco: BlocoQuarto;
+  categoria: CategoriaQuarto;
+  capacidadeadultos: number;
+  capacidadecriancas: number;
+  valordiariapadrao: number;
+  status: StatusQuarto;
+  descricao?: string; // MotivoBloqueio agora é descricao
+  comodidades?: string; // text no banco, não array
+  ativo: boolean;
+  reservaatualid?: number | string;
+  hospedeatualnome?: string;
+  dataentradaatual?: string;
+  datasaidaatual?: string;
+  adultosatual?: number;
+  criancasatual?: number;
 }
 
 // =============================================================================
 // 4. Hospede
 // =============================================================================
 export interface Hospede extends EntidadeAuditavel {
-  HospedeId: number | string;
-  NomeCompleto: string;
-  Cpf: string;
-  DataNascimento?: string;
-  Telefone: string;
-  WhatsApp?: string;
-  Email?: string;
-  Cidade?: string;
-  Estado?: string;
-  Observacoes?: string;
+  hospedeid: number | string;
+  nomecompleto: string;
+  cpf: string;
+  datanascimento?: string;
+  telefone: string;
+  whatsapp?: string;
+  email?: string;
+  cidade?: string;
+  estado?: string;
+  observacoes?: string;
 }
 
 // =============================================================================
 // 5. Pacote
 // =============================================================================
 export interface Pacote extends EntidadeAuditavel {
-  PacoteId: number | string;
-  Nome: string;
-  Descricao?: string;
-  DataInicio?: string;
-  DataFim?: string;
-  Valor: number;
-  AdultosInclusos: number;
-  CriancasInclusas: number;
+  pacoteid: number | string;
+  nome: string;
+  descricao?: string;
+  datainicio?: string;
+  datafim?: string;
+  valor: number;
+  adultosinclusos: number;
+  criancasinclusas: number;
 }
 
 // =============================================================================
 // 6. Reserva
 // =============================================================================
 export interface Reserva extends EntidadeAuditavel {
-  ReservaId: number | string;
-  Codigo: string; // ex: "#49281"
-  HospedeId: number | string;
-  HospedeNome: string;
-  HospedeTelefone?: string;
-  HospedeEmail?: string;
-  QuartoId: number | string;
-  QuartoNumero: string;
-  QuartoCodigo: string; // ex: "B1", "C4"
-  QuartoCategoria?: string;
-  Adultos: number;
-  Criancas: number;
-  DataEntrada: string; // YYYY-MM-DD
-  DataSaida: string; // YYYY-MM-DD
-  HorarioPrevistoChegada?: string; // ex: "14:00"
-  HorarioPrevistoSaida?: string; // ex: "12:00"
-  TipoAtendimento: TipoAtendimento;
-  PacoteId?: number | string;
-  PacoteNome?: string;
-  Status: StatusReserva;
-  ValorTotal: number;
-  ValorPago: number;
-  Saldo: number;
-  StatusPagamento: StatusPagamento;
-  FormaPagamento: FormaPagamento;
-  Observacoes?: string;
-  CheckinRealizadoEm?: string;
-  CheckinUsuario?: string;
-  CheckoutRealizadoEm?: string;
-  CheckoutUsuario?: string;
+  reservaid: number | string;
+  codigo: string; // ex: "#49281"
+  hospedeid: number | string;
+  hospedenome: string;
+  hospedetelefone?: string;
+  hospedeemail?: string;
+  quartoid: number | string;
+  quartonumero: string;
+  quartocodigo: string; // ex: "B1", "C4"
+  quartocategoria?: string;
+  adultos: number;
+  criancas: number;
+  dataentrada: string; // YYYY-MM-DD
+  datasaida: string; // YYYY-MM-DD
+  horarioprevistochegada?: string; // ex: "14:00"
+  horarioprevistosaida?: string; // ex: "12:00"
+  tipoatendimento: TipoAtendimento;
+  pacoteid?: number | string;
+  pacotename?: string;
+  status: StatusReserva;
+  valortotal: number;
+  valorpago: number;
+  saldo: number;
+  statuspagamento: StatusPagamento;
+  formapagamento: FormaPagamento;
+  observacoes?: string;
+  checkinrealizadoem?: string;
+  checkinusuario?: number | string;
+  checkoutrealizadoem?: string;
+  checkoutusuario?: number | string;
 }
 
 // =============================================================================
 // 7. Pagamento
 // =============================================================================
 export interface Pagamento extends EntidadeAuditavel {
-  PagamentoId: number | string;
-  ReservaId: number | string;
-  Valor: number;
-  FormaPagamento: FormaPagamento;
-  Status: string;
-  DataPagamento: string;
-  ComprovanteUrl?: string;
-  Observacoes?: string;
+  pagamentoid: number | string;
+  reservaid: number | string;
+  valor: number;
+  formapagamento: FormaPagamento;
+  status: string;
+  datapagamento: string;
+  comprovanteurl?: string;
+  observacoes?: string;
 }
 
 // =============================================================================
 // 8. Produto
 // =============================================================================
 export interface Produto extends EntidadeAuditavel {
-  ProdutoId: number | string;
-  Nome: string;
-  Descricao?: string;
-  Categoria: string;
-  Preco: number;
-  Estoque: number;
+  produtoid: number | string;
+  nome: string;
+  descricao?: string;
+  categoria: string;
+  preco: number;
+  estoque: number;
 }
 
 // =============================================================================
 // 9. Venda
 // =============================================================================
 export interface Venda extends EntidadeAuditavel {
-  VendaId: number | string;
-  Codigo: string;
-  Tipo: TipoVenda;
-  ReservaId?: number | string;
-  QuartoNumero?: string;
-  HospedeNome?: string;
-  ValorTotal: number;
-  FormaPagamento: FormaPagamento;
-  StatusPagamento: StatusPagamento;
-  UsuarioResponsavel?: string;
-  DataHora: string;
-  Itens: ItemVenda[];
+  vendaid: number | string;
+  codigo: string;
+  tipo: TipoVenda;
+  reservaid?: number | string;
+  quartonumero?: string;
+  hospedenome?: string;
+  valortotal: number;
+  formapagamento: FormaPagamento;
+  statuspagamento: StatusPagamento;
+  usuarioresponsavel?: number | string;
+  datahora: string;
+  itens: ItemVenda[];
 }
 
 // =============================================================================
 // 10. ItemVenda
 // =============================================================================
 export interface ItemVenda extends Partial<EntidadeAuditavel> {
-  ItemVendaId?: number | string;
-  VendaId?: number | string;
-  ProdutoId?: number | string;
-  ProdutoNome: string;
-  Quantidade: number;
-  PrecoUnitario: number;
-  Subtotal: number;
+  itemvendaid?: number | string;
+  vendaid?: number | string;
+  produtoid?: number | string;
+  produtonome: string;
+  quantidade: number;
+  precounitario: number;
+  subtotal: number;
 }
 
 // =============================================================================
 // 11. Configuracao
 // =============================================================================
 export interface Configuracao extends EntidadeAuditavel {
-  ConfiguracaoId: number | string;
-  Chave: string;
-  Valor: string;
-  Descricao?: string;
+  configuracaoid: number | string;
+  chave: string;
+  valor: string;
+  descricao?: string;
 }
 
 // Configurações do Sistema em Memória / App
 export interface ConfiguracaoSistema {
-  CheckInTime: string; // "09:00"
-  CheckOutTime: string; // "15:00"
-  HotelNome: string;
-  HotelLocalizacao: string;
-  TelefoneHotel: string;
-  EmailHotel: string;
-  TaxaServicoPercentual: number;
-  SupabaseUrl?: string;
-  SupabaseAnonKey?: string;
-  ModoOfflineAtivo: boolean;
-  // Regras de Desconto para Crianças
-  CriancaIdadeLimiteGratis?: number; // 5
-  CriancaIdadeLimiteMeia?: number; // 11
-  CriancaIdadeIntegral?: number; // 12
-  CriancaPorcentagemMeiaDiaria?: number; // 50
-  CriancaDescontoGratis?: number; // 100
-  CapacidadeMaximaAdultosPorQuarto?: number; // 4
-  CapacidadeMaximaCriancasPorQuarto?: number; // 3
-  FormaPagamentoPadrao?: string; // 'PIX'
-  PorcentagemEntradaMinima?: number; // 30
+  checkintime: string; // "09:00"
+  checkouttime: string; // "15:00"
+  hotelnome: string;
+  hotellocalizacao: string;
+  telefonehotel: string;
+  emailhotel: string;
+  taxaservicopercentual: number;
+  supabaseurl?: string;
+  supabaseanonkey?: string;
+  modoofflineativo: boolean;
+  criancaidadelimitegratis?: number; // 5
+  criancaidadelimitemeia?: number; // 11
+  criancaidadeintegral?: number; // 12
+  criancaporcentagemmeiadiaria?: number; // 50
+  criancaDescontogratuis?: number; // 100
+  capacidademaximaadultosporquarto?: number; // 4
+  capacidademaximacriancasporquarto?: number; // 3
+  formapagamentopadrao?: string; // 'PIX'
+  porcentagementradaminima?: number; // 30
 }
 
 export type PaginaNavegacao = 

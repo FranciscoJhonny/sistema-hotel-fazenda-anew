@@ -70,16 +70,10 @@ export function obterClienteSupabase(
           },
         },
       });
-
-      if (isBrowser) {
-        console.log('✅ Supabase client initialized successfully');
-        console.log('   📡 URL:', url);
-        console.log('   🔑 KEY:', key.substring(0, 10) + '...');
-      }
     }
     return supabaseInstancia;
   } catch (error) {
-    console.error('❌ Failed to connect to Supabase:', error);
+    console.error('Failed to connect to Supabase:', error);
     return null;
   }
 }
@@ -90,7 +84,7 @@ export function obterClienteSupabase(
  */
 export function obterClienteAdmin(): SupabaseClient | null {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error('❌ Service Role Key not configured.');
+    console.error(' Service Role Key not configured.');
     return null;
   }
 

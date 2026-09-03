@@ -65,8 +65,8 @@ export class QuartoService extends BaseService<Quarto> implements IQuartoService
     motivo?: string
   ): Promise<ResultadoSupabase<Quarto>> {
     return this.atualizar(id, {
-      Status: status,
-      MotivoBloqueio: motivo || '',
+      status: status,
+      descricao: motivo || '',
     });
   }
 }

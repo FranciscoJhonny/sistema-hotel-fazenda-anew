@@ -72,7 +72,7 @@ export class VendaService extends BaseService<Venda> implements IVendaService {
       return vendaCriadaRes;
     }
 
-    const vendaId = vendaCriadaRes.dados.VendaId;
+    const vendaId = vendaCriadaRes.dados.vendaid;
 
     // 2. Criar os itens vinculados
     if (itens.length > 0) {

@@ -1,4 +1,3 @@
-// src/servicos/supabase/SupabaseService.ts
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ResultadoSupabase, StatusConexaoSupabase } from './types';
 
@@ -9,24 +8,16 @@ export class SupabaseService {
   private key: string = '';
 
   private constructor() {
-    console.log('[SupabaseService] 🔍 Inicializando...');
-    
-    // 🔥 CREDENCIAIS DIRETAS (FIXAS PARA TESTE)
-    // DEPOIS QUE FUNCIONAR, VOCÊ PODE VOLTAR PARA O .env
-    const URL_FIXA = 'https://qfeyaofqkpvdyjswfuiu.supabase.co';
-    const KEY_FIXA = 'sb_publishable_eKJFz3tN8eyfSdehGj7Lkg_m0UVvSuV';
-    
-    // Tentar carregar do localStorage primeiro, depois .env, depois fallback fixo
-    this.url = localStorage.getItem('anew_supabase_url') || 
-               (import.meta as any)?.env?.VITE_SUPABASE_URL || 
-               URL_FIXA;
-               
-    this.key = localStorage.getItem('anew_supabase_key') || 
-               (import.meta as any)?.env?.VITE_SUPABASE_ANON_KEY || 
-               KEY_FIXA;
+    // 🔥 CORREÇÃO DO ERRO DE TYPESCRIPT:
+    // Usamos 'as any' para o TypeScript entender que 'env' existe no Vite
+    const metaEnv = (import.meta as any).env || {};
+    const envUrl = metaEnv.VITE_SUPABASE_URL as string;
+    const envKey = metaEnv.VITE_SUPABASE_ANON_KEY as string;
 
-    console.log('[SupabaseService] 📡 URL:', this.url || '❌ FALTANDO');
-    console.log('[SupabaseService] 🔑 KEY:', this.key ? '✅ OK (' + this.key.substring(0, 20) + '...)' : '❌ FALTANDO');
+    // 1. Tenta pegar do localStorage (configuração dinâmica)
+    // 2. Se não tiver, pega do .env
+    this.url = localStorage.getItem('anew_supabase_url') || envUrl || '';
+    this.key = localStorage.getItem('anew_supabase_key') || envKey || '';
 
     if (this.url && this.key) {
       try {
@@ -40,7 +31,6 @@ export class SupabaseService {
             schema: 'public',
           },
         });
-        console.log('[SupabaseService] ✅ Cliente inicializado com sucesso!');
       } catch (err) {
         console.warn('[SupabaseService] ❌ Falha ao inicializar client:', err);
         this.client = null;
@@ -58,14 +48,13 @@ export class SupabaseService {
   }
 
   public getClient(): SupabaseClient | null {
-    // Se não tem cliente, tentar recriar
     if (!this.client) {
-      console.log('[SupabaseService] 🔄 Tentando recriar cliente...');
-      const URL_FIXA = 'https://qfeyaofqkpvdyjswfuiu.supabase.co';
-      const KEY_FIXA = 'sb_publishable_eKJFz3tN8eyfSdehGj7Lkg_m0UVvSuV';
+      const metaEnv = (import.meta as any).env || {};
+      const envUrl = metaEnv.VITE_SUPABASE_URL as string;
+      const envKey = metaEnv.VITE_SUPABASE_ANON_KEY as string;
       
-      this.url = localStorage.getItem('anew_supabase_url') || URL_FIXA;
-      this.key = localStorage.getItem('anew_supabase_key') || KEY_FIXA;
+      this.url = localStorage.getItem('anew_supabase_url') || envUrl || '';
+      this.key = localStorage.getItem('anew_supabase_key') || envKey || '';
       
       if (this.url && this.key) {
         try {
@@ -79,7 +68,6 @@ export class SupabaseService {
               schema: 'public',
             },
           });
-          console.log('[SupabaseService] ✅ Cliente recriado com sucesso!');
         } catch (err) {
           console.error('[SupabaseService] ❌ Erro ao recriar cliente:', err);
           this.client = null;
@@ -90,14 +78,11 @@ export class SupabaseService {
   }
 
   public estaConectado(): boolean {
-    const conectado = this.client !== null;
-    console.log('[SupabaseService] 📊 Status:', conectado ? '✅ Conectado' : '❌ Desconectado');
-    return conectado;
+    return this.client !== null;
   }
 
   public reconfigurar(novaUrl: string, novaKey: string): ResultadoSupabase<boolean> {
     try {
-      console.log('[SupabaseService] 🔄 Reconfigurando...');
       this.url = novaUrl.trim();
       this.key = novaKey.trim();
       localStorage.setItem('anew_supabase_url', this.url);
@@ -119,7 +104,6 @@ export class SupabaseService {
         },
       });
 
-      console.log('[SupabaseService] ✅ Reconfigurado com sucesso!');
       return { sucesso: true, dados: true };
     } catch (err: any) {
       console.error('[SupabaseService] ❌ Erro na reconfiguração:', err);
@@ -129,25 +113,21 @@ export class SupabaseService {
 
   public async testarConexao(): Promise<StatusConexaoSupabase> {
     const client = this.getClient();
-    console.log('[SupabaseService] 🔍 Testando conexão...');
-    console.log('   Cliente:', client ? '✅ OK' : '❌ NULO');
 
     if (!client) {
       return {
         conectado: false,
         urlConfigurada: Boolean(this.url),
         chaveConfigurada: Boolean(this.key),
-        mensagem: 'Cliente Supabase não configurado.',
+        mensagem: 'Cliente Supabase não configurado. Verifique o arquivo .env',
         ultimaVerificacao: new Date().toISOString(),
       };
     }
 
     try {
-      console.log('[SupabaseService] 📡 Executando consulta de teste...');
       const { error } = await client.from('Configuracao').select('ConfiguracaoId').limit(1);
 
       if (error) {
-        console.log('[SupabaseService] ❌ Erro na consulta:', error.message);
         return {
           conectado: false,
           urlConfigurada: true,
@@ -157,7 +137,6 @@ export class SupabaseService {
         };
       }
 
-      console.log('[SupabaseService] ✅ Conexão testada com sucesso!');
       return {
         conectado: true,
         urlConfigurada: true,

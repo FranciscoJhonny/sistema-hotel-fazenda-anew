@@ -1,6 +1,7 @@
 // src/contextos/ContextoHotel.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthService } from '../servicos/supabase/AuthService';
+import { SupabaseService } from '../servicos/supabase/SupabaseService';
 import {
   Quarto,
   Reserva,
@@ -12,29 +13,54 @@ import {
   Usuario,
   PaginaNavegacao,
   StatusQuarto,
+  StatusReserva,
 } from '../tipos';
-import {
-  QUARTOS_INICIAIS,
-  HOSPEDES_INICIAIS,
-  RESERVAS_INICIAIS,
-  PRODUTOS_INICIAIS,
-  PACOTES_INICIAIS,
-  VENDAS_INICIAIS,
-  CONFIGURACAO_INICIAL,
-  USUARIOS_INICIAIS,
-} from '../dados/dadosIniciais';
 import {
   verificarConflitoQuarto,
   calcularDisponibilidadeQuartos,
   StatusDisponibilidadeQuarto,
 } from '../servicos/conflitoReservas';
 
+const usuarioPadrao: Usuario = {
+  usuarioid: 0,
+  perfilid: 0,
+  nome: '',
+  email: '',
+  senha: '',
+  perfil: 'ADMIN',
+  ativo: true,
+  datainclusao: new Date().toISOString(),
+  dataoperacao: new Date().toISOString(),
+  naturezaoperacao: 'INSERT',
+};
+
+const configuracaoPadrao: ConfiguracaoSistema = {
+  checkintime: '09:00',
+  checkouttime: '12:00',
+  hotelnome: '',
+  hotellocalizacao: '',
+  telefonehotel: '',
+  emailhotel: '',
+  taxaservicopercentual: 0,
+  supabaseurl: '',
+  supabaseanonkey: '',
+  modoofflineativo: false,
+  criancaidadelimitegratis: 5,
+  criancaidadelimitemeia: 11,
+  criancaidadeintegral: 12,
+  criancaporcentagemmeiadiaria: 50,
+  criancaDescontogratuis: 100,
+  capacidademaximaadultosporquarto: 4,
+  capacidademaximacriancasporquarto: 3,
+  formapagamentopadrao: 'PIX',
+  porcentagementradaminima: 30,
+};
+
 // ============================================
 // TIPOS
 // ============================================
 
 interface ContextoHotelType {
-  // Estado principal
   quartos: Quarto[];
   reservas: Reserva[];
   hospedes: Hospede[];
@@ -48,59 +74,33 @@ interface ContextoHotelType {
   dataSistema: string;
   online: boolean;
   autenticado: boolean;
+  isLoading: boolean;
 
-  // Ações de Autenticação & Navegação
   login: (email: string, senha: string) => Promise<{ sucesso: boolean; erro?: string }>;
   logout: () => Promise<void>;
   navegarPara: (pagina: PaginaNavegacao) => void;
   trocarUsuario: (usuarioId: number | string) => void;
 
-  // Operações de Quartos
-  atualizarStatusQuarto: (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => void;
+  atualizarStatusQuarto: (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => Promise<void>;
   obterQuartoPorId: (quartoId: number | string) => Quarto | undefined;
   obterQuartoPorNumero: (numero: string) => Quarto | undefined;
 
-  // Operações de Reservas
-  verificarDisponibilidade: (
-    dataEntrada: string,
-    dataSaida: string,
-    reservaIdIgnorar?: number | string
-  ) => StatusDisponibilidadeQuarto[];
-  criarReserva: (novaReserva: Omit<Reserva, 'ReservaId' | 'Codigo' | 'DataInclusao' | 'DataOperacao' | 'Ativo' | 'Status'> & { Status?: Reserva['Status'] }) => {
-    sucesso: boolean;
-    mensagem: string;
-    reserva?: Reserva;
-  };
-  atualizarReserva: (id: number | string, dados: Partial<Reserva>) => {
-    sucesso: boolean;
-    mensagem: string;
-  };
-  cancelarReserva: (id: number | string, motivo?: string) => {
-    sucesso: boolean;
-    mensagem: string;
-  };
+  verificarDisponibilidade: (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => StatusDisponibilidadeQuarto[];
+  criarReserva: (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'status'> & { status?: StatusReserva }) => Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }>;
+  atualizarReserva: (id: number | string, dados: Partial<Reserva>) => Promise<{ sucesso: boolean; mensagem: string }>;
+  cancelarReserva: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
 
-  // Check-in & Check-out
-  realizarCheckin: (reservaId: number | string) => {
-    sucesso: boolean;
-    mensagem: string;
-  };
-  realizarCheckout: (reservaId: number | string) => {
-    sucesso: boolean;
-    mensagem: string;
-  };
+  realizarCheckin: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
+  realizarCheckout: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
 
-  // Operações de Hóspedes
-  cadastrarHospede: (hospede: Omit<Hospede, 'HospedeId' | 'DataInclusao' | 'DataOperacao' | 'Ativo'>) => Hospede;
-  editarHospede: (id: number | string, dados: Partial<Hospede>) => void;
-  excluirHospede: (id: number | string) => boolean;
+  cadastrarHospede: (hospede: Omit<Hospede, 'hospedeid' | 'datainclusao' | 'dataoperacao' | 'ativo'>) => Promise<Hospede>;
+  editarHospede: (id: number | string, dados: Partial<Hospede>) => Promise<void>;
+  excluirHospede: (id: number | string) => Promise<boolean>;
 
-  // Operações de Loja & Financeiro
-  registrarVenda: (venda: Omit<Venda, 'VendaId' | 'Codigo' | 'DataHora' | 'DataInclusao' | 'DataOperacao' | 'Ativo'>) => Venda;
-  atualizarEstoqueProduto: (produtoId: number | string, quantidadeDelta: number) => void;
+  registrarVenda: (venda: Omit<Venda, 'vendaid' | 'codigo' | 'datahora' | 'datainclusao' | 'dataoperacao' | 'ativo'>) => Promise<Venda>;
+  atualizarEstoqueProduto: (produtoId: number | string, quantidadeDelta: number) => Promise<void>;
 
-  // Configurações & Reset
-  salvarConfiguracoes: (novasConfiguracoes: Partial<ConfiguracaoSistema>) => void;
+  salvarConfiguracoes: (novasConfiguracoes: Partial<ConfiguracaoSistema>) => Promise<void>;
   restaurarDadosPadrao: () => void;
 }
 
@@ -115,212 +115,84 @@ const ContextoHotel = createContext<ContextoHotelType | undefined>(undefined);
 // ============================================
 
 export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // ============================================
-  // INSTANCIAR SERVICOS
-  // ============================================
-  
   const authService = new AuthService();
+  const supabaseService = SupabaseService.getInstance();
 
-  // ============================================
-  // ESTADOS
-  // ============================================
+  const [quartos, setQuartos] = useState<Quarto[]>([]);
+  const [reservas, setReservas] = useState<Reserva[]>([]);
+  const [hospedes, setHospedes] = useState<Hospede[]>([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [vendas, setVendas] = useState<Venda[]>([]);
+  const [pacotes, setPacotes] = useState<Pacote[]>([]);
+  const [configuracoes, setConfiguracoes] = useState<ConfiguracaoSistema>(configuracaoPadrao);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
-  const [quartos, setQuartos] = useState<Quarto[]>(() => {
-    const salvo = localStorage.getItem('anew_quartos_pascal_v1');
-    if (salvo) {
-      try {
-        const parsed = JSON.parse(salvo);
-        if (Array.isArray(parsed) && parsed.length === 13 && parsed[0]?.Numero === 'B1') {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return QUARTOS_INICIAIS;
-  });
+  const [usuarioAtual, setUsuarioAtual] = useState<Usuario>(usuarioPadrao);
+  const [autenticado, setAutenticado] = useState<boolean>(false);
+  const [paginaAtual, setPaginaAtual] = useState<PaginaNavegacao>('login');
 
-  const [reservas, setReservas] = useState<Reserva[]>(() => {
-    const salvo = localStorage.getItem('anew_reservas_pascal_v1');
-    if (salvo) {
-      try {
-        const parsed = JSON.parse(salvo);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.QuartoCodigo === 'B2') {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return RESERVAS_INICIAIS;
-  });
-
-  const [hospedes, setHospedes] = useState<Hospede[]>(() => {
-    const salvo = localStorage.getItem('anew_hospedes_pascal_v1');
-    if (salvo) {
-      try {
-        const parsed = JSON.parse(salvo);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.NomeCompleto) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return HOSPEDES_INICIAIS;
-  });
-
-  const [produtos, setProdutos] = useState<Produto[]>(() => {
-    const salvo = localStorage.getItem('anew_produtos_pascal_v1');
-    if (salvo) {
-      try {
-        const parsed = JSON.parse(salvo);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.Nome) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return PRODUTOS_INICIAIS;
-  });
-
-  const [vendas, setVendas] = useState<Venda[]>(() => {
-    const salvo = localStorage.getItem('anew_vendas_pascal_v1');
-    if (salvo) {
-      try {
-        const parsed = JSON.parse(salvo);
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.ValorTotal !== undefined) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return VENDAS_INICIAIS;
-  });
-
-  const [pacotes] = useState<Pacote[]>(PACOTES_INICIAIS);
-
-  const [configuracoes, setConfiguracoes] = useState<ConfiguracaoSistema>(() => {
-    const salvo = localStorage.getItem('anew_configuracoes_pascal_v1');
-    if (salvo) {
-      try {
-        const parsed = JSON.parse(salvo);
-        if (parsed?.HotelNome) return parsed;
-      } catch (e) {}
-    }
-    return CONFIGURACAO_INICIAL;
-  });
-
-  const [usuarios] = useState<Usuario[]>(USUARIOS_INICIAIS);
-
-  const [usuarioAtual, setUsuarioAtual] = useState<Usuario>(() => {
-    const usuarioLogado = authService.getUsuarioLogado();
-    if (usuarioLogado) {
-      return usuarioLogado;
-    }
-    return USUARIOS_INICIAIS[0];
-  });
-
-  const [autenticado, setAutenticado] = useState<boolean>(() => {
-    return authService.getUsuarioLogado() !== null;
-  });
-
-  const [paginaAtual, setPaginaAtual] = useState<PaginaNavegacao>(() => {
-    return authService.getUsuarioLogado() !== null ? 'dashboard' : 'login';
-  });
-
-  const [dataSistema] = useState<string>('2026-08-31');
+  const [dataSistema] = useState<string>(new Date().toISOString().slice(0, 10));
   const [online, setOnline] = useState<boolean>(navigator.onLine);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // ============================================
-  // FUNÇÕES DE AUTENTICAÇÃO
+  // CARREGAR DADOS DO SUPABASE AO INICIAR
   // ============================================
-
-  /**
-   * 🔥 LOGIN - APENAS SUPABASE
-   */
-  const login = async (email: string, senha: string): Promise<{ sucesso: boolean; erro?: string }> => {
-    console.log('[ContextoHotel] Tentando login:', email);
-
-    // Verificar se está online
-    if (!online) {
-      return { sucesso: false, erro: '🚫 Sistema offline. Verifique sua conexão com a internet.' };
-    }
-
-    try {
-      const resultado = await authService.login(email, senha);
-      console.log('[ContextoHotel] Resultado AuthService:', resultado);
-
-      if (resultado.sucesso && resultado.dados) {
-        const usuario = resultado.dados as Usuario;
-        
-        // Verificar se o usuário tem os campos necessários
-        if (!usuario || !usuario.Email) {
-          console.error('[ContextoHotel] Usuário inválido:', usuario);
-          return { sucesso: false, erro: 'Dados do usuário incompletos.' };
-        }
-
-        setUsuarioAtual(usuario);
-        setAutenticado(true);
-        localStorage.setItem('anew_usuario_atual_v1', JSON.stringify(usuario));
-        localStorage.setItem('anew_autenticado_v1', 'true');
-        setPaginaAtual('dashboard');
-        
-        console.log('[ContextoHotel] Login bem-sucedido:', usuario.Email);
-        return { sucesso: true };
+  useEffect(() => {
+    const carregarDadosDoBanco = async () => {
+      const client = supabaseService.getClient();
+      if (!client) {
+        setIsLoading(false);
+        return;
       }
 
-      return { 
-        sucesso: false, 
-        erro: resultado.erro || 'E-mail ou senha inválidos.' 
-      };
+      try {
+        setIsLoading(true);
 
-    } catch (error: any) {
-      console.error('[ContextoHotel] Erro no login:', error);
-      return { 
-        sucesso: false, 
-        erro: error?.message || 'Erro ao conectar com o servidor. Tente novamente.' 
-      };
-    }
-  };
+        const [quartosResult, reservasResult, hospedesResult, produtosResult, vendasResult, pacotesResult, usuariosResult, configuracaoResult] = await Promise.all([
+          client.from('quarto').select('*'),
+          client.from('reserva').select('*'),
+          client.from('hospede').select('*'),
+          client.from('produto').select('*'),
+          client.from('venda').select('*'),
+          client.from('pacote').select('*'),
+          client.from('usuario').select('*'),
+          client.from('configuracao').select('*').limit(1).maybeSingle(),
+        ]);
 
-  /**
-   * 🔥 LOGOUT
-   */
-  const logout = async () => {
-    try {
-      await authService.logout();
-    } catch (error) {
-      console.error('[ContextoHotel] Erro no logout:', error);
-    }
-    
-    setAutenticado(false);
-    setUsuarioAtual(USUARIOS_INICIAIS[0]);
-    localStorage.setItem('anew_autenticado_v1', 'false');
-    localStorage.removeItem('anew_usuario_atual_v1');
-    setPaginaAtual('login');
-  };
+        if (quartosResult.data) setQuartos(quartosResult.data as Quarto[]);
+        if (reservasResult.data) setReservas(reservasResult.data as Reserva[]);
+        if (hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
+        if (produtosResult.data) setProdutos(produtosResult.data as Produto[]);
+        if (vendasResult.data) setVendas(vendasResult.data as Venda[]);
+        if (pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
+        if (usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
+        if (configuracaoResult.data) setConfiguracoes(configuracaoResult.data as ConfiguracaoSistema);
 
-  // ============================================
-  // NAVEGAÇÃO
-  // ============================================
+        const usuarioSalvo = authService.getUsuarioLogado();
+        if (usuarioSalvo) {
+          setUsuarioAtual(usuarioSalvo);
+          setAutenticado(true);
+          setPaginaAtual('dashboard');
+        }
+      } catch (error) {
+        console.error('[ContextoHotel] Erro ao carregar dados do Supabase:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const navegarPara = (pagina: PaginaNavegacao) => {
-    setPaginaAtual(pagina);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const trocarUsuario = (usuarioId: number | string) => {
-    const usr = usuarios.find((u) => String(u.UsuarioId) === String(usuarioId));
-    if (usr) {
-      setUsuarioAtual(usr);
-      localStorage.setItem('anew_usuario_atual_v1', JSON.stringify(usr));
-    }
-  };
+    carregarDadosDoBanco();
+  }, []);
 
   // ============================================
   // MONITORAR CONECTIVIDADE
   // ============================================
-
   useEffect(() => {
     const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -328,537 +200,377 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   // ============================================
-  // PERSISTÊNCIA LOCAL
+  // FUNÇÕES DE AUTENTICAÇÃO
   // ============================================
+  const login = async (email: string, senha: string): Promise<{ sucesso: boolean; erro?: string }> => {
+    if (!online) return { sucesso: false, erro: '🚫 Sistema offline.' };
 
-  useEffect(() => {
-    localStorage.setItem('anew_quartos_pascal_v1', JSON.stringify(quartos));
-  }, [quartos]);
+    try {
+      const resultado = await authService.login(email, senha);
+      if (resultado.sucesso && resultado.dados) {
+        const usuario = resultado.dados as Usuario;
+        setUsuarioAtual(usuario);
+        setAutenticado(true);
+        setPaginaAtual('dashboard');
+        return { sucesso: true };
+      }
+      return { sucesso: false, erro: resultado.erro || 'E-mail ou senha inválidos.' };
+    } catch (error: any) {
+      return { sucesso: false, erro: error?.message || 'Erro ao conectar.' };
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem('anew_reservas_pascal_v1', JSON.stringify(reservas));
-  }, [reservas]);
+  const logout = async () => {
+    await authService.logout();
+    setAutenticado(false);
+    setUsuarioAtual(usuarioPadrao);
+    setPaginaAtual('login');
+  };
 
-  useEffect(() => {
-    localStorage.setItem('anew_hospedes_pascal_v1', JSON.stringify(hospedes));
-  }, [hospedes]);
+  // ============================================
+  // NAVEGAÇÃO
+  // ============================================
+  const navegarPara = (pagina: PaginaNavegacao) => {
+    setPaginaAtual(pagina);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  useEffect(() => {
-    localStorage.setItem('anew_produtos_pascal_v1', JSON.stringify(produtos));
-  }, [produtos]);
-
-  useEffect(() => {
-    localStorage.setItem('anew_vendas_pascal_v1', JSON.stringify(vendas));
-  }, [vendas]);
-
-  useEffect(() => {
-    localStorage.setItem('anew_configuracoes_pascal_v1', JSON.stringify(configuracoes));
-  }, [configuracoes]);
+  const trocarUsuario = (usuarioId: number | string) => {
+    const usr = usuarios.find((u) => String(u.usuarioid) === String(usuarioId));
+    if (usr) setUsuarioAtual(usr);
+  };
 
   // ============================================
   // FUNÇÕES DE QUARTOS
   // ============================================
+  const obterQuartoPorId = (quartoId: number | string) => quartos.find((q) => String(q.quartoid) === String(quartoId));
+  const obterQuartoPorNumero = (numero: string) => quartos.find((q) => q.numero?.toUpperCase() === numero.toUpperCase());
 
-  const obterQuartoPorId = (quartoId: number | string) => {
-    return quartos.find((q) => String(q.QuartoId) === String(quartoId));
-  };
-
-  const obterQuartoPorNumero = (numero: string) => {
-    return quartos.find((q) => q.Numero.toUpperCase() === numero.toUpperCase());
-  };
-
-  const atualizarStatusQuarto = (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => {
+  const atualizarStatusQuarto = async (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => {
+    const client = supabaseService.getClient();
     const agora = new Date().toISOString();
-    setQuartos((prev) =>
-      prev.map((q) =>
-        String(q.QuartoId) === String(quartoId)
-          ? {
-              ...q,
-              Status: novoStatus,
-              MotivoBloqueio: motivoBloqueio !== undefined ? motivoBloqueio : q.MotivoBloqueio,
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : q
-      )
-    );
+
+    setQuartos(prev => prev.map(q => String(q.quartoid) === String(quartoId) ? {
+      ...q,
+      status: novoStatus,
+      descricao: motivoBloqueio,
+      dataoperacao: agora,
+      naturezaoperacao: 'UPDATE' as const
+    } : q) as Quarto[]);
+
+    if (client) {
+      await client.from('quarto').update({
+        status: novoStatus,
+        descricao: motivoBloqueio,
+        dataoperacao: agora,
+        usuariooperacao: usuarioAtual?.usuarioid,
+        naturezaoperacao: 'UPDATE'
+      }).eq('quartoid', quartoId);
+    }
   };
 
   // ============================================
   // FUNÇÕES DE RESERVAS
   // ============================================
-
-  const verificarDisponibilidade = (
-    dataEntrada: string,
-    dataSaida: string,
-    reservaIdIgnorar?: number | string
-  ): StatusDisponibilidadeQuarto[] => {
+  const verificarDisponibilidade = (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => {
     return calcularDisponibilidadeQuartos(quartos, reservas, dataEntrada, dataSaida, reservaIdIgnorar);
   };
 
-  const criarReserva = (
-    dados: Omit<Reserva, 'ReservaId' | 'Codigo' | 'DataInclusao' | 'DataOperacao' | 'Ativo' | 'Status'> & { Status?: Reserva['Status'] }
-  ): { sucesso: boolean; mensagem: string; reserva?: Reserva } => {
-    // Verificar conflito
-    const conflito = verificarConflitoQuarto(
-      dados.QuartoId,
-      dados.DataEntrada,
-      dados.DataSaida,
-      reservas
-    );
+  const criarReserva = async (dados: any): Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }> => {
+    const client = supabaseService.getClient();
+    if (!client) return { sucesso: false, mensagem: 'Sem conexão com o banco.' };
 
-    if (conflito.temConflito) {
-      return {
-        sucesso: false,
-        mensagem: conflito.motivo || 'O quarto selecionado possui conflito de datas com outra reserva.',
-      };
-    }
+    const conflito = verificarConflitoQuarto(dados.quartoid, dados.dataentrada, dados.datasaida, reservas);
+    if (conflito.temConflito) return { sucesso: false, mensagem: conflito.motivo || 'Conflito de datas.' };
 
-    const quarto = obterQuartoPorId(dados.QuartoId);
-    if (!quarto) {
-      return {
-        sucesso: false,
-        mensagem: 'Quarto selecionado não encontrado.',
-      };
-    }
+    const quarto = obterQuartoPorId(dados.quartoid);
+    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
+    if (quarto.status === 'MANUTENCAO') return { sucesso: false, mensagem: `Quarto ${quarto.numero} em manutenção.` };
 
-    if (quarto.Status === 'MANUTENCAO') {
-      return {
-        sucesso: false,
-        mensagem: `O Quarto ${quarto.Numero} está em manutenção e não pode ser reservado.`,
-      };
-    }
-
-    // Gerar código único
     const numeroAleatorio = Math.floor(10000 + Math.random() * 90000);
-    const codigo = `#${numeroAleatorio}`;
-    const reservaId = numeroAleatorio;
     const agora = new Date().toISOString();
-
-    let statusInicial: Reserva['Status'] = dados.Status || 'CONFIRMADA';
-    if (dados.DataEntrada === dataSistema && statusInicial !== 'HOSPEDADO') {
-      statusInicial = 'AGUARDANDO_CHECKIN';
-    }
+    let statusInicial: StatusReserva = dados.status || 'CONFIRMADA';
+    if (dados.dataentrada === dataSistema && statusInicial !== 'HOSPEDADO') statusInicial = 'AGUARDANDO_CHECKIN';
 
     const novaReserva: Reserva = {
       ...dados,
-      ReservaId: reservaId,
-      Codigo: codigo,
-      QuartoNumero: quarto.Numero,
-      QuartoCodigo: quarto.CodigoIdentificador,
-      QuartoCategoria: quarto.Categoria,
-      Status: statusInicial,
-      Ativo: true,
-      UsuarioInclusao: usuarioAtual?.Nome || 'Sistema',
-      DataInclusao: agora,
-      UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-      DataOperacao: agora,
-      NaturezaOperacao: 'INSERT',
+      reservaid: numeroAleatorio,
+      codigo: `#${numeroAleatorio}`,
+      quartonumero: quarto.numero,
+      quartocodigo: quarto.codigoidentificador,
+      quartocategoria: quarto.categoria,
+      status: statusInicial,
+      ativo: true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT',
     };
 
-    setReservas((prev) => [novaReserva, ...prev]);
+    const { data, error } = await client.from('reserva').insert(novaReserva).select().single();
+    if (error) return { sucesso: false, mensagem: 'Erro ao salvar: ' + error.message };
 
-    // Atualizar status do quarto
-    setQuartos((prev) =>
-      prev.map((q) =>
-        String(q.QuartoId) === String(quarto.QuartoId)
-          ? {
-              ...q,
-              Status: statusInicial === 'HOSPEDADO' ? 'OCUPADO' : 
-                      dados.DataEntrada === dataSistema ? 'AGUARDANDO_CHECKIN' : 'RESERVADO',
-              HospedeAtualNome: dados.HospedeNome,
-              DataEntradaAtual: dados.DataEntrada,
-              DataSaidaAtual: dados.DataSaida,
-              AdultosAtual: dados.Adultos,
-              CriancasAtual: dados.Criancas,
-              ReservaAtualId: reservaId,
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : q
-      )
-    );
+    setReservas(prev => [data as Reserva, ...prev]);
 
-    return {
-      sucesso: true,
-      mensagem: `Reserva ${codigo} criada com sucesso para ${dados.HospedeNome}!`,
-      reserva: novaReserva,
-    };
+    await atualizarStatusQuarto(quarto.quartoid, statusInicial === 'HOSPEDADO' ? 'OCUPADO' : (dados.dataentrada === dataSistema ? 'AGUARDANDO_CHECKIN' : 'RESERVADO'));
+
+    return { sucesso: true, mensagem: `Reserva ${data.codigo} criada com sucesso!`, reserva: data as Reserva };
   };
 
-  const atualizarReserva = (id: number | string, dados: Partial<Reserva>) => {
-    const reservaExistente = reservas.find((r) => String(r.ReservaId) === String(id));
-    if (!reservaExistente) {
-      return { sucesso: false, mensagem: 'Reserva não encontrada.' };
-    }
+  const atualizarReserva = async (id: number | string, dados: Partial<Reserva>): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const client = supabaseService.getClient();
+    const reservaExistente = reservas.find((r) => String(r.reservaid) === String(id));
+    if (!reservaExistente) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
 
-    const novoQuartoId = dados.QuartoId || reservaExistente.QuartoId;
-    const novaEntrada = dados.DataEntrada || reservaExistente.DataEntrada;
-    const novaSaida = dados.DataSaida || reservaExistente.DataSaida;
+    const novoQuartoId = dados.quartoid || reservaExistente.quartoid;
+    const novaEntrada = dados.dataentrada || reservaExistente.dataentrada;
+    const novaSaida = dados.datasaida || reservaExistente.datasaida;
 
-    if (
-      String(novoQuartoId) !== String(reservaExistente.QuartoId) ||
-      novaEntrada !== reservaExistente.DataEntrada ||
-      novaSaida !== reservaExistente.DataSaida
-    ) {
+    if (String(novoQuartoId) !== String(reservaExistente.quartoid) || novaEntrada !== reservaExistente.dataentrada || novaSaida !== reservaExistente.datasaida) {
       const conflito = verificarConflitoQuarto(novoQuartoId, novaEntrada, novaSaida, reservas, id);
-      if (conflito.temConflito) {
-        return {
-          sucesso: false,
-          mensagem: conflito.motivo || 'Datas conflitam com outra reserva.',
-        };
-      }
+      if (conflito.temConflito) return { sucesso: false, mensagem: conflito.motivo || 'Datas conflitam.' };
     }
 
     const agora = new Date().toISOString();
-    setReservas((prev) =>
-      prev.map((r) =>
-        String(r.ReservaId) === String(id)
-          ? {
-              ...r,
-              ...dados,
-              Saldo: (dados.ValorTotal ?? r.ValorTotal) - (dados.ValorPago ?? r.ValorPago),
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : r
-      )
-    );
+    const dadosAtualizados = {
+      ...dados,
+      saldo: (dados.valortotal ?? reservaExistente.valortotal) - (dados.valorpago ?? reservaExistente.valorpago),
+      dataoperacao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
 
+    if (client) {
+      const { error } = await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
+      if (error) return { sucesso: false, mensagem: 'Erro ao atualizar: ' + error.message };
+    }
+
+    setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
     return { sucesso: true, mensagem: 'Reserva atualizada com sucesso.' };
   };
 
-  const cancelarReserva = (id: number | string, motivo?: string) => {
-    const reserva = reservas.find((r) => String(r.ReservaId) === String(id));
+  const cancelarReserva = async (id: number | string, motivo?: string): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const client = supabaseService.getClient();
+    const reserva = reservas.find((r) => String(r.reservaid) === String(id));
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
-
     const agora = new Date().toISOString();
-    setReservas((prev) =>
-      prev.map((r) =>
-        String(r.ReservaId) === String(id)
-          ? {
-              ...r,
-              Status: 'CANCELADA',
-              Observacoes: motivo ? `${r.Observacoes || ''} [Cancelada: ${motivo}]` : r.Observacoes,
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : r
-      )
-    );
+    const dadosAtualizados = {
+      status: 'CANCELADA' as StatusReserva,
+      observacoes: motivo ? `${reserva.observacoes || ''} [Cancelada: ${motivo}]` : reserva.observacoes,
+      dataoperacao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
+    if (client) {
+      await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
+    }
+    setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
+    if (reserva.quartoid && (reserva.status === 'CONFIRMADA' || reserva.status === 'AGUARDANDO_CHECKIN')) {
+      await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
+    }
 
-    setQuartos((prev) =>
-      prev.map((q) => {
-        if (String(q.QuartoId) === String(reserva.QuartoId) && (q.Status === 'RESERVADO' || q.Status === 'AGUARDANDO_CHECKIN')) {
-          return {
-            ...q,
-            Status: 'DISPONIVEL',
-            HospedeAtualNome: undefined,
-            DataEntradaAtual: undefined,
-            DataSaidaAtual: undefined,
-            AdultosAtual: undefined,
-            CriancasAtual: undefined,
-            ReservaAtualId: undefined,
-            DataOperacao: agora,
-            UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-            NaturezaOperacao: 'UPDATE',
-          };
-        }
-        return q;
-      })
-    );
-
-    return { sucesso: true, mensagem: `Reserva ${reserva.Codigo} cancelada.` };
+    return { sucesso: true, mensagem: `Reserva ${reserva.codigo} cancelada.` };
   };
 
   // ============================================
   // CHECK-IN / CHECK-OUT
   // ============================================
-
-  const realizarCheckin = (reservaId: number | string) => {
-    const reserva = reservas.find((r) => String(r.ReservaId) === String(reservaId));
+  const realizarCheckin = async (reservaId: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const client = supabaseService.getClient();
+    const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
 
     const agora = new Date().toISOString();
-
-    setReservas((prev) =>
-      prev.map((r) =>
-        String(r.ReservaId) === String(reservaId)
-          ? {
-              ...r,
-              Status: 'HOSPEDADO',
-              CheckinRealizadoEm: agora,
-              CheckinUsuario: usuarioAtual?.Nome || 'Sistema',
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : r
-      )
-    );
-
-    setQuartos((prev) =>
-      prev.map((q) =>
-        String(q.QuartoId) === String(reserva.QuartoId)
-          ? {
-              ...q,
-              Status: 'OCUPADO',
-              HospedeAtualNome: reserva.HospedeNome,
-              DataEntradaAtual: reserva.DataEntrada,
-              DataSaidaAtual: reserva.DataSaida,
-              AdultosAtual: reserva.Adultos,
-              CriancasAtual: reserva.Criancas,
-              ReservaAtualId: reserva.ReservaId,
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : q
-      )
-    );
-
-    return {
-      sucesso: true,
-      mensagem: `Check-in de ${reserva.HospedeNome} (Quarto ${reserva.QuartoNumero}) realizado!`,
+    const dadosReserva = {
+      status: 'HOSPEDADO' as StatusReserva,
+      checkinrealizadoem: agora,
+      checkinusuario: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'UPDATE'
     };
+
+    if (client) await client.from('reserva').update(dadosReserva).eq('reservaid', reservaId);
+    setReservas(prev => prev.map(r => String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r) as Reserva[]);
+
+    await atualizarStatusQuarto(reserva.quartoid, 'OCUPADO');
+
+    return { sucesso: true, mensagem: `Check-in de ${reserva.hospedenome} realizado!` };
   };
 
-  const realizarCheckout = (reservaId: number | string) => {
-    const reserva = reservas.find((r) => String(r.ReservaId) === String(reservaId));
+  const realizarCheckout = async (reservaId: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const client = supabaseService.getClient();
+    const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
 
     const agora = new Date().toISOString();
-
-    setReservas((prev) =>
-      prev.map((r) =>
-        String(r.ReservaId) === String(reservaId)
-          ? {
-              ...r,
-              Status: 'FINALIZADA',
-              CheckoutRealizadoEm: agora,
-              CheckoutUsuario: usuarioAtual?.Nome || 'Sistema',
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : r
-      )
-    );
-
-    setQuartos((prev) =>
-      prev.map((q) =>
-        String(q.QuartoId) === String(reserva.QuartoId)
-          ? {
-              ...q,
-              Status: 'DISPONIVEL',
-              HospedeAtualNome: undefined,
-              DataEntradaAtual: undefined,
-              DataSaidaAtual: undefined,
-              AdultosAtual: undefined,
-              CriancasAtual: undefined,
-              ReservaAtualId: undefined,
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : q
-      )
-    );
-
-    return {
-      sucesso: true,
-      mensagem: `Check-out do Quarto ${reserva.QuartoNumero} finalizado!`,
+    const dadosReserva = {
+      status: 'FINALIZADA' as StatusReserva,
+      checkoutrealizadoem: agora,
+      checkoutusuario: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'UPDATE'
     };
+
+    if (client) await client.from('reserva').update(dadosReserva).eq('reservaid', reservaId);
+    setReservas(prev => prev.map(r => String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r) as Reserva[]);
+
+    await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
+
+    return { sucesso: true, mensagem: `Check-out do Quarto ${reserva.quartonumero} finalizado!` };
   };
 
   // ============================================
   // FUNÇÕES DE HÓSPEDES
   // ============================================
-
-  const cadastrarHospede = (dados: Omit<Hospede, 'HospedeId' | 'DataInclusao' | 'DataOperacao' | 'Ativo'>): Hospede => {
+  const cadastrarHospede = async (dados: any): Promise<Hospede> => {
+    const client = supabaseService.getClient();
     const hospedeId = Date.now();
     const agora = new Date().toISOString();
     const novo: Hospede = {
       ...dados,
-      HospedeId: hospedeId,
-      Ativo: true,
-      UsuarioInclusao: usuarioAtual?.Nome || 'Sistema',
-      DataInclusao: agora,
-      UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-      DataOperacao: agora,
-      NaturezaOperacao: 'INSERT',
+      hospedeid: hospedeId,
+      ativo: true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT'
     };
-    setHospedes((prev) => [novo, ...prev]);
+
+    if (client) {
+      const { data } = await client.from('hospede').insert(novo).select().single();
+      if (data) {
+        setHospedes(prev => [data as Hospede, ...prev]);
+        return data as Hospede;
+      }
+    }
+    setHospedes(prev => [novo, ...prev]);
     return novo;
   };
 
-  const editarHospede = (id: number | string, dados: Partial<Hospede>) => {
+  const editarHospede = async (id: number | string, dados: Partial<Hospede>): Promise<void> => {
+    const client = supabaseService.getClient();
     const agora = new Date().toISOString();
-    setHospedes((prev) =>
-      prev.map((h) =>
-        String(h.HospedeId) === String(id)
-          ? {
-              ...h,
-              ...dados,
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : h
-      )
-    );
+    const dadosAtualizados = { ...dados, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+
+    if (client) await client.from('hospede').update(dadosAtualizados).eq('hospedeid', id);
+    setHospedes(prev => prev.map(h => String(h.hospedeid) === String(id) ? { ...h, ...dadosAtualizados } : h) as Hospede[]);
   };
 
-  const excluirHospede = (id: number | string): boolean => {
-    const temReservaAtiva = reservas.some(
-      (r) =>
-        String(r.HospedeId) === String(id) &&
-        (r.Status === 'CONFIRMADA' || r.Status === 'AGUARDANDO_CHECKIN' || r.Status === 'HOSPEDADO')
+  const excluirHospede = async (id: number | string): Promise<boolean> => {
+    const client = supabaseService.getClient();
+    const temReservaAtiva = reservas.some(r =>
+      String(r.hospedeid) === String(id) &&
+      (r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_CHECKIN' || r.status === 'HOSPEDADO')
     );
     if (temReservaAtiva) return false;
 
-    setHospedes((prev) => prev.filter((h) => String(h.HospedeId) !== String(id)));
+    if (client) await client.from('hospede').delete().eq('hospedeid', id);
+    setHospedes(prev => prev.filter(h => String(h.hospedeid) !== String(id)));
     return true;
   };
 
   // ============================================
   // FUNÇÕES DE LOJA
   // ============================================
-
-  const registrarVenda = (dados: Omit<Venda, 'VendaId' | 'Codigo' | 'DataHora' | 'DataInclusao' | 'DataOperacao' | 'Ativo'>): Venda => {
+  const registrarVenda = async (dados: any): Promise<Venda> => {
+    const client = supabaseService.getClient();
     const num = Math.floor(100 + Math.random() * 900);
-    const codigo = `VND-${num}`;
     const agora = new Date().toISOString();
     const novaVenda: Venda = {
       ...dados,
-      VendaId: Date.now(),
-      Codigo: codigo,
-      DataHora: agora,
-      UsuarioResponsavel: usuarioAtual?.Nome || 'Sistema',
-      Ativo: true,
-      UsuarioInclusao: usuarioAtual?.Nome || 'Sistema',
-      DataInclusao: agora,
-      UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-      DataOperacao: agora,
-      NaturezaOperacao: 'INSERT',
+      vendaid: Date.now(),
+      codigo: `VND-${num}`,
+      datahora: agora,
+      usuarioresponsavel: usuarioAtual?.usuarioid,
+      ativo: true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT'
     };
 
-    dados.Itens.forEach((item) => {
-      if (item.ProdutoId) {
-        atualizarEstoqueProduto(item.ProdutoId, -item.Quantidade);
+    if (client) {
+      const { data } = await client.from('venda').insert(novaVenda).select().single();
+      if (data) {
+        dados.itens.forEach((item: any) => { if (item.produtoid) atualizarEstoqueProduto(item.produtoid, -item.quantidade); });
+        setVendas(prev => [data as Venda, ...prev]);
+        return data as Venda;
       }
-    });
+    }
 
-    setVendas((prev) => [novaVenda, ...prev]);
+    dados.itens.forEach((item: any) => { if (item.produtoid) atualizarEstoqueProduto(item.produtoid, -item.quantidade); });
+    setVendas(prev => [novaVenda, ...prev]);
     return novaVenda;
   };
 
-  const atualizarEstoqueProduto = (produtoId: number | string, delta: number) => {
+  const atualizarEstoqueProduto = async (produtoId: number | string, delta: number): Promise<void> => {
+    const client = supabaseService.getClient();
+    const produto = produtos.find(p => String(p.produtoid) === String(produtoId));
+    if (!produto) return;
+
+    const novoEstoque = Math.max(0, produto.estoque + delta);
     const agora = new Date().toISOString();
-    setProdutos((prev) =>
-      prev.map((p) =>
-        String(p.ProdutoId) === String(produtoId)
-          ? {
-              ...p,
-              Estoque: Math.max(0, p.Estoque + delta),
-              DataOperacao: agora,
-              UsuarioOperacao: usuarioAtual?.Nome || 'Sistema',
-              NaturezaOperacao: 'UPDATE',
-            }
-          : p
-      )
-    );
+    const dadosAtualizados = { estoque: novoEstoque, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+
+    if (client) await client.from('produto').update(dadosAtualizados).eq('produtoid', produtoId);
+    setProdutos(prev => prev.map(p => String(p.produtoid) === String(produtoId) ? { ...p, ...dadosAtualizados } : p) as Produto[]);
   };
 
   // ============================================
   // CONFIGURAÇÕES & RESET
   // ============================================
-
-  const salvarConfiguracoes = (novas: Partial<ConfiguracaoSistema>) => {
-    setConfiguracoes((prev) => ({ ...prev, ...novas }));
+  const salvarConfiguracoes = async (novas: Partial<ConfiguracaoSistema>): Promise<void> => {
+    const client = supabaseService.getClient();
+    setConfiguracoes(prev => {
+      const atualizado = { ...prev, ...novas };
+      if (client) {
+        client.from('configuracao').upsert(atualizado);
+      }
+      return atualizado;
+    });
   };
 
   const restaurarDadosPadrao = () => {
-    localStorage.removeItem('anew_quartos_pascal_v1');
-    localStorage.removeItem('anew_reservas_pascal_v1');
-    localStorage.removeItem('anew_hospedes_pascal_v1');
-    localStorage.removeItem('anew_produtos_pascal_v1');
-    localStorage.removeItem('anew_vendas_pascal_v1');
-    localStorage.removeItem('anew_configuracoes_pascal_v1');
-
-    setQuartos(QUARTOS_INICIAIS);
-    setReservas(RESERVAS_INICIAIS);
-    setHospedes(HOSPEDES_INICIAIS);
-    setProdutos(PRODUTOS_INICIAIS);
-    setVendas(VENDAS_INICIAIS);
-    setConfiguracoes(CONFIGURACAO_INICIAL);
+    setQuartos([]);
+    setReservas([]);
+    setHospedes([]);
+    setProdutos([]);
+    setVendas([]);
+    setPacotes([]);
+    setConfiguracoes(configuracaoPadrao);
+    setUsuarios([]);
+    setUsuarioAtual(usuarioPadrao);
+    setAutenticado(false);
+    setPaginaAtual('login');
   };
 
   // ============================================
   // PROVIDER
   // ============================================
-
   return (
-    <ContextoHotel.Provider
-      value={{
-        quartos,
-        reservas,
-        hospedes,
-        produtos,
-        vendas,
-        pacotes,
-        configuracoes,
-        usuarioAtual,
-        usuarios,
-        paginaAtual,
-        dataSistema,
-        online,
-        autenticado,
-        login,
-        logout,
-        navegarPara,
-        trocarUsuario,
-        atualizarStatusQuarto,
-        obterQuartoPorId,
-        obterQuartoPorNumero,
-        verificarDisponibilidade,
-        criarReserva,
-        atualizarReserva,
-        cancelarReserva,
-        realizarCheckin,
-        realizarCheckout,
-        cadastrarHospede,
-        editarHospede,
-        excluirHospede,
-        registrarVenda,
-        atualizarEstoqueProduto,
-        salvarConfiguracoes,
-        restaurarDadosPadrao,
-      }}
-    >
+    <ContextoHotel.Provider value={{
+      quartos, reservas, hospedes, produtos, vendas, pacotes, configuracoes,
+      usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado, isLoading,
+      login, logout, navegarPara, trocarUsuario,
+      atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,
+      verificarDisponibilidade, criarReserva, atualizarReserva, cancelarReserva,
+      realizarCheckin, realizarCheckout,
+      cadastrarHospede, editarHospede, excluirHospede,
+      registrarVenda, atualizarEstoqueProduto,
+      salvarConfiguracoes, restaurarDadosPadrao,
+    }}>
       {children}
     </ContextoHotel.Provider>
   );
 };
 
-// ============================================
-// HOOK
-// ============================================
-
 export const useHotel = () => {
   const contexto = useContext(ContextoHotel);
-  if (!contexto) {
-    throw new Error('useHotel deve ser utilizado dentro de um ProvedorHotel');
-  }
+  if (!contexto) throw new Error('useHotel deve ser utilizado dentro de um ProvedorHotel');
   return contexto;
 };
-
-// ============================================
-// EXPORT
-// ============================================
 
 export const ContextoHotelProvider = ProvedorHotel;
