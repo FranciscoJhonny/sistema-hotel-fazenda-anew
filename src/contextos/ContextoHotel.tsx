@@ -74,7 +74,8 @@ interface ContextoHotelType {
   dataSistema: string;
   online: boolean;
   autenticado: boolean;
-  isLoading: boolean;
+  carregando: boolean;
+  erro: string | null;
 
   login: (email: string, senha: string) => Promise<{ sucesso: boolean; erro?: string }>;
   logout: () => Promise<void>;
@@ -110,6 +111,38 @@ interface ContextoHotelType {
 
 const ContextoHotel = createContext<ContextoHotelType | undefined>(undefined);
 
+const normalizarQuartoDoBanco = (quarto: any): Quarto => {
+  if (!quarto) return quarto;
+  const dados = { ...quarto } as Record<string, any>;
+
+  return {
+    ...quarto,
+    quartoid: dados.quartoid ?? dados.QuartoId,
+    numero: dados.numero ?? dados.Numero,
+    codigoidentificador: dados.codigoidentificador ?? dados.CodigoIdentificador,
+    bloco: dados.bloco ?? dados.Bloco,
+    categoria: dados.categoria ?? dados.Categoria,
+    capacidadeadultos: dados.capacidadeadultos ?? dados.CapacidadeAdultos,
+    capacidadecriancas: dados.capacidadecriancas ?? dados.CapacidadeCriancas,
+    valordiariapadrao: dados.valordiariapadrao ?? dados.ValorDiariaPadrao,
+    status: dados.status ?? dados.Status,
+    descricao: dados.descricao ?? dados.Descricao,
+    comodidades: dados.comodidades ?? dados.Comodidades,
+    ativo: dados.ativo ?? dados.Ativo,
+    reservaatualid: dados.reservaatualid ?? dados.ReservaAtualId,
+    hospedeatualnome: dados.hospedeatualnome ?? dados.HospedeAtualNome,
+    dataentradaatual: dados.dataentradaatual ?? dados.DataEntradaAtual,
+    datasaidaatual: dados.datasaidaatual ?? dados.DataSaidaAtual,
+    adultosatual: dados.adultosatual ?? dados.AdultosAtual,
+    criancasatual: dados.criancasatual ?? dados.CriancasAtual,
+    usuarioinclusao: dados.usuarioinclusao ?? dados.UsuarioInclusao,
+    datainclusao: dados.datainclusao ?? dados.DataInclusao,
+    usuariooperacao: dados.usuariooperacao ?? dados.UsuarioOperacao,
+    dataoperacao: dados.dataoperacao ?? dados.DataOperacao,
+    naturezaoperacao: dados.naturezaoperacao ?? dados.NaturezaOperacao,
+  };
+};
+
 // ============================================
 // PROVIDER
 // ============================================
@@ -133,7 +166,9 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [dataSistema] = useState<string>(new Date().toISOString().slice(0, 10));
   const [online, setOnline] = useState<boolean>(navigator.onLine);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  
+  const [carregando, setCarregando] = useState<boolean>(true);
+  const [erro, setErro] = useState<string | null>(null);
 
   // ============================================
   // CARREGAR DADOS DO SUPABASE AO INICIAR
@@ -142,13 +177,18 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const carregarDadosDoBanco = async () => {
       const client = supabaseService.getClient();
       if (!client) {
-        setIsLoading(false);
+        console.warn('[ContextoHotel] Cliente Supabase não inicializado.');
+        setCarregando(false);
+        setErro('Cliente Supabase não inicializado.');
         return;
       }
 
       try {
-        setIsLoading(true);
+        setCarregando(true);
+        setErro(null);
+        console.log('[ContextoHotel] 🔄 Iniciando carregamento dos dados do Supabase...');
 
+        // CORREÇÃO: Todos os nomes de tabelas agora estão em MINÚSCULO, conforme o padrão do PostgreSQL/Supabase
         const [quartosResult, reservasResult, hospedesResult, produtosResult, vendasResult, pacotesResult, usuariosResult, configuracaoResult] = await Promise.all([
           client.from('quarto').select('*'),
           client.from('reserva').select('*'),
@@ -160,14 +200,36 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           client.from('configuracao').select('*').limit(1).maybeSingle(),
         ]);
 
-        if (quartosResult.data) setQuartos(quartosResult.data as Quarto[]);
-        if (reservasResult.data) setReservas(reservasResult.data as Reserva[]);
-        if (hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
-        if (produtosResult.data) setProdutos(produtosResult.data as Produto[]);
-        if (vendasResult.data) setVendas(vendasResult.data as Venda[]);
-        if (pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
-        if (usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
-        if (configuracaoResult.data) setConfiguracoes(configuracaoResult.data as ConfiguracaoSistema);
+        if (quartosResult.error) {
+          console.error('[ContextoHotel] ❌ ERRO ao buscar Quartos:', quartosResult.error);
+          setErro(`Erro ao buscar quartos: ${quartosResult.error.message}`);
+        } else if (quartosResult.data) {
+          console.log(`[ContextoHotel] ✅ ${quartosResult.data.length} quartos encontrados no banco.`);
+          setQuartos((quartosResult.data as any[]).map(normalizarQuartoDoBanco));
+        } else {
+          console.warn('[ContextoHotel] ⚠️ Nenhum dado de quartos retornado.');
+        }
+
+        if (reservasResult.error) console.error('[ContextoHotel] ❌ ERRO Reservas:', reservasResult.error);
+        else if (reservasResult.data) setReservas(reservasResult.data as Reserva[]);
+
+        if (hospedesResult.error) console.error('[ContextoHotel] ❌ ERRO Hóspedes:', hospedesResult.error);
+        else if (hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
+
+        if (produtosResult.error) console.error('[ContextoHotel] ❌ ERRO Produtos:', produtosResult.error);
+        else if (produtosResult.data) setProdutos(produtosResult.data as Produto[]);
+
+        if (vendasResult.error) console.error('[ContextoHotel] ❌ ERRO Vendas:', vendasResult.error);
+        else if (vendasResult.data) setVendas(vendasResult.data as Venda[]);
+
+        if (pacotesResult.error) console.error('[ContextoHotel] ❌ ERRO Pacotes:', pacotesResult.error);
+        else if (pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
+
+        if (usuariosResult.error) console.error('[ContextoHotel] ❌ ERRO Usuários:', usuariosResult.error);
+        else if (usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
+
+        if (configuracaoResult.error) console.error('[ContextoHotel] ❌ ERRO Configuração:', configuracaoResult.error);
+        else if (configuracaoResult.data) setConfiguracoes(configuracaoResult.data as ConfiguracaoSistema);
 
         const usuarioSalvo = authService.getUsuarioLogado();
         if (usuarioSalvo) {
@@ -175,10 +237,12 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           setAutenticado(true);
           setPaginaAtual('dashboard');
         }
-      } catch (error) {
-        console.error('[ContextoHotel] Erro ao carregar dados do Supabase:', error);
+      } catch (error: any) {
+        console.error('[ContextoHotel] ❌ Exceção fatal ao carregar dados do Supabase:', error);
+        setErro(error?.message || 'Erro inesperado ao carregar dados.');
       } finally {
-        setIsLoading(false);
+        setCarregando(false);
+        console.log('[ContextoHotel] 🏁 Carregamento finalizado.');
       }
     };
 
@@ -259,13 +323,16 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     } : q) as Quarto[]);
 
     if (client) {
-      await client.from('quarto').update({
+      // CORREÇÃO: 'quarto' e 'quartoid' em minúsculo
+      const { error } = await client.from('quarto').update({
         status: novoStatus,
         descricao: motivoBloqueio,
         dataoperacao: agora,
         usuariooperacao: usuarioAtual?.usuarioid,
         naturezaoperacao: 'UPDATE'
       }).eq('quartoid', quartoId);
+      
+      if (error) console.error('[ContextoHotel] Erro ao atualizar status do quarto:', error);
     }
   };
 
@@ -308,6 +375,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       naturezaoperacao: 'INSERT',
     };
 
+    // CORREÇÃO: 'reserva' em minúsculo
     const { data, error } = await client.from('reserva').insert(novaReserva).select().single();
     if (error) return { sucesso: false, mensagem: 'Erro ao salvar: ' + error.message };
 
@@ -342,6 +410,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     if (client) {
+      // CORREÇÃO: 'reserva' e 'reservaid' em minúsculo
       const { error } = await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
       if (error) return { sucesso: false, mensagem: 'Erro ao atualizar: ' + error.message };
     }
@@ -439,6 +508,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     if (client) {
+      // CORREÇÃO: 'hospede' em minúsculo
       const { data } = await client.from('hospede').insert(novo).select().single();
       if (data) {
         setHospedes(prev => [data as Hospede, ...prev]);
@@ -493,6 +563,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     if (client) {
+      // CORREÇÃO: 'venda' em minúsculo
       const { data } = await client.from('venda').insert(novaVenda).select().single();
       if (data) {
         dados.itens.forEach((item: any) => { if (item.produtoid) atualizarEstoqueProduto(item.produtoid, -item.quantidade); });
@@ -553,7 +624,9 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ContextoHotel.Provider value={{
       quartos, reservas, hospedes, produtos, vendas, pacotes, configuracoes,
-      usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado, isLoading,
+      usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado, 
+      carregando,
+      erro,
       login, logout, navegarPara, trocarUsuario,
       atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,
       verificarDisponibilidade, criarReserva, atualizarReserva, cancelarReserva,

@@ -23,6 +23,15 @@ interface ModalDetalhesQuartoProps {
   onNovaReservaParaQuarto?: (quarto: Quarto) => void;
 }
 
+const getVal = (quarto: Quarto, keys: string[]) => {
+  const dados = quarto as Record<string, any>;
+  for (const key of keys) {
+    const value = dados[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return '';
+};
+
 export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
   quarto,
   aberto,
@@ -41,19 +50,29 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
 
   if (!aberto || !quarto) return null;
 
+  const quartoStatus = String(getVal(quarto, ['status', 'Status']) || '').toUpperCase();
+  const quartoNumero = String(getVal(quarto, ['numero', 'Numero']) || '');
+  const quartoCodigo = String(getVal(quarto, ['codigoidentificador', 'CodigoIdentificador']) || '');
+  const quartoCategoria = String(getVal(quarto, ['categoria', 'Categoria']) || '');
+  const quartoBloco = String(getVal(quarto, ['bloco', 'Bloco']) || '');
+  const quartoValorDiaria = Number(getVal(quarto, ['valordiariapadrao', 'ValorDiariaPadrao']) || 0);
+  const quartoCapAdultos = Number(getVal(quarto, ['capacidadeadultos', 'CapacidadeAdultos']) || 0);
+  const quartoCapCriancas = Number(getVal(quarto, ['capacidadecriancas', 'CapacidadeCriancas']) || 0);
+  const quartoComodidades = getVal(quarto, ['comodidades', 'Comodidades']) || [];
+
   // Busca a reserva atual ou futura associada
   const reservaAtual = reservas.find(
     (r) =>
-      r.QuartoId === quarto.QuartoId &&
-      (r.Status === 'HOSPEDADO' ||
-        r.Status === 'AGUARDANDO_CHECKIN' ||
-        r.Status === 'CONFIRMADA')
+      String(r.quartoid) === String(getVal(quarto, ['quartoid', 'QuartoId'])) &&
+      (r.status === 'HOSPEDADO' ||
+        r.status === 'AGUARDANDO_CHECKIN' ||
+        r.status === 'CONFIRMADA')
   );
 
-  const handleCheckin = () => {
+  const handleCheckin = async () => {
     if (reservaAtual) {
-      const res = realizarCheckin(reservaAtual.ReservaId);
-      setFeedback(res.mensagem);
+      const res = realizarCheckin(reservaAtual.reservaid);
+      setFeedback((await res).mensagem);
       setTimeout(() => {
         setFeedback(null);
         onFechar();
@@ -61,10 +80,10 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
     }
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (reservaAtual) {
-      const res = realizarCheckout(reservaAtual.ReservaId);
-      setFeedback(res.mensagem);
+      const res = realizarCheckout(reservaAtual.reservaid);
+      setFeedback((await res).mensagem);
       setTimeout(() => {
         setFeedback(null);
         onFechar();
@@ -73,12 +92,12 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
   };
 
   const handleAlternarBloqueio = () => {
-    if (quarto.Status === 'MANUTENCAO') {
-      atualizarStatusQuarto(quarto.QuartoId, 'DISPONIVEL');
-      setFeedback(`Quarto ${quarto.Numero} liberado para reservas.`);
+    if (quartoStatus === 'MANUTENCAO') {
+      atualizarStatusQuarto(getVal(quarto, ['quartoid', 'QuartoId']), 'DISPONIVEL');
+      setFeedback(`Quarto ${quartoNumero} liberado para reservas.`);
     } else {
-      atualizarStatusQuarto(quarto.QuartoId, 'MANUTENCAO');
-      setFeedback(`Quarto ${quarto.Numero} bloqueado em manutenção.`);
+      atualizarStatusQuarto(getVal(quarto, ['quartoid', 'QuartoId']), 'MANUTENCAO');
+      setFeedback(`Quarto ${quartoNumero} bloqueado em manutenção.`);
     }
     setTimeout(() => {
       setFeedback(null);
@@ -93,14 +112,14 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
         <div className="px-6 py-4 bg-[#053d1e] text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center font-['Manrope'] text-xl font-bold">
-              {quarto.Numero}
+              {quartoNumero}
             </div>
             <div>
               <h3 className="font-['Manrope'] text-lg font-bold">
-                Quarto {quarto.Numero} • {quarto.CodigoIdentificador} ({quarto.Categoria})
+                Quarto {quartoNumero} • {quartoCodigo} ({quartoCategoria})
               </h3>
               <p className="text-xs text-white/80">
-                Bloco {quarto.Bloco} • Diária Padrão: {formatarMoeda(quarto.ValorDiariaPadrao)}
+                Bloco {quartoBloco} • Diária Padrão: {formatarMoeda(quartoValorDiaria)}
               </p>
             </div>
           </div>
@@ -126,12 +145,12 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
           <div className="flex items-center justify-between p-4 rounded-xl bg-[#f8f9fa] border border-[#e1e3e4]">
             <div>
               <p className="text-xs text-[#717971] uppercase font-semibold">Status Operacional</p>
-              <p className="text-base font-bold text-[#191c1d] mt-0.5">{quarto.Status}</p>
+              <p className="text-base font-bold text-[#191c1d] mt-0.5">{quartoStatus}</p>
             </div>
             <div className="text-right">
               <p className="text-xs text-[#717971] uppercase font-semibold">Capacidade</p>
               <p className="text-sm font-semibold text-[#191c1d]">
-                {quarto.CapacidadeAdultos} Adultos • {quarto.CapacidadeCriancas} Crianças
+                {quartoCapAdultos} Adultos • {quartoCapCriancas} Crianças
               </p>
             </div>
           </div>
@@ -143,11 +162,11 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 text-[#053d1e]" />
                   <span className="font-['Manrope'] font-bold text-sm text-[#191c1d]">
-                    Hóspede: {reservaAtual.HospedeNome}
+                    Hóspede: {reservaAtual.hospedenome}
                   </span>
                 </div>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#e6f4ea] text-[#137333]">
-                  {reservaAtual.Codigo}
+                  {reservaAtual.codigo}
                 </span>
               </div>
 
@@ -155,49 +174,49 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
                 <div>
                   <p className="text-[#717971]">Telefone</p>
                   <p className="font-semibold text-[#191c1d] mt-0.5">
-                    {reservaAtual.HospedeTelefone}
+                    {reservaAtual.hospedetelefone || 'Não informado'}
                   </p>
                 </div>
                 <div>
                   <p className="text-[#717971]">Entrada</p>
                   <p className="font-semibold text-[#191c1d] mt-0.5">
-                    {formatarData(reservaAtual.DataEntrada)}
+                    {formatarData(reservaAtual.dataentrada)}
                   </p>
                 </div>
                 <div>
                   <p className="text-[#717971]">Saída</p>
                   <p className="font-semibold text-[#191c1d] mt-0.5">
-                    {formatarData(reservaAtual.DataSaida)}
+                    {formatarData(reservaAtual.datasaida)}
                   </p>
                 </div>
                 <div>
                   <p className="text-[#717971]">Ocupantes</p>
                   <p className="font-semibold text-[#191c1d] mt-0.5">
-                    {reservaAtual.Adultos} Adultos, {reservaAtual.Criancas} Cri
+                    {reservaAtual.adultos} Adultos, {reservaAtual.criancas} Cri
                   </p>
                 </div>
                 <div>
                   <p className="text-[#717971]">Valor Total</p>
                   <p className="font-bold text-[#053d1e] mt-0.5">
-                    {formatarMoeda(reservaAtual.ValorTotal)}
+                    {formatarMoeda(reservaAtual.valortotal)}
                   </p>
                 </div>
                 <div>
                   <p className="text-[#717971]">Saldo Pendente</p>
                   <p
                     className={`font-bold mt-0.5 ${
-                      reservaAtual.Saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                      reservaAtual.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
                     }`}
                   >
-                    {formatarMoeda(reservaAtual.Saldo)}
+                    {formatarMoeda(reservaAtual.saldo)}
                   </p>
                 </div>
               </div>
 
-              {reservaAtual.Observacoes && (
+              {reservaAtual.observacoes && (
                 <div className="p-2.5 bg-[#f8f9fa] rounded-lg text-xs text-[#414941]">
                   <span className="font-semibold">Obs: </span>
-                  {reservaAtual.Observacoes}
+                  {reservaAtual.observacoes}
                 </div>
               )}
             </div>
@@ -226,13 +245,13 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
           )}
 
           {/* Comodidades */}
-          {quarto.Comodidades && quarto.Comodidades.length > 0 && (
+          {Array.isArray(quartoComodidades) && quartoComodidades.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider mb-2">
                 Comodidades do Quarto
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {quarto.Comodidades.map((item, idx) => (
+                {quartoComodidades.map((item, idx) => (
                   <span
                     key={idx}
                     className="text-xs bg-[#f3f4f5] text-[#414941] px-2.5 py-1 rounded-md border border-[#e1e3e4]"
@@ -252,11 +271,11 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-[#c1c9bf] hover:bg-[#e1e3e4] text-[#414941] transition-colors cursor-pointer"
           >
             <Wrench className="w-4 h-4" />
-            {quarto.Status === 'MANUTENCAO' ? 'Liberar Quarto' : 'Bloquear Manutenção'}
+            {quartoStatus === 'MANUTENCAO' ? 'Liberar Quarto' : 'Bloquear Manutenção'}
           </button>
 
           <div className="flex items-center gap-2">
-            {reservaAtual?.Status === 'AGUARDANDO_CHECKIN' && (
+            {reservaAtual?.status === 'AGUARDANDO_CHECKIN' && (
               <button
                 onClick={handleCheckin}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[#053d1e] hover:bg-[#225533] text-white transition-colors shadow-xs cursor-pointer"
@@ -266,7 +285,7 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
               </button>
             )}
 
-            {reservaAtual?.Status === 'HOSPEDADO' && (
+            {reservaAtual?.status === 'HOSPEDADO' && (
               <button
                 onClick={handleCheckout}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[#ba1a1a] hover:bg-[#93000a] text-white transition-colors shadow-xs cursor-pointer"

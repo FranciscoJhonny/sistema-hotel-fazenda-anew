@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Plus } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { CardQuartoGerenciamento } from '../componentes/quartos/CardQuartoGerenciamento';
 import { ModalDetalhesQuarto } from '../componentes/quartos/ModalDetalhesQuarto';
@@ -7,7 +7,23 @@ import { ModalNovaReserva } from '../componentes/reservas/ModalNovaReserva';
 import { Quarto } from '../tipos';
 
 export const PaginaQuartos: React.FC = () => {
-  const { quartos } = useHotel();
+  // Agora o contexto também retorna 'carregando' e 'erro' para tratarmos corretamente
+  const { quartos, carregando, erro } = useHotel();
+
+  const getValorQuarto = (quarto: Quarto, chaves: string[]) => {
+    const dados = quarto as Record<string, any>;
+    for (const chave of chaves) {
+      const valor = dados[chave];
+      if (valor !== undefined && valor !== null && valor !== '') return String(valor);
+    }
+    return '';
+  };
+
+  const obterStatusQuarto = (quarto: Quarto) => getValorQuarto(quarto, ['status', 'Status']).toUpperCase();
+  const obterNumeroQuarto = (quarto: Quarto) => getValorQuarto(quarto, ['numero', 'Numero']);
+  const obterHospedeAtual = (quarto: Quarto) => getValorQuarto(quarto, ['hospedeatualnome', 'HospedeAtualNome']);
+  const obterCategoriaQuarto = (quarto: Quarto) => getValorQuarto(quarto, ['categoria', 'Categoria']);
+  const obterIdQuarto = (quarto: Quarto) => getValorQuarto(quarto, ['quartoid', 'QuartoId']);
 
   // Estados locais
   const [busca, setBusca] = useState<string>('');
@@ -19,27 +35,29 @@ export const PaginaQuartos: React.FC = () => {
 
   // Contagens para os botões de filtro no topo
   const total = quartos.length;
-  const disponiveis = quartos.filter((q: Quarto) => q.status === 'DISPONIVEL').length;
-  const reservados = quartos.filter((q: Quarto) => q.status === 'RESERVADO').length;
-  const ocupados = quartos.filter((q: Quarto) => q.status === 'OCUPADO').length;
-  const agCheckin = quartos.filter((q: Quarto) => q.status === 'AGUARDANDO_CHECKIN').length;
-  const manutencao = quartos.filter((q: Quarto) => q.status === 'MANUTENCAO').length;
+  const disponiveis = quartos.filter((q: Quarto) => obterStatusQuarto(q) === 'DISPONIVEL').length;
+  const reservados = quartos.filter((q: Quarto) => obterStatusQuarto(q) === 'RESERVADO').length;
+  const ocupados = quartos.filter((q: Quarto) => obterStatusQuarto(q) === 'OCUPADO').length;
+  const agCheckin = quartos.filter((q: Quarto) => obterStatusQuarto(q) === 'AGUARDANDO_CHECKIN').length;
+  const manutencao = quartos.filter((q: Quarto) => obterStatusQuarto(q) === 'MANUTENCAO').length;
 
   // Filtragem dos quartos
   const quartosFiltrados = quartos.filter((q: Quarto) => {
+    const status = obterStatusQuarto(q);
+
     // Filtro por status
-    if (filtroStatus === 'DISPONIVEL' && q.status !== 'DISPONIVEL') return false;
-    if (filtroStatus === 'RESERVADO' && q.status !== 'RESERVADO') return false;
-    if (filtroStatus === 'OCUPADO' && q.status !== 'OCUPADO') return false;
-    if (filtroStatus === 'AG_CHECKIN' && q.status !== 'AGUARDANDO_CHECKIN') return false;
-    if (filtroStatus === 'MANUTENCAO' && q.status !== 'MANUTENCAO') return false;
+    if (filtroStatus === 'DISPONIVEL' && status !== 'DISPONIVEL') return false;
+    if (filtroStatus === 'RESERVADO' && status !== 'RESERVADO') return false;
+    if (filtroStatus === 'OCUPADO' && status !== 'OCUPADO') return false;
+    if (filtroStatus === 'AG_CHECKIN' && status !== 'AGUARDANDO_CHECKIN') return false;
+    if (filtroStatus === 'MANUTENCAO' && status !== 'MANUTENCAO') return false;
 
     // Filtro por termo de busca
     if (busca.trim()) {
       const termo = busca.toLowerCase();
-      const bateNumero = q.numero?.toLowerCase().includes(termo);
-      const bateHospede = q.hospedeatualnome?.toLowerCase().includes(termo);
-      const bateCategoria = q.categoria?.toLowerCase().includes(termo);
+      const bateNumero = obterNumeroQuarto(q).toLowerCase().includes(termo);
+      const bateHospede = obterHospedeAtual(q).toLowerCase().includes(termo);
+      const bateCategoria = obterCategoriaQuarto(q).toLowerCase().includes(termo);
       if (!bateNumero && !bateHospede && !bateCategoria) return false;
     }
 
@@ -56,11 +74,29 @@ export const PaginaQuartos: React.FC = () => {
     setModalNovaReservaAberto(true);
   };
 
+  // Tela de carregamento
+  if (carregando) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">Carregando quartos do sistema...</p>
+      </div>
+    );
+  }
+
+  // Tela de erro
+  if (erro) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-red-600">
+        <p className="font-semibold">Erro ao carregar quartos:</p>
+        <p className="text-sm">{erro}</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Barra de Filtros e Busca Exatamente como na Imagem */}
+    <div className="space-y-6 max-w-7xl mx-auto p-4">
+      {/* Barra de Filtros e Busca */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-        {/* Campo de Busca à esquerda: "Buscar hóspede ou quarto..." */}
         <div className="relative w-full md:w-80">
           <Search className="w-4 h-4 text-[#9ca3af] absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
@@ -72,127 +108,56 @@ export const PaginaQuartos: React.FC = () => {
           />
         </div>
 
-        {/* Grupo de Filtros com Contadores (Pills verticais conforme imagem) */}
         <div className="flex flex-wrap items-center gap-2 self-start">
-          {/* 1. Todo */}
-          <button
-            type="button"
-            onClick={() => setFiltroStatus('TODO')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex flex-col items-center ${
-              filtroStatus === 'TODO'
-                ? 'bg-[#193b27] text-white'
-                : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'
-            }`}
-          >
+          <button type="button" onClick={() => setFiltroStatus('TODO')} className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex flex-col items-center ${filtroStatus === 'TODO' ? 'bg-[#193b27] text-white' : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'}`}>
             <span>Todo</span>
           </button>
-
-          {/* 2. Disponível */}
-          <button
-            type="button"
-            onClick={() => setFiltroStatus('DISPONIVEL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${
-              filtroStatus === 'DISPONIVEL'
-                ? 'bg-[#193b27] text-white font-semibold'
-                : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'
-            }`}
-          >
-            <span>Disponíve</span>
-            <span className="text-[10px] opacity-80">l ({disponiveis})</span>
+          <button type="button" onClick={() => setFiltroStatus('DISPONIVEL')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${filtroStatus === 'DISPONIVEL' ? 'bg-[#193b27] text-white font-semibold' : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'}`}>
+            <span>Disponíve</span><span className="text-[10px] opacity-80">l ({disponiveis})</span>
           </button>
-
-          {/* 3. Reservado */}
-          <button
-            type="button"
-            onClick={() => setFiltroStatus('RESERVADO')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${
-              filtroStatus === 'RESERVADO'
-                ? 'bg-[#193b27] text-white font-semibold'
-                : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'
-            }`}
-          >
-            <span>Reservad</span>
-            <span className="text-[10px] opacity-80">o ({reservados})</span>
+          <button type="button" onClick={() => setFiltroStatus('RESERVADO')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${filtroStatus === 'RESERVADO' ? 'bg-[#193b27] text-white font-semibold' : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'}`}>
+            <span>Reservad</span><span className="text-[10px] opacity-80">o ({reservados})</span>
           </button>
-
-          {/* 4. Ocupado */}
-          <button
-            type="button"
-            onClick={() => setFiltroStatus('OCUPADO')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${
-              filtroStatus === 'OCUPADO'
-                ? 'bg-[#193b27] text-white font-semibold'
-                : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'
-            }`}
-          >
-            <span>Ocupad</span>
-            <span className="text-[10px] opacity-80">o ({ocupados})</span>
+          <button type="button" onClick={() => setFiltroStatus('OCUPADO')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${filtroStatus === 'OCUPADO' ? 'bg-[#193b27] text-white font-semibold' : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'}`}>
+            <span>Ocupad</span><span className="text-[10px] opacity-80">o ({ocupados})</span>
           </button>
-
-          {/* 5. Ag. Check-in */}
-          <button
-            type="button"
-            onClick={() => setFiltroStatus('AG_CHECKIN')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${
-              filtroStatus === 'AG_CHECKIN'
-                ? 'bg-[#193b27] text-white font-semibold'
-                : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'
-            }`}
-          >
-            <span>Ag. Check-</span>
-            <span className="text-[10px] opacity-80">in ({agCheckin})</span>
+          <button type="button" onClick={() => setFiltroStatus('AG_CHECKIN')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${filtroStatus === 'AG_CHECKIN' ? 'bg-[#193b27] text-white font-semibold' : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'}`}>
+            <span>Ag. Check-</span><span className="text-[10px] opacity-80">in ({agCheckin})</span>
           </button>
-
-          {/* 6. Manutenção */}
-          <button
-            type="button"
-            onClick={() => setFiltroStatus('MANUTENCAO')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${
-              filtroStatus === 'MANUTENCAO'
-                ? 'bg-[#193b27] text-white font-semibold'
-                : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'
-            }`}
-          >
-            <span>Manutençã</span>
-            <span className="text-[10px] opacity-80">o ({manutencao})</span>
+          <button type="button" onClick={() => setFiltroStatus('MANUTENCAO')} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex flex-col items-center leading-tight ${filtroStatus === 'MANUTENCAO' ? 'bg-[#193b27] text-white font-semibold' : 'bg-white border border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb]'}`}>
+            <span>Manutençã</span><span className="text-[10px] opacity-80">o ({manutencao})</span>
           </button>
         </div>
       </div>
 
-      {/* Grade com 4 Colunas Exatamente igual à imagem:
-          Linha 1: B1, B2, B3, B4
-          Linha 2: C2, C3, C4, D1
-          Linha 3: D2, D3, D4, D5
-          Linha 4: D6
-      */}
+      {/* Grade de Quartos */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {quartosFiltrados.map((quarto: Quarto) => (
+        {quartosFiltrados.map((quarto: Quarto, index: number) => (
           <CardQuartoGerenciamento
-            key={quarto.quartoid}
+            key={obterIdQuarto(quarto) || `quarto-${index}`}
             quarto={quarto}
             aoClicar={handleAbrirDetalhes}
             aoNovaReserva={handleNovaReserva}
           />
         ))}
+        {quartosFiltrados.length === 0 && (
+          <div className="col-span-full text-center py-10 text-gray-500">
+            Nenhum quarto encontrado com os filtros atuais.
+          </div>
+        )}
       </div>
 
-      {/* Modais de Detalhes e Nova Reserva */}
+      {/* Modais */}
       <ModalDetalhesQuarto
         quarto={quartoDetalhes}
         aberto={modalDetalhesAberto}
-        onFechar={() => {
-          setModalDetalhesAberto(false);
-          setQuartoDetalhes(null);
-        }}
+        onFechar={() => { setModalDetalhesAberto(false); setQuartoDetalhes(null); }}
         onNovaReservaParaQuarto={handleNovaReserva}
       />
 
       <ModalNovaReserva
         aberto={modalNovaReservaAberto}
-        onFechar={() => {
-          setModalNovaReservaAberto(false);
-          setQuartoParaReserva(null);
-        }}
+        onFechar={() => { setModalNovaReservaAberto(false); setQuartoParaReserva(null); }}
         quartoPreSelecionado={quartoParaReserva}
       />
     </div>

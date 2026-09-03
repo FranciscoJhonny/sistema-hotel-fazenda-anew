@@ -48,12 +48,12 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
 
   // Filtragem
   const reservasFiltradas = reservas.filter((res) => {
-    if (filtroStatus !== 'TODAS' && res.Status !== filtroStatus) return false;
+    if (filtroStatus !== 'TODAS' && res.status !== filtroStatus) return false;
     if (busca.trim()) {
       const termo = busca.toLowerCase();
-      const matchNome = res.HospedeNome.toLowerCase().includes(termo);
-      const matchCodigo = res.Codigo.toLowerCase().includes(termo);
-      const matchQuarto = res.QuartoNumero.includes(termo) || res.QuartoCodigo.toLowerCase().includes(termo);
+      const matchNome = (res.hospedenome || '').toLowerCase().includes(termo);
+      const matchCodigo = (res.codigo || '').toLowerCase().includes(termo);
+      const matchQuarto = (res.quartonumero || '').toLowerCase().includes(termo) || (res.quartocodigo || '').toLowerCase().includes(termo);
       return matchNome || matchCodigo || matchQuarto;
     }
     return true;
@@ -61,7 +61,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
 
   const handleConfirmarCancelamento = () => {
     if (reservaParaCancelar) {
-      cancelarReserva(reservaParaCancelar.ReservaId, 'Cancelamento solicitado pelo operador');
+      cancelarReserva(reservaParaCancelar.reservaid, 'Cancelamento solicitado pelo operador');
       setModalCancelarAberto(false);
       setReservaParaCancelar(null);
     }
@@ -162,7 +162,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-2">
             {resultadoSimulador.map(({ quarto, disponivel, motivoIndisponibilidade, reservaConflitante }) => (
               <div
-                key={quarto.QuartoId}
+                key={quarto.quartoid}
                 className={`p-2 rounded-lg border text-xs ${
                   disponivel
                     ? 'bg-[#e6f4ea] border-[#b8f0c2] text-[#00210d]'
@@ -170,11 +170,11 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                 }`}
               >
                 <div className="flex justify-between font-bold">
-                  <span>Q{quarto.Numero} ({quarto.CodigoIdentificador})</span>
+                  <span>Q{quarto.numero} ({quarto.codigoidentificador})</span>
                   <span>{disponivel ? 'LIVRE' : 'BLOQ'}</span>
                 </div>
                 <p className="text-[10px] mt-1 truncate">
-                  {disponivel ? 'Disponível' : reservaConflitante ? `Reserva ${reservaConflitante.Codigo}` : 'Manutenção'}
+                  {disponivel ? 'Disponível' : reservaConflitante ? `Reserva ${reservaConflitante.codigo}` : 'Manutenção'}
                 </p>
               </div>
             ))}
@@ -240,39 +240,39 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                 </tr>
               ) : (
                 reservasFiltradas.map((res) => (
-                  <tr key={res.ReservaId} className="hover:bg-[#f8f9fa] transition-colors">
+                  <tr key={res.reservaid} className="hover:bg-[#f8f9fa] transition-colors">
                     <td className="py-3 px-4 font-bold text-[#053d1e]">
-                      {res.Codigo}
+                      {res.codigo}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-semibold text-[#191c1d]">{res.HospedeNome}</div>
-                      <div className="text-[10px] text-[#717971]">{res.HospedeTelefone}</div>
+                      <div className="font-semibold text-[#191c1d]">{res.hospedenome}</div>
+                      <div className="text-[10px] text-[#717971]">{res.hospedetelefone}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="font-bold text-[#191c1d]">Quarto {res.QuartoNumero}</span>{' '}
+                      <span className="font-bold text-[#191c1d]">Quarto {res.quartonumero}</span>{' '}
                       <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#e6f4ea] text-[#137333]">
-                        {res.QuartoCodigo}
+                        {res.quartocodigo}
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <div>{formatarData(res.DataEntrada)} a {formatarData(res.DataSaida)}</div>
+                      <div>{formatarData(res.dataentrada)} a {formatarData(res.datasaida)}</div>
                       <div className="text-[10px] text-[#717971]">
-                        Check-in: {res.HorarioPrevistoChegada || '09:00'}
+                        Check-in: {res.horarioprevistochegada || '09:00'}
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      {res.Adultos} Ad {res.Criancas > 0 ? `, ${res.Criancas} Cri` : ''}
+                      {res.adultos} Ad {res.criancas > 0 ? `, ${res.criancas} Cri` : ''}
                     </td>
                     <td className="py-3 px-4 font-semibold">
-                      {formatarMoeda(res.ValorTotal)}
+                      {formatarMoeda(res.valortotal)}
                     </td>
                     <td className="py-3 px-4 font-bold">
-                      <span className={res.Saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}>
-                        {formatarMoeda(res.Saldo)}
+                      <span className={res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}>
+                        {formatarMoeda(res.saldo)}
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {getStatusBadge(res.Status)}
+                      {getStatusBadge(res.status)}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -284,25 +284,25 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {res.Status === 'AGUARDANDO_CHECKIN' && (
+                        {res.status === 'AGUARDANDO_CHECKIN' && (
                           <button
-                            onClick={() => realizarCheckin(res.ReservaId)}
+                            onClick={() => realizarCheckin(res.reservaid)}
                             className="px-2.5 py-1 bg-[#053d1e] hover:bg-[#225533] text-white rounded font-semibold text-[11px] shadow-xs cursor-pointer"
                           >
                             Check-in
                           </button>
                         )}
 
-                        {res.Status === 'HOSPEDADO' && (
+                        {res.status === 'HOSPEDADO' && (
                           <button
-                            onClick={() => realizarCheckout(res.ReservaId)}
+                            onClick={() => realizarCheckout(res.reservaid)}
                             className="px-2.5 py-1 bg-[#ba1a1a] hover:bg-[#93000a] text-white rounded font-semibold text-[11px] shadow-xs cursor-pointer"
                           >
                             Check-out
                           </button>
                         )}
 
-                        {res.Status !== 'CANCELADA' && res.Status !== 'FINALIZADA' && (
+                        {res.status !== 'CANCELADA' && res.status !== 'FINALIZADA' && (
                           <button
                             onClick={() => {
                               setReservaParaCancelar(res);
@@ -334,7 +334,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
       <ModalConfirmacao
         aberto={modalCancelarAberto}
         titulo="Confirmar Cancelamento"
-        mensagem={`Deseja realmente cancelar a reserva ${reservaParaCancelar?.Codigo} de ${reservaParaCancelar?.HospedeNome}? O quarto será liberado.`}
+        mensagem={`Deseja realmente cancelar a reserva ${reservaParaCancelar?.codigo} de ${reservaParaCancelar?.hospedenome}? O quarto será liberado.`}
         tipo="perigo"
         textoConfirmar="Sim, Cancelar Reserva"
         textoCancelar="Voltar"
@@ -351,7 +351,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
           <div className="bg-white rounded-2xl border border-[#c1c9bf] shadow-2xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#e1e3e4]">
               <h3 className="font-['Manrope'] text-lg font-bold text-[#191c1d]">
-                Detalhes da Reserva {reservaSelecionadaVer.Codigo}
+                Detalhes da Reserva {reservaSelecionadaVer.codigo}
               </h3>
               <button
                 onClick={() => setReservaSelecionadaVer(null)}
@@ -364,52 +364,52 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <p className="text-[#717971]">Hóspede:</p>
-                <p className="font-bold text-[#191c1d]">{reservaSelecionadaVer.HospedeNome}</p>
+                <p className="font-bold text-[#191c1d]">{reservaSelecionadaVer.hospedenome}</p>
               </div>
               <div>
                 <p className="text-[#717971]">Telefone:</p>
-                <p className="font-semibold text-[#191c1d]">{reservaSelecionadaVer.HospedeTelefone}</p>
+                <p className="font-semibold text-[#191c1d]">{reservaSelecionadaVer.hospedetelefone}</p>
               </div>
               <div>
                 <p className="text-[#717971]">Quarto:</p>
                 <p className="font-bold text-[#053d1e]">
-                  Quarto {reservaSelecionadaVer.QuartoNumero} ({reservaSelecionadaVer.QuartoCodigo})
+                  Quarto {reservaSelecionadaVer.quartonumero} ({reservaSelecionadaVer.quartocodigo})
                 </p>
               </div>
               <div>
                 <p className="text-[#717971]">Categoria:</p>
-                <p className="font-medium text-[#191c1d]">{reservaSelecionadaVer.QuartoCategoria}</p>
+                <p className="font-medium text-[#191c1d]">{reservaSelecionadaVer.quartocategoria}</p>
               </div>
               <div>
                 <p className="text-[#717971]">Entrada:</p>
                 <p className="font-semibold text-[#191c1d]">
-                  {formatarData(reservaSelecionadaVer.DataEntrada)} às {reservaSelecionadaVer.HorarioPrevistoChegada || '09:00'}
+                  {formatarData(reservaSelecionadaVer.dataentrada)} às {reservaSelecionadaVer.horarioprevistochegada || '09:00'}
                 </p>
               </div>
               <div>
                 <p className="text-[#717971]">Saída:</p>
                 <p className="font-semibold text-[#191c1d]">
-                  {formatarData(reservaSelecionadaVer.DataSaida)} às {reservaSelecionadaVer.HorarioPrevistoSaida || '15:00'}
+                  {formatarData(reservaSelecionadaVer.datasaida)} às {reservaSelecionadaVer.horarioprevistosaida || '15:00'}
                 </p>
               </div>
               <div>
                 <p className="text-[#717971]">Valor Total:</p>
                 <p className="font-bold text-[#053d1e] text-sm">
-                  {formatarMoeda(reservaSelecionadaVer.ValorTotal)}
+                  {formatarMoeda(reservaSelecionadaVer.valortotal)}
                 </p>
               </div>
               <div>
                 <p className="text-[#717971]">Saldo Pendente:</p>
                 <p className="font-bold text-[#ba1a1a] text-sm">
-                  {formatarMoeda(reservaSelecionadaVer.Saldo)}
+                  {formatarMoeda(reservaSelecionadaVer.saldo)}
                 </p>
               </div>
             </div>
 
-            {reservaSelecionadaVer.Observacoes && (
+            {reservaSelecionadaVer.observacoes && (
               <div className="p-3 rounded-lg bg-[#f8f9fa] text-xs text-[#414941]">
                 <span className="font-semibold">Observações: </span>
-                {reservaSelecionadaVer.Observacoes}
+                {reservaSelecionadaVer.observacoes}
               </div>
             )}
 
