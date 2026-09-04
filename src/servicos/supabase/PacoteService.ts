@@ -13,6 +13,6 @@ export interface IPacoteService {
 
 export class PacoteService extends BaseService<Pacote> implements IPacoteService {
   constructor() {
-    super('Pacote', 'PacoteId');
+    super('pacote', 'pacoteid');
   }
 }

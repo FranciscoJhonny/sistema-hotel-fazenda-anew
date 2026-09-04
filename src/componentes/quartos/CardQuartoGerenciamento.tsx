@@ -1,19 +1,28 @@
 import React from 'react';
 import { Bed, Wrench, Users, Calendar, Clock, AlertCircle } from 'lucide-react';
-import { Quarto } from '../../tipos'; // Ajuste o caminho conforme sua estrutura de pastas
+import { Quarto, Reserva } from '../../tipos';
+import { calcularStatusQuarto } from '../../utilitarios/calculoSituacaoQuarto';
+
 
 interface CardQuartoGerenciamentoProps {
   quarto: Quarto;
-  aoClicar: (quarto: Quarto) => void;
+  reservas: Reserva[]; // Array de reservas do quarto
+  dataReferencia?: Date; // Permite simular datas diferentes (opcional)
+  aoClicar: (quarto: Quarto, reserva?: Reserva) => void;
   aoNovaReserva: (quarto: Quarto) => void;
 }
 
 export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = ({
   quarto,
+  reservas,
+  dataReferencia,
   aoClicar,
   aoNovaReserva,
 }) => {
-  // Função auxiliar para buscar valores de forma segura (case-insensitive)
+  // Calcula o status dinamicamente
+  const { status, reservaAtiva, proximaReserva } = calcularStatusQuarto(reservas, dataReferencia);
+
+  // Função auxiliar para buscar valores de forma segura
   const getValor = (chaves: string[]) => {
     const dados = quarto as Record<string, any>;
     for (const chave of chaves) {
@@ -24,26 +33,33 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
   };
 
   // Campos do Quarto
-  const numero = getValor(['codigoidentificador', 'CodigoIdentificador']) || 'S/N';
-  const status = (getValor(['status', 'Status']) || 'DISPONIVEL').toUpperCase();
-  const categoria = getValor(['categoria', 'Categoria']);
-  
-  // Campos do Hóspede / Reserva (podem vir aninhados ou achatados no objeto)
-  const hospedeNome = getValor(['hospedeatualnome', 'HospedeAtualNome', 'nome', 'Nome']);
-  const dataEntrada = getValor(['dataentrada', 'DataEntrada', 'checkin', 'CheckIn']);
-  const dataSaida = getValor(['datasaida', 'DataSaida', 'checkout', 'CheckOut']);
-  const horarioPrevisto = getValor(['horarioprevistochegada', 'HorarioPrevistoChegada']);
-  const adultos = getValor(['adultos', 'Adultos']);
-  const criancas = getValor(['criancas', 'Crianca', 'Criancas']);
-  
-  // Campo de Manutenção
+  const numero =  quarto.codigoidentificador || 'S/N';
+  const emManutencao = getValor(['emmanutencao', 'EmManutencao', 'manutencao', 'Manutencao']);
   const descricaoManutencao = getValor(['descricaomanutencao', 'DescricaoManutencao', 'observacao', 'Observacao']);
+
+  // Usa a reserva calculada para extrair dados
+  const reservaExibicao = reservas && reservas.length > 0 ? reservas[0] : null;
+  const hospedeNome = reservaExibicao?.hospedenome || '';
+  const dataEntrada = reservaExibicao?.dataentrada;
+  const dataSaida = reservaExibicao?.datasaida;
+  const adultos = reservaExibicao?.adultos || 0;
+  const criancas = reservaExibicao?.criancas || 0;
+  const horarioPrevisto = reservaExibicao?.horarioprevistochegada;  
+
+  // Se estiver em manutenção, sobrescreve o status
+  const statusFinal = emManutencao ? 'MANUTENCAO' : status;
 
   // Formatadores
   const formatarData = (data: any) => {
     if (!data) return '';
     const date = new Date(data);
     return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  };
+
+  const formatarDataCompleta = (data: any) => {
+    if (!data) return '';
+    const date = new Date(data);
+    return date.toLocaleDateString('pt-BR');
   };
 
   const formatarHorario = (horario: any) => {
@@ -54,10 +70,10 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
   };
 
   // Configurações visuais por status
-  const statusConfig: Record<string, { 
-    label: string; 
-    bgClass: string; 
-    textClass: string; 
+  const statusConfig: Record<string, {
+    label: string;
+    bgClass: string;
+    textClass: string;
     borderClass: string;
   }> = {
     DISPONIVEL: {
@@ -92,14 +108,14 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
     },
   };
 
-  const config = statusConfig[status] || statusConfig.DISPONIVEL;
+  const config = statusConfig[statusFinal] || statusConfig.DISPONIVEL;
 
   const handleClick = () => {
-    aoClicar(quarto);
+    aoClicar(quarto, reservaExibicao || undefined);
   };
 
   const handleNovaReserva = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Evita abrir o modal de detalhes ao clicar no botão
+    e.stopPropagation();
     aoNovaReserva(quarto);
   };
 
@@ -117,7 +133,7 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
       </div>
 
       {/* Conteúdo Dinâmico baseado no Status */}
-      {status === 'DISPONIVEL' && (
+      {statusFinal === 'DISPONIVEL' && (
         <div className="flex flex-col items-center justify-center py-4 space-y-3">
           <div className="bg-gray-50 p-3 rounded-full">
             <Bed className="w-8 h-8 text-gray-400" />
@@ -133,28 +149,29 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
         </div>
       )}
 
-      {status === 'RESERVADO' && (
+      {statusFinal === 'RESERVADO' && proximaReserva && (
         <div className="space-y-3">
           <div className="flex items-start gap-2">
             <Users className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-            <p className="font-semibold text-gray-900 text-sm leading-tight">
-              {hospedeNome || 'Nome do Hóspede'}
-            </p>
-          </div>
-          
-          {(dataEntrada || dataSaida) && (
-            <div className="flex items-center text-sm text-gray-600 bg-blue-50/50 p-2 rounded-md">
-              <Calendar className="w-4 h-4 mr-2 text-blue-500 flex-shrink-0" />
-              <div className="flex flex-col">
-                <span className="text-xs text-gray-500">Entrada: {formatarData(dataEntrada)}</span>
-                <span className="text-xs text-gray-500">Saída: {formatarData(dataSaida)}</span>
-              </div>
+            <div>
+              <p className="font-semibold text-gray-900 text-sm leading-tight">
+                {hospedeNome || 'Cliente Futuro'}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Próxima semana</p>
             </div>
-          )}
+          </div>
+
+          <div className="flex items-center text-sm text-gray-600 bg-blue-50/50 p-2 rounded-md">
+            <Calendar className="w-4 h-4 mr-2 text-blue-500 flex-shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500">Entrada: {formatarDataCompleta(dataEntrada)}</span>
+              <span className="text-xs text-gray-500">Saída: {formatarDataCompleta(dataSaida)}</span>
+            </div>
+          </div>
         </div>
       )}
 
-      {status === 'OCUPADO' && (
+      {statusFinal === 'OCUPADO' && reservaAtiva && (
         <div className="space-y-3">
           <div className="flex items-start gap-2">
             <Users className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
@@ -162,24 +179,34 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
               {hospedeNome || 'Hóspede Atual'}
             </p>
           </div>
-          
-          <div className="flex items-center justify-between text-sm text-gray-600 bg-red-50/50 p-2 rounded-md">
-            <div className="flex items-center">
-              <Users className="w-4 h-4 mr-1.5 text-red-500" />
-              <span className="font-medium">{adultos || 0} Adl</span>
-              {criancas && criancas > 0 && (
-                <span className="ml-2 text-gray-500">+ {criancas} Crn</span>
-              )}
+
+          <div className="space-y-2">
+            <div className="flex items-center text-sm text-gray-600 bg-red-50/50 p-2 rounded-md">
+              <Calendar className="w-4 h-4 mr-2 text-red-500 flex-shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-xs text-gray-500">Entrada: {formatarData(dataEntrada)}</span>
+                <span className="text-xs text-gray-500">Saída: {formatarData(dataSaida)}</span>
+              </div>
             </div>
-            <div className="flex items-center text-green-600 text-xs font-semibold">
-              <AlertCircle className="w-3 h-3 mr-1" />
-              Check-in OK
+
+            <div className="flex items-center justify-between text-sm text-gray-600 bg-red-50/50 p-2 rounded-md">
+              <div className="flex items-center">
+                <Users className="w-4 h-4 mr-1.5 text-red-500" />
+                <span className="font-medium">{adultos || 0} Adl</span>
+                {criancas && criancas > 0 && (
+                  <span className="ml-2 text-gray-500">+ {criancas} Crn</span>
+                )}
+              </div>
+              <div className="flex items-center text-green-600 text-xs font-semibold">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                Check-in OK
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {status === 'AGUARDANDO_CHECKIN' && (
+      {statusFinal === 'AGUARDANDO_CHECKIN' && reservaAtiva && (
         <div className="space-y-3">
           <div className="flex items-start gap-2">
             <Users className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
@@ -187,23 +214,25 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
               {hospedeNome || 'Hóspede Previsto'}
             </p>
           </div>
-          
+
           {horarioPrevisto && (
             <div className="flex items-center text-sm text-yellow-700 bg-yellow-50 p-2 rounded-md border border-yellow-100">
               <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
               <span className="font-medium">Previsto para: {formatarHorario(horarioPrevisto)}</span>
             </div>
           )}
-          
-          {(dataEntrada) && (
-             <div className="text-xs text-gray-500 text-center">
-               Chegada prevista para: {formatarData(dataEntrada)}
-             </div>
-          )}
+
+          <div className="flex items-center text-sm text-gray-600 bg-yellow-50/50 p-2 rounded-md">
+            <Calendar className="w-4 h-4 mr-2 text-yellow-500 flex-shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-xs text-gray-500">Entrada: {formatarDataCompleta(dataEntrada)}</span>
+              <span className="text-xs text-gray-500">Saída: {formatarDataCompleta(dataSaida)}</span>
+            </div>
+          </div>
         </div>
       )}
 
-      {status === 'MANUTENCAO' && (
+      {statusFinal === 'MANUTENCAO' && (
         <div className="flex flex-col items-center justify-center py-4 space-y-3">
           <div className="bg-gray-100 p-3 rounded-full">
             <Wrench className="w-8 h-8 text-gray-500" />
@@ -211,7 +240,7 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
           <div className="text-center">
             <p className="text-sm font-semibold text-gray-700">Em Manutenção</p>
             <p className="text-xs text-gray-500 mt-1 italic">
-              "{descricaoManutencao || 'Sem descrição'}"
+              "{descricaoManutencao || 'Ar condicionado'}"
             </p>
           </div>
         </div>

@@ -48,7 +48,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
 
   // Filtragem
   const reservasFiltradas = reservas.filter((res) => {
-    if (filtroStatus !== 'TODAS' && res.status !== filtroStatus) return false;
+    if (filtroStatus !== 'TODAS' && res.statusreserva !== filtroStatus) return false;
     if (busca.trim()) {
       const termo = busca.toLowerCase();
       const matchNome = (res.hospedenome || '').toLowerCase().includes(termo);
@@ -272,7 +272,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {getStatusBadge(res.status)}
+                      {getStatusBadge(res.statusreserva)}
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -284,7 +284,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {res.status === 'AGUARDANDO_CHECKIN' && (
+                        {res.statusreserva === 'AGUARDANDO_CHECKIN' && (
                           <button
                             onClick={() => realizarCheckin(res.reservaid)}
                             className="px-2.5 py-1 bg-[#053d1e] hover:bg-[#225533] text-white rounded font-semibold text-[11px] shadow-xs cursor-pointer"
@@ -293,7 +293,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                           </button>
                         )}
 
-                        {res.status === 'HOSPEDADO' && (
+                        {res.statusreserva === 'HOSPEDADO' && (
                           <button
                             onClick={() => realizarCheckout(res.reservaid)}
                             className="px-2.5 py-1 bg-[#ba1a1a] hover:bg-[#93000a] text-white rounded font-semibold text-[11px] shadow-xs cursor-pointer"
@@ -302,7 +302,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                           </button>
                         )}
 
-                        {res.status !== 'CANCELADA' && res.status !== 'FINALIZADA' && (
+                        {res.statusreserva !== 'CANCELADA' && res.statusreserva !== 'FINALIZADA' && (
                           <button
                             onClick={() => {
                               setReservaParaCancelar(res);

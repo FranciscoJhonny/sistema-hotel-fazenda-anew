@@ -16,7 +16,7 @@ export interface IUsuarioService {
 
 export class UsuarioService extends BaseService<Usuario> implements IUsuarioService {
   constructor() {
-    super('Usuario', 'UsuarioId');
+    super('usuario', 'usuarioid');
   }
 
   public async obterPorEmail(email: string): Promise<ResultadoSupabase<Usuario>> {
@@ -27,10 +27,10 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
 
     try {
       const { data, error } = await client
-        .from('Usuario')
-        .select('*, Perfil:PerfilId(Descricao)')
-        .eq('Email', email.trim().toLowerCase())
-        .eq('Ativo', true)
+        .from('usuario')
+        .select('*, Perfil:PerfilId(descricao)')
+        .eq('email', email.trim().toLowerCase())
+        .eq('ativo', true)
         .maybeSingle();
 
       if (error) {
@@ -59,15 +59,15 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
     try {
       // 🔥 Buscar usuário no Supabase com join no Perfil
       const { data, error } = await client
-        .from('Usuario')
+        .from('usuario')
         .select(`
           *,
-          Perfil:PerfilId (
-            Descricao
+          Perfil:perfilid (
+            descricao
           )
         `)
-        .eq('Email', email.trim().toLowerCase())
-        .eq('Ativo', true)
+        .eq('email', email.trim().toLowerCase())
+        .eq('ativo', true)
         .maybeSingle();
 
       if (error) {
@@ -88,7 +88,7 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
       // Mapear usuário com perfil
       const usuarioMapeado: Usuario = {
         ...data,
-        Perfil: (data.Perfil?.Descricao as any) || (data.PerfilId === 1 ? 'ADMIN' : 'RECEPCAO'),
+        perfil: (data.perfil?.descricao as any) || (data.perfilid === 1 ? 'ADMIN' : 'RECEPCAO'),
       };
 
       return { sucesso: true, dados: usuarioMapeado };

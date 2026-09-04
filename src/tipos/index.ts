@@ -130,7 +130,7 @@ export interface Pacote extends EntidadeAuditavel {
 // 6. Reserva
 // =============================================================================
 export interface Reserva extends EntidadeAuditavel {
-  reservaid: number | string;
+  reservaid: number;
   codigo: string; // ex: "#49281"
   hospedeid: number | string;
   hospedenome: string;
@@ -143,13 +143,13 @@ export interface Reserva extends EntidadeAuditavel {
   adultos: number;
   criancas: number;
   dataentrada: string; // YYYY-MM-DD
-  datasaida: string; // YYYY-MM-DD
+  datasaida: string ; // YYYY-MM-DD
   horarioprevistochegada?: string; // ex: "14:00"
   horarioprevistosaida?: string; // ex: "12:00"
   tipoatendimento: TipoAtendimento;
   pacoteid?: number | string;
   pacotename?: string;
-  status: StatusReserva;
+  statusreserva: StatusReserva;
   valortotal: number;
   valorpago: number;
   saldo: number;

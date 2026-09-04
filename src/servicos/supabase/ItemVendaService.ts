@@ -15,7 +15,7 @@ export interface IItemVendaService {
 
 export class ItemVendaService extends BaseService<ItemVenda> implements IItemVendaService {
   constructor() {
-    super('ItemVenda', 'ItemVendaId');
+    super('itemvenda', 'itemvendaid');
   }
 
   public async listarPorVenda(vendaId: number | string): Promise<ResultadoSupabase<ItemVenda[]>> {
@@ -24,10 +24,10 @@ export class ItemVendaService extends BaseService<ItemVenda> implements IItemVen
 
     try {
       const { data, error } = await client
-        .from('ItemVenda')
+        .from('itemvenda')
         .select('*')
-        .eq('VendaId', vendaId)
-        .eq('Ativo', true);
+        .eq('vendaId', vendaId)
+        .eq('ativo', true);
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as ItemVenda[]) || [] };
@@ -43,14 +43,14 @@ export class ItemVendaService extends BaseService<ItemVenda> implements IItemVen
     try {
       const itensFormatados = itens.map((item) => ({
         ...item,
-        Ativo: (item as any).Ativo ?? true,
-        DataInclusao: new Date().toISOString(),
-        DataOperacao: new Date().toISOString(),
-        NaturezaOperacao: 'INSERT',
+        ativo: (item as any).ativo ?? true,
+        datainclusao: new Date().toISOString(),
+        dataoperacao: new Date().toISOString(),
+        naturezaoperacao: 'INSERT',
       }));
 
       const { data, error } = await client
-        .from('ItemVenda')
+        .from('itemvenda')
         .insert(itensFormatados)
         .select();
 

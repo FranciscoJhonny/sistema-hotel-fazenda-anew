@@ -19,7 +19,7 @@ export class VendaService extends BaseService<Venda> implements IVendaService {
   private itemVendaService: ItemVendaService;
 
   constructor() {
-    super('Venda', 'VendaId');
+    super('venda', 'vendaid');
     this.itemVendaService = new ItemVendaService();
   }
 
@@ -29,9 +29,9 @@ export class VendaService extends BaseService<Venda> implements IVendaService {
 
     try {
       const { data, error } = await client
-        .from('Venda')
+        .from('venda')
         .select('*')
-        .eq('Codigo', codigo)
+        .eq('codigo', codigo)
         .maybeSingle();
 
       if (error) return { sucesso: false, erro: error.message };
@@ -49,11 +49,11 @@ export class VendaService extends BaseService<Venda> implements IVendaService {
 
     try {
       const { data, error } = await client
-        .from('Venda')
+        .from('venda')
         .select('*')
-        .eq('ReservaId', reservaId)
-        .eq('Ativo', true)
-        .order('DataHora', { ascending: false });
+        .eq('reservaId', reservaId)
+        .eq('ativo', true)
+        .order('dataHora', { ascending: false });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Venda[]) || [] };
@@ -78,7 +78,7 @@ export class VendaService extends BaseService<Venda> implements IVendaService {
     if (itens.length > 0) {
       const itensComVendaId = itens.map((item) => ({
         ...item,
-        VendaId: vendaId,
+        vendaid: vendaId,
       }));
 
       const itensRes = await this.itemVendaService.criarMultiplos(itensComVendaId);

@@ -17,7 +17,7 @@ export interface IConfiguracaoService {
 
 export class ConfiguracaoService extends BaseService<Configuracao> implements IConfiguracaoService {
   constructor() {
-    super('Configuracao', 'ConfiguracaoId');
+    super('configuracao', 'configuracaoid');
   }
 
   public async obterPorChave(chave: string): Promise<ResultadoSupabase<Configuracao>> {
@@ -26,9 +26,9 @@ export class ConfiguracaoService extends BaseService<Configuracao> implements IC
 
     try {
       const { data, error } = await client
-        .from('Configuracao')
+        .from('configuracao')
         .select('*')
-        .eq('Chave', chave)
+        .eq('chave', chave)
         .maybeSingle();
 
       if (error) return { sucesso: false, erro: error.message };

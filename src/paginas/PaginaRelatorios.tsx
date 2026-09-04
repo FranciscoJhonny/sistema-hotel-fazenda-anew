@@ -1,14 +1,6 @@
-import React from 'react';
-import {
-  BarChart3,
-  TrendingUp,
-  Bed,
-  Users,
-  Calendar,
-  Download,
-  FileSpreadsheet,
-  Printer,
+import {  FileSpreadsheet,Printer
 } from 'lucide-react';
+import React from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarMoeda } from '../utilitarios/formatadores';
 
@@ -16,13 +8,13 @@ export const PaginaRelatorios: React.FC = () => {
   const { quartos, reservas, vendas } = useHotel();
 
   const totalQuartos = 13;
-  const quartosOcupados = quartos.filter((q) => q.Status === 'OCUPADO').length;
+  const quartosOcupados = quartos.filter((q) => q.status === 'OCUPADO').length;
   const taxaOcupacao = Math.round((quartosOcupados / totalQuartos) * 100);
 
-  const totalHospedes = reservas.reduce((acc, r) => acc + r.Adultos + r.Criancas, 0);
+  const totalHospedes = reservas.reduce((acc, r) => acc + r.adultos + r.criancas, 0);
   const faturamentoTotal =
-    reservas.reduce((acc, r) => acc + r.ValorTotal, 0) +
-    vendas.reduce((acc, v) => acc + v.ValorTotal, 0);
+    reservas.reduce((acc, r) => acc + r.valortotal, 0) +
+    vendas.reduce((acc, v) => acc + v.valortotal, 0);
 
   // Média de estadia
   const mediaEstadia = 2.4;
@@ -141,30 +133,30 @@ export const PaginaRelatorios: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-[#e1e3e4] text-[#191c1d]">
               {quartos.map((q) => (
-                <tr key={q.QuartoId} className="hover:bg-[#f8f9fa]">
+                <tr key={q.quartoid} className="hover:bg-[#f8f9fa]">
                   <td className="py-3 px-4 font-bold text-sm text-[#191c1d]">
-                    Quarto {q.Numero}
+                    Quarto {q.numero}
                   </td>
                   <td className="py-3 px-4">
                     <span className="font-bold text-xs bg-[#e6f4ea] text-[#137333] px-2 py-0.5 rounded">
-                      {q.CodigoIdentificador}
+                      {q.codigoidentificador}
                     </span>
                   </td>
-                  <td className="py-3 px-4 font-semibold">Bloco {q.Bloco}</td>
-                  <td className="py-3 px-4">{q.Categoria}</td>
+                  <td className="py-3 px-4 font-semibold">Bloco {q.bloco}</td>
+                  <td className="py-3 px-4">{q.categoria}</td>
                   <td className="py-3 px-4">
-                    {q.CapacidadeAdultos} Ad / {q.CapacidadeCriancas} Cri
+                    {q.capacidadeadultos} Ad / {q.capacidadecriancas} Cri
                   </td>
                   <td className="py-3 px-4 font-semibold">
-                    {formatarMoeda(q.ValorDiariaPadrao)}
+                    {formatarMoeda(q.valordiariapadrao)}
                   </td>
                   <td className="py-3 px-4 font-semibold">
                     <span className="px-2 py-0.5 rounded text-[11px] bg-[#f3f4f5]">
-                      {q.Status}
+                      {q.status}
                     </span>
                   </td>
                   <td className="py-3 px-4 font-medium">
-                    {q.HospedeAtualNome || '--'}
+                    {q.hospedeatualnome || '--'}
                   </td>
                 </tr>
               ))}

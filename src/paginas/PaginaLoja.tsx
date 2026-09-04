@@ -26,18 +26,18 @@ export const PaginaLoja: React.FC = () => {
   const produtosFiltrados = produtos.filter((p) => {
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();
-    return p.Nome.toLowerCase().includes(termo) || p.Categoria.toLowerCase().includes(termo);
+    return p.nome.toLowerCase().includes(termo) || p.categoria.toLowerCase().includes(termo);
   });
 
   const adicionarAoCarrinho = (produto: Produto) => {
-    if (produto.Estoque <= 0) return;
+    if (produto.estoque <= 0) return;
 
     setCarrinho((prev) => {
-      const existente = prev.find((item) => String(item.produto.ProdutoId) === String(produto.ProdutoId));
+      const existente = prev.find((item) => String(item.produto.produtoid) === String(produto.produtoid));
       if (existente) {
-        if (existente.quantidade >= produto.Estoque) return prev;
+        if (existente.quantidade >= produto.estoque) return prev;
         return prev.map((item) =>
-          String(item.produto.ProdutoId) === String(produto.ProdutoId)
+          String(item.produto.produtoid) === String(produto.produtoid)
             ? { ...item, quantidade: item.quantidade + 1 }
             : item
         );
@@ -50,10 +50,10 @@ export const PaginaLoja: React.FC = () => {
     setCarrinho((prev) =>
       prev
         .map((item) => {
-          if (String(item.produto.ProdutoId) === String(produtoId)) {
+          if (String(item.produto.produtoid) === String(produtoId)) {
             const novaQtd = item.quantidade + delta;
             if (novaQtd <= 0) return null;
-            if (novaQtd > item.produto.Estoque) return item;
+            if (novaQtd > item.produto.estoque) return item;
             return { ...item, quantidade: novaQtd };
           }
           return item;
@@ -63,34 +63,34 @@ export const PaginaLoja: React.FC = () => {
   };
 
   const removerDoCarrinho = (produtoId: number | string) => {
-    setCarrinho((prev) => prev.filter((item) => String(item.produto.ProdutoId) !== String(produtoId)));
+    setCarrinho((prev) => prev.filter((item) => String(item.produto.produtoid) !== String(produtoId)));
   };
 
   const totalCarrinho = carrinho.reduce(
-    (acc, curr) => acc + curr.produto.Preco * curr.quantidade,
+    (acc, curr) => acc + curr.produto.preco * curr.quantidade,
     0
   );
 
-  const handleFinalizarVenda = (e: React.FormEvent) => {
+  const handleFinalizarVenda = async (e: React.FormEvent) => {
     e.preventDefault();
     if (carrinho.length === 0) return;
 
-    const nova = registrarVenda({
-      Tipo: 'LOJA',
-      HospedeNome: nomeCliente,
-      Itens: carrinho.map((item) => ({
-        ProdutoId: item.produto.ProdutoId,
-        ProdutoNome: item.produto.Nome,
-        Quantidade: item.quantidade,
-        PrecoUnitario: item.produto.Preco,
-        Subtotal: item.produto.Preco * item.quantidade,
+    const nova = await registrarVenda({
+      tipo: 'LOJA',
+      hospedenome: nomeCliente,
+      itens: carrinho.map((item) => ({
+        produtoid: item.produto.produtoid,
+        produtonome: item.produto.nome,
+        quantidade: item.quantidade,
+        precounitario: item.produto.preco,
+        subtotal: item.produto.preco * item.quantidade,
       })),
-      ValorTotal: totalCarrinho,
-      FormaPagamento: formaPagamento,
-      StatusPagamento: 'PAGO',
+      valortotal: totalCarrinho,
+      formapagamento: formaPagamento,
+      statuspagamento: 'PAGO',
     });
 
-    setFeedbackSucesso(`Venda ${nova.Codigo} registrada com sucesso!`);
+    setFeedbackSucesso(`Venda ${nova.codigo} registrada com sucesso!`);
     setCarrinho([]);
     setNomeCliente('Visitante Balcão');
     setTimeout(() => setFeedbackSucesso(null), 3500);
@@ -141,35 +141,35 @@ export const PaginaLoja: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             {produtosFiltrados.map((prod) => (
               <div
-                key={prod.ProdutoId}
+                key={prod.produtoid}
                 className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs hover:border-[#053d1e] transition-all flex flex-col justify-between"
               >
                 <div>
                   <div className="flex justify-between items-start mb-1">
                     <span className="text-[10px] font-semibold text-[#053d1e] bg-[#e6f4ea] px-1.5 py-0.5 rounded">
-                      {prod.Categoria}
+                      {prod.categoria}
                     </span>
                     <span className="text-[10px] text-[#717971]">
-                      Estoque: <strong className="text-[#191c1d]">{prod.Estoque}</strong>
+                      Estoque: <strong className="text-[#191c1d]">{prod.estoque}</strong>
                     </span>
                   </div>
                   <h3 className="font-['Manrope'] font-bold text-xs text-[#191c1d] mt-1">
-                    {prod.Nome}
+                    {prod.nome}
                   </h3>
                   <p className="text-[11px] text-[#717971] mt-1 line-clamp-2">
-                    {prod.Descricao}
+                    {prod.descricao}
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between mt-3 pt-2 border-t border-[#e1e3e4]">
                   <span className="font-bold text-sm text-[#053d1e]">
-                    {formatarMoeda(prod.Preco)}
+                    {formatarMoeda(prod.preco)}
                   </span>
                   <button
                     onClick={() => adicionarAoCarrinho(prod)}
-                    disabled={prod.Estoque <= 0}
+                    disabled={prod.estoque <= 0}
                     className={`px-3 py-1 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors ${
-                      prod.Estoque <= 0
+                      prod.estoque <= 0
                         ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         : 'bg-[#053d1e] hover:bg-[#225533] text-white shadow-xs cursor-pointer'
                     }`}
@@ -202,15 +202,15 @@ export const PaginaLoja: React.FC = () => {
               ) : (
                 carrinho.map((item) => (
                   <div
-                    key={item.produto.ProdutoId}
+                    key={item.produto.produtoid}
                     className="flex items-center justify-between p-2 rounded-lg bg-[#f8f9fa] border border-[#e1e3e4] text-xs"
                   >
                     <div className="flex-1 min-w-0 pr-2">
-                      <p className="font-bold text-[#191c1d] truncate">{item.produto.Nome}</p>
+                      <p className="font-bold text-[#191c1d] truncate">{item.produto.nome}</p>
                       <p className="text-[10px] text-[#717971]">
-                        {item.quantidade}x {formatarMoeda(item.produto.Preco)} ={' '}
+                        {item.quantidade}x {formatarMoeda(item.produto.preco)} ={' '}
                         <strong className="text-[#053d1e]">
-                          {formatarMoeda(item.produto.Preco * item.quantidade)}
+                          {formatarMoeda(item.produto.preco * item.quantidade)}
                         </strong>
                       </p>
                     </div>
@@ -218,7 +218,7 @@ export const PaginaLoja: React.FC = () => {
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
-                        onClick={() => alterarQuantidade(item.produto.ProdutoId, -1)}
+                        onClick={() => alterarQuantidade(item.produto.produtoid, -1)}
                         className="p-1 rounded bg-white border border-[#c1c9bf] text-[#414941] hover:bg-[#e1e3e4] cursor-pointer"
                       >
                         <Minus className="w-3 h-3" />
@@ -226,14 +226,14 @@ export const PaginaLoja: React.FC = () => {
                       <span className="w-5 text-center font-bold">{item.quantidade}</span>
                       <button
                         type="button"
-                        onClick={() => alterarQuantidade(item.produto.ProdutoId, 1)}
+                        onClick={() => alterarQuantidade(item.produto.produtoid, 1)}
                         className="p-1 rounded bg-white border border-[#c1c9bf] text-[#414941] hover:bg-[#e1e3e4] cursor-pointer"
                       >
                         <Plus className="w-3 h-3" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => removerDoCarrinho(item.produto.ProdutoId)}
+                        onClick={() => removerDoCarrinho(item.produto.produtoid)}
                         className="p-1 rounded text-[#ba1a1a] hover:bg-[#ffdad6] ml-1 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

@@ -1,17 +1,11 @@
-import React, { useState } from 'react';
 import {
-  DollarSign,
-  TrendingUp,
-  CreditCard,
-  QrCode,
   ArrowUpRight,
-  Receipt,
   Download,
-  Calendar,
-  Filter,
+  QrCode
 } from 'lucide-react';
+import React, { useState } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
-import { formatarMoeda, formatarDataHora } from '../utilitarios/formatadores';
+import { formatarMoeda } from '../utilitarios/formatadores';
 
 export const PaginaFinanceiro: React.FC = () => {
   const { reservas, vendas } = useHotel();
@@ -19,30 +13,30 @@ export const PaginaFinanceiro: React.FC = () => {
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
 
   // Cálculos financeiros
-  const totalRecebidoReservas = reservas.reduce((acc, curr) => acc + curr.ValorPago, 0);
+  const totalRecebidoReservas = reservas.reduce((acc, curr) => acc + curr.valorpago, 0);
   const totalSaldosPendentes = reservas
-    .filter((r) => r.Status !== 'CANCELADA' && r.Status !== 'FINALIZADA')
-    .reduce((acc, curr) => acc + curr.Saldo, 0);
+    .filter((r) => r.statusreserva !== 'CANCELADA' && r.statusreserva !== 'FINALIZADA')
+    .reduce((acc, curr) => acc + curr.saldo, 0);
 
-  const totalVendasLoja = vendas.reduce((acc, curr) => acc + curr.ValorTotal, 0);
+  const totalVendasLoja = vendas.reduce((acc, curr) => acc + curr.valortotal, 0);
   const receitaTotalBruta = totalRecebidoReservas + totalVendasLoja;
 
   // Divisão por método de pagamento
   const totalPix =
-    reservas.filter((r) => r.FormaPagamento === 'PIX').reduce((acc, r) => acc + r.ValorPago, 0) +
-    vendas.filter((v) => v.FormaPagamento === 'PIX').reduce((acc, v) => acc + v.ValorTotal, 0);
+    reservas.filter((r) => r.formapagamento === 'PIX').reduce((acc, r) => acc + r.valorpago, 0) +
+    vendas.filter((v) => v.formapagamento === 'PIX').reduce((acc, v) => acc + v.valortotal, 0);
 
   const totalCartao =
     reservas
-      .filter((r) => r.FormaPagamento === 'CARTAO_CREDITO' || r.FormaPagamento === 'CARTAO_DEBITO')
-      .reduce((acc, r) => acc + r.ValorPago, 0) +
+      .filter((r) => r.formapagamento === 'CARTAO_CREDITO' || r.formapagamento === 'CARTAO_DEBITO')
+      .reduce((acc, r) => acc + r.valorpago, 0) +
     vendas
-      .filter((v) => v.FormaPagamento === 'CARTAO_CREDITO' || v.FormaPagamento === 'CARTAO_DEBITO')
-      .reduce((acc, v) => acc + v.ValorTotal, 0);
+      .filter((v) => v.formapagamento === 'CARTAO_CREDITO' || v.formapagamento === 'CARTAO_DEBITO')
+      .reduce((acc, v) => acc + v.valortotal, 0);
 
   const totalDinheiro =
-    reservas.filter((r) => r.FormaPagamento === 'DINHEIRO').reduce((acc, r) => acc + r.ValorPago, 0) +
-    vendas.filter((v) => v.FormaPagamento === 'DINHEIRO').reduce((acc, v) => acc + v.ValorTotal, 0);
+    reservas.filter((r) => r.formapagamento === 'DINHEIRO').reduce((acc, r) => acc + r.valorpago, 0) +
+    vendas.filter((v) => v.formapagamento === 'DINHEIRO').reduce((acc, v) => acc + v.valortotal, 0);
 
   return (
     <div className="space-y-6">
@@ -147,14 +141,14 @@ export const PaginaFinanceiro: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-[#e1e3e4] text-[#191c1d]">
               {reservas.map((r) => (
-                <tr key={`res-${r.ReservaId}`} className="hover:bg-[#f8f9fa]">
-                  <td className="py-3 px-4 font-bold text-[#053d1e]">{r.Codigo}</td>
+                <tr key={`res-${r.reservaid}`} className="hover:bg-[#f8f9fa]">
+                  <td className="py-3 px-4 font-bold text-[#053d1e]">{r.codigo}</td>
                   <td className="py-3 px-4">
-                    Reserva Quarto {r.QuartoNumero} ({r.QuartoCodigo})
+                    Reserva Quarto {r.quartonumero} ({r.quartocodigo})
                   </td>
-                  <td className="py-3 px-4 font-semibold">{r.HospedeNome}</td>
-                  <td className="py-3 px-4 font-medium">{r.FormaPagamento}</td>
-                  <td className="py-3 px-4 font-bold text-[#053d1e]">{formatarMoeda(r.ValorPago)}</td>
+                  <td className="py-3 px-4 font-semibold">{r.hospedenome}</td>
+                  <td className="py-3 px-4 font-medium">{r.formapagamento}</td>
+                  <td className="py-3 px-4 font-bold text-[#053d1e]">{formatarMoeda(r.valorpago)}</td>
                   <td className="py-3 px-4">
                     <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#e6f4ea] text-[#137333]">
                       Recebido
@@ -164,14 +158,14 @@ export const PaginaFinanceiro: React.FC = () => {
               ))}
 
               {vendas.map((v) => (
-                <tr key={`vend-${v.VendaId}`} className="hover:bg-[#f8f9fa]">
-                  <td className="py-3 px-4 font-bold text-[#1d5fa8]">{v.Codigo}</td>
+                <tr key={`vend-${v.vendaid}`} className="hover:bg-[#f8f9fa]">
+                  <td className="py-3 px-4 font-bold text-[#1d5fa8]">{v.codigo}</td>
                   <td className="py-3 px-4">
-                    Venda Loja Fazenda Anew ({v.Itens.length} itens)
+                    Venda Loja Fazenda Anew ({v.itens.length} itens)
                   </td>
-                  <td className="py-3 px-4 font-semibold">{v.HospedeNome || 'Cliente Balcão'}</td>
-                  <td className="py-3 px-4 font-medium">{v.FormaPagamento}</td>
-                  <td className="py-3 px-4 font-bold text-[#053d1e]">{formatarMoeda(v.ValorTotal)}</td>
+                  <td className="py-3 px-4 font-semibold">{v.hospedenome || 'Cliente Balcão'}</td>
+                  <td className="py-3 px-4 font-medium">{v.formapagamento}</td>
+                  <td className="py-3 px-4 font-bold text-[#053d1e]">{formatarMoeda(v.valortotal)}</td>
                   <td className="py-3 px-4">
                     <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#e6f4ea] text-[#137333]">
                       Quitado

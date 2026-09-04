@@ -20,7 +20,7 @@ export interface IReservaService {
 
 export class ReservaService extends BaseService<Reserva> implements IReservaService {
   constructor() {
-    super('Reserva', 'ReservaId');
+    super('reserva', 'reservaid');
   }
 
   public async obterPorCodigo(codigo: string): Promise<ResultadoSupabase<Reserva>> {
@@ -29,9 +29,9 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
 
     try {
       const { data, error } = await client
-        .from('Reserva')
+        .from('reserva')
         .select('*')
-        .eq('Codigo', codigo)
+        .eq('codigo', codigo)
         .maybeSingle();
 
       if (error) return { sucesso: false, erro: error.message };
@@ -49,11 +49,11 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
 
     try {
       const { data, error } = await client
-        .from('Reserva')
+        .from('reserva')
         .select('*')
-        .eq('QuartoId', quartoId)
-        .eq('Ativo', true)
-        .order('DataEntrada', { ascending: false });
+        .eq('quartoid', quartoId)
+        .eq('ativo', true)
+        .order('dataentrada', { ascending: false });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Reserva[]) || [] };
@@ -68,11 +68,11 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
 
     try {
       const { data, error } = await client
-        .from('Reserva')
+        .from('reserva')
         .select('*')
-        .eq('HospedeId', hospedeId)
-        .eq('Ativo', true)
-        .order('DataEntrada', { ascending: false });
+        .eq('hospedeid', hospedeId)
+        .eq('ativo', true)
+        .order('dataentrada', { ascending: false });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Reserva[]) || [] };
@@ -87,12 +87,12 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
 
     try {
       const { data, error } = await client
-        .from('Reserva')
+        .from('reserva')
         .select('*')
-        .eq('Ativo', true)
-        .gte('DataSaida', dataInicio)
-        .lte('DataEntrada', dataFim)
-        .order('DataEntrada', { ascending: true });
+        .eq('ativo', true)
+        .gte('datasaida', dataInicio)
+        .lte('dataentrada', dataFim)
+        .order('dataentrada', { ascending: true });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Reserva[]) || [] };
@@ -102,12 +102,12 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
   }
 
   public async atualizarStatus(id: number | string, status: StatusReserva): Promise<ResultadoSupabase<Reserva>> {
-    return this.atualizar(id, { status: status });
+    return this.atualizar(id, { statusreserva: status });
   }
 
   public async realizarCheckin(id: number | string, usuario: string): Promise<ResultadoSupabase<Reserva>> {
     return this.atualizar(id, {
-      status: 'HOSPEDADO',
+      statusreserva: 'HOSPEDADO',
       checkoutrealizadoem: new Date().toISOString(),
       checkinusuario: usuario,
     });
@@ -115,7 +115,7 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
 
   public async realizarCheckout(id: number | string, usuario: string): Promise<ResultadoSupabase<Reserva>> {
     return this.atualizar(id, {
-      status: 'FINALIZADA',
+      statusreserva: 'FINALIZADA',
       checkoutrealizadoem: new Date().toISOString(),
       checkoutusuario: usuario,
     });

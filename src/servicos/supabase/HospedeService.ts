@@ -15,7 +15,7 @@ export interface IHospedeService {
 
 export class HospedeService extends BaseService<Hospede> implements IHospedeService {
   constructor() {
-    super('Hospede', 'HospedeId');
+    super('hospede', 'hospedeid');
   }
 
   public async obterPorCpf(cpf: string): Promise<ResultadoSupabase<Hospede>> {
@@ -26,9 +26,9 @@ export class HospedeService extends BaseService<Hospede> implements IHospedeServ
 
     try {
       const { data, error } = await client
-        .from('Hospede')
+        .from('hospede')
         .select('*')
-        .eq('Cpf', cpfLimpo)
+        .eq('cpf', cpfLimpo)
         .maybeSingle();
 
       if (error) return { sucesso: false, erro: error.message };
@@ -46,11 +46,11 @@ export class HospedeService extends BaseService<Hospede> implements IHospedeServ
 
     try {
       const { data, error } = await client
-        .from('Hospede')
+        .from('hospede')
         .select('*')
-        .ilike('NomeCompleto', `%${termo}%`)
-        .eq('Ativo', true)
-        .order('NomeCompleto', { ascending: true })
+        .ilike('nomecompleto', `%${termo}%`)
+        .eq('ativo', true)
+        .order('nomecompleto', { ascending: true })
         .limit(20);
 
       if (error) return { sucesso: false, erro: error.message };

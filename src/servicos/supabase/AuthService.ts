@@ -49,7 +49,7 @@ export class AuthService implements IAuthService {
 
     try {
       const client = this.supabaseService.getClient();
-      if (!client) return { sucesso: false, erro: '🚫 Sistema offline.' };
+      if (!client) return { sucesso: false, erro: 'Sistema offline.' };
 
       let tabelaNome = await this.encontrarTabelaUsuario(client);
       if (!tabelaNome) return { sucesso: false, erro: 'Tabela não encontrada.' };
@@ -108,7 +108,7 @@ export class AuthService implements IAuthService {
         nome: data.nome || data.Nome || data.nome_completo || 'Usuário',
         email: data.email || data.Email || emailNormalizado,
         senha: senhaBanco,
-        ativo: data.ativo !== undefined ? data.ativo : (data.Ativo !== undefined ? data.Ativo : true),
+        ativo: data.ativo !== undefined ? data.ativo : (data.ativo !== undefined ? data.ativo : true),
         perfil: (data.perfil_descricao || 'RECEPCAO') as 'ADMIN' | 'RECEPCAO' | 'VENDAS',
         datainclusao: data.datainclusao || new Date().toISOString(),
         dataoperacao: new Date().toISOString(),

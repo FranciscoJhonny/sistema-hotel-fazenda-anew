@@ -39,30 +39,30 @@ export const PaginaDashboard: React.FC = () => {
 
   // Métricas para os 13 Quartos
   const totalQuartos = quartos.length || 13;
-  const quartosOcupados = quartos.filter((q) => q.Status === 'OCUPADO').length;
-  const quartosReservados = quartos.filter((q) => q.Status === 'RESERVADO').length;
-  const quartosAguardando = quartos.filter((q) => q.Status === 'AGUARDANDO_CHECKIN').length;
-  const quartosDisponiveis = quartos.filter((q) => q.Status === 'DISPONIVEL').length;
-  const quartosManutencao = quartos.filter((q) => q.Status === 'MANUTENCAO').length;
+  const quartosOcupados = quartos.filter((q) => q.status === 'OCUPADO').length;
+  const quartosReservados = quartos.filter((q) => q.status === 'RESERVADO').length;
+  const quartosAguardando = quartos.filter((q) => q.status === 'AGUARDANDO_CHECKIN').length;
+  const quartosDisponiveis = quartos.filter((q) => q.status === 'DISPONIVEL').length;
+  const quartosManutencao = quartos.filter((q) => q.status === 'MANUTENCAO').length;
 
   const taxaOcupacao = Math.round((quartosOcupados / totalQuartos) * 100);
   const taxaDisponiveis = Math.round((quartosDisponiveis / totalQuartos) * 100);
 
   // Reservas de hoje
-  const checkinsHoje = reservas.filter((r) => r.Status === 'AGUARDANDO_CHECKIN');
+  const checkinsHoje = reservas.filter((r) => r.statusreserva === 'AGUARDANDO_CHECKIN');
   const checkoutsHoje = reservas.filter(
-    (r) => r.Status === 'HOSPEDADO' && r.DataSaida === dataSistema
+    (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
   );
 
   // Total de hóspedes no local
   const hospedesPresentes = reservas
-    .filter((r) => r.Status === 'HOSPEDADO')
-    .reduce((acc, curr) => acc + curr.Adultos + curr.Criancas, 0);
+    .filter((r) => r.statusreserva === 'HOSPEDADO')
+    .reduce((acc, curr) => acc + (curr.adultos || 0) + (curr.criancas || 0), 0);
 
   // Filtragem dos quartos
   const quartosFiltrados = quartos.filter((q) => {
     if (filtroStatus === 'TODOS') return true;
-    return q.Status === filtroStatus;
+    return q.status === filtroStatus;
   });
 
   const handleAbrirDetalhesQuarto = (quarto: Quarto) => {
@@ -75,14 +75,14 @@ export const PaginaDashboard: React.FC = () => {
     setModalNovaReservaAberto(true);
   };
 
-  const handleCheckinRapido = (reservaId: number) => {
-    const res = realizarCheckin(reservaId);
+  const handleCheckinRapido = async (reservaId: number) => {
+    const res = await realizarCheckin(reservaId);
     setFeedbackAcao(res.mensagem);
     setTimeout(() => setFeedbackAcao(null), 3000);
   };
 
-  const handleCheckoutRapido = (reservaId: number) => {
-    const res = realizarCheckout(reservaId);
+  const handleCheckoutRapido = async (reservaId: number) => {
+    const res = await realizarCheckout(reservaId);
     setFeedbackAcao(res.mensagem);
     setTimeout(() => setFeedbackAcao(null), 3000);
   };
@@ -317,7 +317,7 @@ export const PaginaDashboard: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {quartosFiltrados.map((quarto) => (
             <CardQuarto
-              key={quarto.QuartoId}
+              key={quarto.quartoid}
               quarto={quarto}
               aoClicar={handleAbrirDetalhesQuarto}
             />
@@ -352,31 +352,31 @@ export const PaginaDashboard: React.FC = () => {
             ) : (
               checkinsHoje.map((res) => (
                 <div
-                  key={res.ReservaId}
+                  key={res.reservaid}
                   className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#245437] transition-colors"
                 >
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-['Manrope'] font-bold text-sm text-[#111827]">
-                        {res.HospedeNome}
+                        {res.hospedenome}
                       </span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f0fdf4] text-[#166534]">
-                        {res.Codigo}
+                        {res.codigo}
                       </span>
                     </div>
                     <p className="text-xs text-[#4b5563] mt-0.5">
-                      Quarto {res.QuartoNumero} • {res.Adultos} Ad / {res.Criancas} Cri
+                      Quarto {res.quartonumero} • {res.adultos} Ad / {res.criancas} Cri
                     </p>
                     <p className="text-[11px] text-[#6b7280] mt-0.5">
-                      Chegada prevista: {res.HorarioPrevistoChegada || '14:00'} • Saldo:{' '}
-                      <span className={res.Saldo > 0 ? 'text-[#dc2626] font-bold' : 'text-[#166534] font-bold'}>
-                        {formatarMoeda(res.Saldo)}
+                      Chegada prevista: {res.horarioprevistochegada || '14:00'} • Saldo:{' '}
+                      <span className={res.saldo > 0 ? 'text-[#dc2626] font-bold' : 'text-[#166534] font-bold'}>
+                        {formatarMoeda(res.saldo)}
                       </span>
                     </p>
                   </div>
 
                   <button
-                    onClick={() => handleCheckinRapido(res.ReservaId)}
+                    onClick={() => handleCheckinRapido(res.reservaid)}
                     className="shrink-0 px-3 py-1.5 text-xs font-bold bg-[#245437] hover:bg-[#1b432b] text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -413,31 +413,31 @@ export const PaginaDashboard: React.FC = () => {
             ) : (
               checkoutsHoje.map((res) => (
                 <div
-                  key={res.ReservaId}
+                  key={res.reservaid}
                   className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#dc2626] transition-colors"
                 >
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-['Manrope'] font-bold text-sm text-[#111827]">
-                        {res.HospedeNome}
+                        {res.hospedenome}
                       </span>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#fee2e2] text-[#991b1b]">
-                        {res.Codigo}
+                        {res.codigo}
                       </span>
                     </div>
                     <p className="text-xs text-[#4b5563] mt-0.5">
-                      Quarto {res.QuartoNumero} • {res.QuartoCategoria}
+                      Quarto {res.quartonumero} • {res.quartocategoria}
                     </p>
                     <p className="text-[11px] text-[#6b7280] mt-0.5">
-                      Horário limite: {res.HorarioPrevistoSaida || '12:00'} • Saldo Pendente:{' '}
-                      <span className={res.Saldo > 0 ? 'text-[#dc2626] font-bold' : 'text-[#166534] font-bold'}>
-                        {formatarMoeda(res.Saldo)}
+                      Horário limite: {res.horarioprevistosaida || '12:00'} • Saldo Pendente:{' '}
+                      <span className={res.saldo > 0 ? 'text-[#dc2626] font-bold' : 'text-[#166534] font-bold'}>
+                        {formatarMoeda(res.saldo)}
                       </span>
                     </p>
                   </div>
 
                   <button
-                    onClick={() => handleCheckoutRapido(res.ReservaId)}
+                    onClick={() => handleCheckoutRapido(res.reservaid)}
                     className="shrink-0 px-3 py-1.5 text-xs font-bold bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <ArrowRight className="w-3.5 h-3.5" />

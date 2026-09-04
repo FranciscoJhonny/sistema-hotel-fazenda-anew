@@ -1,21 +1,18 @@
-import React, { useState } from 'react';
 import {
-  Users,
-  Search,
-  Plus,
-  Phone,
+  CheckCircle2,
+  Edit2,
   Mail,
   MapPin,
-  Calendar,
-  Edit2,
-  Trash2,
-  CheckCircle2,
-  User,
+  Phone,
+  Plus,
+  Search,
+  Trash2
 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Hospede } from '../tipos';
 import { formatarCpf, formatarTelefone } from '../utilitarios/formatadores';
-import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 
 export const PaginaHospedes: React.FC = () => {
   const { hospedes, cadastrarHospede, editarHospede, excluirHospede, reservas } = useHotel();
@@ -40,10 +37,10 @@ export const PaginaHospedes: React.FC = () => {
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();
     return (
-      h.NomeCompleto.toLowerCase().includes(termo) ||
-      h.Cpf.includes(termo) ||
-      h.Telefone.includes(termo) ||
-      (h.Cidade && h.Cidade.toLowerCase().includes(termo))
+      h.nomecompleto.toLowerCase().includes(termo) ||
+      h.cpf.includes(termo) ||
+      h.telefone.includes(termo) ||
+      (h.cidade && h.cidade.toLowerCase().includes(termo))
     );
   });
 
@@ -62,14 +59,14 @@ export const PaginaHospedes: React.FC = () => {
 
   const handleAbrirEdicao = (h: Hospede) => {
     setHospedeEdicao(h);
-    setNome(h.NomeCompleto);
-    setCpf(h.Cpf);
-    setTelefone(h.Telefone);
-    setWhatsapp(h.WhatsApp || h.Telefone);
-    setEmail(h.Email || '');
-    setCidade(h.Cidade || '');
-    setEstado(h.Estado || 'MS');
-    setObservacoes(h.Observacoes || '');
+    setNome(h.nomecompleto);
+    setCpf(h.cpf);
+    setTelefone(h.telefone);
+    setWhatsapp(h.whatsapp || h.telefone);
+    setEmail(h.email || '');
+    setCidade(h.cidade || '');
+    setEstado(h.estado || 'MS');
+    setObservacoes(h.observacoes || '');
     setModalNovoAberto(true);
   };
 
@@ -78,27 +75,27 @@ export const PaginaHospedes: React.FC = () => {
     if (!nome.trim() || !telefone.trim()) return;
 
     if (hospedeEdicao) {
-      editarHospede(hospedeEdicao.HospedeId, {
-        NomeCompleto: nome,
-        Cpf: cpf || hospedeEdicao.Cpf,
-        Telefone: telefone,
-        WhatsApp: whatsapp,
-        Email: email,
-        Cidade: cidade,
-        Estado: estado,
-        Observacoes: observacoes,
+      editarHospede(hospedeEdicao.hospedeid, {
+        nomecompleto: nome,
+        cpf: cpf || hospedeEdicao.cpf,
+        telefone: telefone,
+        whatsapp: whatsapp,
+        email: email,
+        cidade: cidade,
+        estado: estado,
+        observacoes: observacoes,
       });
       setFeedback(`Cadastro de ${nome} atualizado com sucesso.`);
     } else {
       cadastrarHospede({
-        NomeCompleto: nome,
-        Cpf: cpf || '000.000.000-00',
-        Telefone: telefone,
-        WhatsApp: whatsapp,
-        Email: email,
-        Cidade: cidade,
-        Estado: estado,
-        Observacoes: observacoes,
+        nomecompleto: nome,
+        cpf: cpf || '000.000.000-00',
+        telefone: telefone,
+        whatsapp: whatsapp,
+        email: email,
+        cidade: cidade,
+        estado: estado,
+        observacoes: observacoes,
       });
       setFeedback(`Hóspede ${nome} cadastrado com sucesso.`);
     }
@@ -107,9 +104,9 @@ export const PaginaHospedes: React.FC = () => {
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  const handleConfirmarExclusao = () => {
+  const handleConfirmarExclusao = async () => {
     if (hospedeExcluir) {
-      const ok = excluirHospede(hospedeExcluir.HospedeId);
+      const ok = await excluirHospede(hospedeExcluir.hospedeid);
       if (ok) {
         setFeedback(`Hóspede removido com sucesso.`);
       } else {
@@ -171,20 +168,20 @@ export const PaginaHospedes: React.FC = () => {
       {/* Grid de Hóspedes */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {hospedesFiltrados.map((h) => {
-          const reservasDoHospede = reservas.filter((r) => String(r.HospedeId) === String(h.HospedeId));
+          const reservasDoHospede = reservas.filter((r) => String(r.hospedeid) === String(h.hospedeid));
 
           return (
             <div
-              key={h.HospedeId}
+              key={h.hospedeid}
               className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
             >
               <div>
                 <div className="flex items-start justify-between pb-2 border-b border-[#e1e3e4]">
                   <div>
                     <h3 className="font-['Manrope'] font-bold text-sm text-[#191c1d]">
-                      {h.NomeCompleto}
+                      {h.nomecompleto}
                     </h3>
-                    <p className="text-[11px] text-[#717971]">CPF: {formatarCpf(h.Cpf)}</p>
+                    <p className="text-[11px] text-[#717971]">CPF: {formatarCpf(h.cpf)}</p>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#e6f4ea] text-[#137333]">
                     {reservasDoHospede.length} estadia{reservasDoHospede.length !== 1 ? 's' : ''}
@@ -194,24 +191,24 @@ export const PaginaHospedes: React.FC = () => {
                 <div className="space-y-1.5 mt-3 text-xs text-[#414941]">
                   <div className="flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5 text-[#053d1e]" />
-                    <span>{formatarTelefone(h.Telefone)}</span>
+                    <span>{formatarTelefone(h.telefone)}</span>
                   </div>
-                  {h.Email && (
+                  {h.email && (
                     <div className="flex items-center gap-2">
                       <Mail className="w-3.5 h-3.5 text-[#053d1e]" />
-                      <span className="truncate">{h.Email}</span>
+                      <span className="truncate">{h.email}</span>
                     </div>
                   )}
-                  {h.Cidade && (
+                  {h.cidade && (
                     <div className="flex items-center gap-2">
                       <MapPin className="w-3.5 h-3.5 text-[#053d1e]" />
-                      <span>{h.Cidade} - {h.Estado || 'MS'}</span>
+                      <span>{h.cidade} - {h.estado || 'MS'}</span>
                     </div>
                   )}
-                  {h.Observacoes && (
+                  {h.observacoes && (
                     <div className="p-2 bg-[#f8f9fa] rounded-lg text-[11px] text-[#414941] mt-2">
                       <span className="font-semibold text-[#191c1d]">Obs: </span>
-                      {h.Observacoes}
+                      {h.observacoes}
                     </div>
                   )}
                 </div>
@@ -358,7 +355,7 @@ export const PaginaHospedes: React.FC = () => {
       <ModalConfirmacao
         aberto={!!hospedeExcluir}
         titulo="Excluir Cadastro"
-        mensagem={`Tem certeza que deseja remover o cadastro de ${hospedeExcluir?.NomeCompleto}?`}
+        mensagem={`Tem certeza que deseja remover o cadastro de ${hospedeExcluir?.nomecompleto}?`}
         tipo="perigo"
         textoConfirmar="Sim, Excluir"
         onConfirmar={handleConfirmarExclusao}

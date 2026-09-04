@@ -1,23 +1,18 @@
-import React from 'react';
 import {
-  LayoutDashboard,
+  BadgePercent,
+  BarChart3,
   Bed,
   CalendarDays,
-  Users,
-  BadgePercent,
-  ShoppingBag,
-  BarChart3,
-  Settings,
   HelpCircle,
+  LayoutDashboard,
   LogOut,
-  Wifi,
-  WifiOff,
-  User,
-  PlusCircle,
+  Settings,
+  Users
 } from 'lucide-react';
+import React from 'react';
 import { useHotel } from '../../contextos/ContextoHotel';
-import { LogoHotel } from '../comuns/LogoHotel';
 import { PaginaNavegacao } from '../../tipos';
+import { LogoHotel } from '../comuns/LogoHotel';
 
 interface BarraLateralProps {
   abertoMobile?: boolean;
@@ -43,56 +38,56 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
   // Contadores para badges
   const checkinsHoje = reservas.filter(
-    (r) => r.Status === 'AGUARDANDO_CHECKIN'
+    (r) => r.statusreserva === 'AGUARDANDO_CHECKIN'
   ).length;
 
   const checkoutsHoje = reservas.filter(
-    (r) => r.Status === 'HOSPEDADO' && r.DataSaida === dataSistema
+    (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
   ).length;
 
-  const quartosOcupados = quartos.filter((q) => q.Status === 'OCUPADO').length;
+  const quartosOcupados = quartos.filter((q) => q.status === 'OCUPADO').length;
 
   const itensMenu: {
     id: PaginaNavegacao;
     label: string;
     icone: React.ReactNode;
   }[] = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icone: <LayoutDashboard className="w-5 h-5" />,
-    },
-    {
-      id: 'quartos',
-      label: 'Quartos',
-      icone: <Bed className="w-5 h-5" />,
-    },
-    {
-      id: 'reservas',
-      label: 'Reservas',
-      icone: <CalendarDays className="w-5 h-5" />,
-    },
-    {
-      id: 'hospedes',
-      label: 'Hóspedes',
-      icone: <Users className="w-5 h-5" />,
-    },
-    {
-      id: 'financeiro',
-      label: 'Financeiro',
-      icone: <BadgePercent className="w-5 h-5" />,
-    },
-    {
-      id: 'relatorios',
-      label: 'Relatórios',
-      icone: <BarChart3 className="w-5 h-5" />,
-    },
-    {
-      id: 'configuracoes',
-      label: 'Configurações',
-      icone: <Settings className="w-5 h-5" />,
-    },
-  ];
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        icone: <LayoutDashboard className="w-5 h-5" />,
+      },
+      {
+        id: 'quartos',
+        label: 'Quartos',
+        icone: <Bed className="w-5 h-5" />,
+      },
+      {
+        id: 'reservas',
+        label: 'Reservas',
+        icone: <CalendarDays className="w-5 h-5" />,
+      },
+      {
+        id: 'hospedes',
+        label: 'Hóspedes',
+        icone: <Users className="w-5 h-5" />,
+      },
+      {
+        id: 'financeiro',
+        label: 'Financeiro',
+        icone: <BadgePercent className="w-5 h-5" />,
+      },
+      {
+        id: 'relatorios',
+        label: 'Relatórios',
+        icone: <BarChart3 className="w-5 h-5" />,
+      },
+      {
+        id: 'configuracoes',
+        label: 'Configurações',
+        icone: <Settings className="w-5 h-5" />,
+      },
+    ];
 
   const handleNavegar = (pagina: PaginaNavegacao) => {
     navegarPara(pagina);
@@ -110,9 +105,8 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
       )}
 
       <aside
-        className={`fixed left-0 top-0 h-full w-64 border-r border-[#c1c9bf] bg-white flex flex-col z-40 transition-transform duration-200 ease-in-out py-4 ${
-          abertoMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        }`}
+        className={`fixed left-0 top-0 h-full w-64 border-r border-[#c1c9bf] bg-white flex flex-col z-40 transition-transform duration-200 ease-in-out py-4 ${abertoMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          }`}
         id="sidenav"
       >
         {/* Topo com Logo Oficial */}
@@ -136,11 +130,10 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleNavegar(item.id)}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 cursor-pointer ${
-                  ativo
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 cursor-pointer ${ativo
                     ? 'bg-[#245437] text-white font-semibold shadow-xs'
                     : 'text-[#4b5563] hover:bg-[#f3f4f6] hover:text-[#111827]'
-                }`}
+                  }`}
               >
                 <span className={ativo ? 'text-white' : 'text-[#6b7280]'}>
                   {item.icone}

@@ -30,7 +30,7 @@ export abstract class BaseService<T, ID = number | string> {
       let query = client.from(this.nomeTabela).select('*', { count: 'exact' });
 
       if (filtros?.apenasAtivos !== false) {
-        query = query.eq('Ativo', true);
+        query = query.eq('ativo', true);
       }
 
       if (filtros?.ordenarPor) {
@@ -100,10 +100,10 @@ export abstract class BaseService<T, ID = number | string> {
     try {
       const dadosParaInserir = {
         ...item,
-        Ativo: (item as any).Ativo ?? true,
-        DataInclusao: new Date().toISOString(),
-        DataOperacao: new Date().toISOString(),
-        NaturezaOperacao: 'INSERT',
+        ativo: (item as any).ativo ?? true,
+        datainclusao: new Date().toISOString(),
+        dataoperacao: new Date().toISOString(),
+        naturezaoperacao: 'INSERT',
       };
 
       const { data, error } = await client
@@ -131,8 +131,8 @@ export abstract class BaseService<T, ID = number | string> {
     try {
       const dadosParaAtualizar = {
         ...item,
-        DataOperacao: new Date().toISOString(),
-        NaturezaOperacao: 'UPDATE',
+        dataoperacao: new Date().toISOString(),
+        naturezaoperacao: 'UPDATE',
       };
 
       const { data, error } = await client
@@ -176,8 +176,8 @@ export abstract class BaseService<T, ID = number | string> {
 
   public async desativar(id: ID): Promise<ResultadoSupabase<T>> {
     return this.atualizar(id, {
-      Ativo: false,
-      NaturezaOperacao: 'DELETE',
+      ativo: false,
+      naturezaoperacao: 'DELETE',
     } as unknown as Partial<T>);
   }
 }

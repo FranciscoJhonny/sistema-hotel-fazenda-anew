@@ -1,4 +1,3 @@
-// src/contextos/ContextoHotel.tsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthService } from '../servicos/supabase/AuthService';
 import { SupabaseService } from '../servicos/supabase/SupabaseService';
@@ -435,7 +434,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
     }
     setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
-    if (reserva.quartoid && (reserva.status === 'CONFIRMADA' || reserva.status === 'AGUARDANDO_CHECKIN')) {
+    if (reserva.quartoid && (reserva.statusreserva === 'CONFIRMADA' || reserva.statusreserva === 'AGUARDANDO_CHECKIN')) {
       await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
     }
 
@@ -532,7 +531,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const client = supabaseService.getClient();
     const temReservaAtiva = reservas.some(r =>
       String(r.hospedeid) === String(id) &&
-      (r.status === 'CONFIRMADA' || r.status === 'AGUARDANDO_CHECKIN' || r.status === 'HOSPEDADO')
+      (r.statusreserva === 'CONFIRMADA' || r.statusreserva === 'AGUARDANDO_CHECKIN' || r.statusreserva === 'HOSPEDADO')
     );
     if (temReservaAtiva) return false;
 

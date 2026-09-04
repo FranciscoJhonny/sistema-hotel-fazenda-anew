@@ -1,19 +1,8 @@
+import { CheckCircle2, LogOut, Printer, Receipt, Search } from 'lucide-react';
 import React, { useState } from 'react';
-import {
-  LogOut,
-  Search,
-  CheckCircle2,
-  Receipt,
-  Bed,
-  Coffee,
-  DollarSign,
-  Printer,
-  Sparkles,
-  ArrowRight,
-} from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
-import { Reserva, FormaPagamento } from '../tipos';
-import { formatarMoeda, formatarData } from '../utilitarios/formatadores';
+import { FormaPagamento, Reserva } from '../tipos';
+import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 
 export const PaginaCheckout: React.FC = () => {
   const { reservas, dataSistema, realizarCheckout, usuarioAtual } = useHotel();
@@ -30,24 +19,24 @@ export const PaginaCheckout: React.FC = () => {
   } | null>(null);
 
   // Hóspedes com estadia ativa
-  const reservasHospedadas = reservas.filter((r) => r.Status === 'HOSPEDADO');
+  const reservasHospedadas = reservas.filter((r) => r.statusreserva === 'HOSPEDADO');
 
   const reservasFiltradas = reservasHospedadas.filter((r) => {
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();
     return (
-      r.HospedeNome.toLowerCase().includes(termo) ||
-      r.Codigo.toLowerCase().includes(termo) ||
-      r.QuartoNumero.includes(termo)
+      r.hospedenome.toLowerCase().includes(termo) ||
+      r.codigo.toLowerCase().includes(termo) ||
+      r.quartonumero.includes(termo)
     );
   });
 
   const totalAcobrar = reservaSelecionada
-    ? reservaSelecionada.Saldo + consumoExtra
+    ? reservaSelecionada.saldo + consumoExtra
     : 0;
 
-  const handleEfetivarCheckout = (reserva: Reserva) => {
-    const res = realizarCheckout(reserva.ReservaId);
+  const handleEfetivarCheckout = async (reserva: Reserva) => {
+    const res = await realizarCheckout(reserva.reservaid);
     if (res.sucesso) {
       setFeedbackSucesso(res.mensagem);
       setComprovanteCheckout({
@@ -81,7 +70,7 @@ export const PaginaCheckout: React.FC = () => {
 
         <div className="text-right">
           <span className="text-xs font-medium text-[#717971]">Operador:</span>
-          <p className="text-xs font-bold text-[#053d1e]">{usuarioAtual?.Nome || 'Operador'}</p>
+          <p className="text-xs font-bold text-[#053d1e]">{usuarioAtual?.nome || 'Operador'}</p>
         </div>
       </div>
 
@@ -122,29 +111,28 @@ export const PaginaCheckout: React.FC = () => {
               </div>
             ) : (
               reservasFiltradas.map((res) => {
-                const ehHoje = res.DataSaida === dataSistema;
-                const selecionado = reservaSelecionada?.ReservaId === res.ReservaId;
+                const ehHoje = res.datasaida === dataSistema;
+                const selecionado = reservaSelecionada?.reservaid === res.reservaid;
 
                 return (
                   <div
-                    key={res.ReservaId}
+                    key={res.reservaid}
                     onClick={() => {
                       setReservaSelecionada(res);
                       setConsumoExtra(0);
                     }}
-                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
-                      selecionado
+                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
                         ? 'border-2 border-[#ba1a1a] bg-[#ffdad6]/20 ring-2 ring-[#ba1a1a]/20 shadow-md'
                         : 'border-[#c1c9bf] hover:border-[#ba1a1a] hover:shadow-xs'
-                    }`}
+                      }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
                         <span className="font-['Manrope'] text-base font-bold text-[#191c1d]">
-                          {res.HospedeNome}
+                          {res.hospedenome}
                         </span>
                         <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#ffdad6] text-[#93000a]">
-                          {res.Codigo}
+                          {res.codigo}
                         </span>
                       </div>
                       {ehHoje ? (
@@ -153,7 +141,7 @@ export const PaginaCheckout: React.FC = () => {
                         </span>
                       ) : (
                         <span className="text-xs font-medium text-[#414941] bg-[#f3f4f5] px-2 py-0.5 rounded-full w-fit">
-                          Saída em {formatarData(res.DataSaida)}
+                          Saída em {formatarData(res.datasaida)}
                         </span>
                       )}
                     </div>
@@ -162,29 +150,28 @@ export const PaginaCheckout: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Acomodação:</span>
                         <span className="font-bold text-[#053d1e]">
-                          Quarto {res.QuartoNumero} ({res.QuartoCodigo})
+                          Quarto {res.quartonumero} ({res.quartocodigo})
                         </span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Entrada / Saída:</span>
                         <span className="font-medium text-[#191c1d]">
-                          {formatarData(res.DataEntrada)} a {formatarData(res.DataSaida)}
+                          {formatarData(res.dataentrada)} a {formatarData(res.datasaida)}
                         </span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Diárias Totais:</span>
                         <span className="font-medium text-[#191c1d]">
-                          {formatarMoeda(res.ValorTotal)}
+                          {formatarMoeda(res.valortotal)}
                         </span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Saldo Pendente:</span>
                         <span
-                          className={`font-bold ${
-                            res.Saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
-                          }`}
+                          className={`font-bold ${res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                            }`}
                         >
-                          {formatarMoeda(res.Saldo)}
+                          {formatarMoeda(res.saldo)}
                         </span>
                       </div>
                     </div>
@@ -205,12 +192,12 @@ export const PaginaCheckout: React.FC = () => {
               </h3>
 
               <div className="p-3 rounded-xl bg-[#f8f9fa] border border-[#e1e3e4] space-y-1.5 text-xs">
-                <p className="font-bold text-sm text-[#191c1d]">{reservaSelecionada.HospedeNome}</p>
+                <p className="font-bold text-sm text-[#191c1d]">{reservaSelecionada.hospedenome}</p>
                 <p className="text-[#053d1e] font-semibold">
-                  Quarto {reservaSelecionada.QuartoNumero} ({reservaSelecionada.QuartoCodigo}) • {reservaSelecionada.QuartoCategoria}
+                  Quarto {reservaSelecionada.quartonumero} ({reservaSelecionada.quartocodigo}) • {reservaSelecionada.quartocategoria}
                 </p>
                 <p className="text-[#717971]">
-                  Estadia: {formatarData(reservaSelecionada.DataEntrada)} a {formatarData(reservaSelecionada.DataSaida)}
+                  Estadia: {formatarData(reservaSelecionada.dataentrada)} a {formatarData(reservaSelecionada.datasaida)}
                 </p>
               </div>
 
@@ -234,7 +221,7 @@ export const PaginaCheckout: React.FC = () => {
               <div className="border border-[#c1c9bf] rounded-xl p-3 space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span>Saldo da Hospedagem:</span>
-                  <span className="font-semibold">{formatarMoeda(reservaSelecionada.Saldo)}</span>
+                  <span className="font-semibold">{formatarMoeda(reservaSelecionada.saldo)}</span>
                 </div>
                 {consumoExtra > 0 && (
                   <div className="flex justify-between text-[#053d1e]">
@@ -308,12 +295,12 @@ export const PaginaCheckout: React.FC = () => {
             <div className="space-y-2 text-xs p-4 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4]">
               <div className="flex justify-between">
                 <span className="text-[#717971]">Hóspede:</span>
-                <span className="font-bold text-[#191c1d]">{comprovanteCheckout.reserva.HospedeNome}</span>
+                <span className="font-bold text-[#191c1d]">{comprovanteCheckout.reserva.hospedenome}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#717971]">Quarto Desocupado:</span>
                 <span className="font-bold text-[#053d1e]">
-                  Quarto {comprovanteCheckout.reserva.QuartoNumero} ({comprovanteCheckout.reserva.QuartoCodigo})
+                  Quarto {comprovanteCheckout.reserva.quartonumero} ({comprovanteCheckout.reserva.quartocodigo})
                 </span>
               </div>
               <div className="flex justify-between">

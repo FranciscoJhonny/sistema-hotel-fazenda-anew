@@ -14,7 +14,7 @@ export interface IPagamentoService {
 
 export class PagamentoService extends BaseService<Pagamento> implements IPagamentoService {
   constructor() {
-    super('Pagamento', 'PagamentoId');
+    super('pagamento', 'pagamentoid');
   }
 
   public async listarPorReserva(reservaId: number | string): Promise<ResultadoSupabase<Pagamento[]>> {
@@ -23,11 +23,11 @@ export class PagamentoService extends BaseService<Pagamento> implements IPagamen
 
     try {
       const { data, error } = await client
-        .from('Pagamento')
+        .from('pagamento')
         .select('*')
-        .eq('ReservaId', reservaId)
-        .eq('Ativo', true)
-        .order('DataPagamento', { ascending: false });
+        .eq('reservaId', reservaId)
+        .eq('ativo', true)
+        .order('dataPagamento', { ascending: false });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Pagamento[]) || [] };

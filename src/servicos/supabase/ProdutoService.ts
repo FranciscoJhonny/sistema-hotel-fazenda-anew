@@ -15,7 +15,7 @@ export interface IProdutoService {
 
 export class ProdutoService extends BaseService<Produto> implements IProdutoService {
   constructor() {
-    super('Produto', 'ProdutoId');
+    super('produto', 'produtoid');
   }
 
   public async listarPorCategoria(categoria: string): Promise<ResultadoSupabase<Produto[]>> {
@@ -24,11 +24,11 @@ export class ProdutoService extends BaseService<Produto> implements IProdutoServ
 
     try {
       const { data, error } = await client
-        .from('Produto')
+        .from('produto')
         .select('*')
-        .eq('Categoria', categoria)
-        .eq('Ativo', true)
-        .order('Nome', { ascending: true });
+        .eq('categoria', categoria)
+        .eq('ativo', true)
+        .order('nome', { ascending: true });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Produto[]) || [] };

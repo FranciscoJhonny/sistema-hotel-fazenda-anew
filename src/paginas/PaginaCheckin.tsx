@@ -26,21 +26,21 @@ export const PaginaCheckin: React.FC = () => {
 
   // Reservas aguardando check-in (CORRIGIDO)
   const reservasAguardando = reservas.filter(
-    (r) => r.Status === 'AGUARDANDO_CHECKIN' || (r.Status === 'CONFIRMADA' && r.DataEntrada <= dataSistema)
+    (r) => r.statusreserva === 'AGUARDANDO_CHECKIN' || (r.statusreserva === 'CONFIRMADA' && r.dataentrada <= dataSistema)
   );
 
   const reservasFiltradas = reservasAguardando.filter((r) => {
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();
     return (
-      r.HospedeNome.toLowerCase().includes(termo) ||
-      r.Codigo.toLowerCase().includes(termo) ||
-      r.QuartoNumero.includes(termo)
+      r.hospedenome.toLowerCase().includes(termo) ||
+      r.codigo.toLowerCase().includes(termo) ||
+      r.quartonumero.includes(termo)
     );
   });
 
-  const handleEfetivarCheckin = (reserva: Reserva) => {
-    const res = realizarCheckin(reserva.ReservaId); // ou reserva.id dependendo da sua interface
+  const handleEfetivarCheckin = async (reserva: Reserva) => {
+    const res = await realizarCheckin(reserva.reservaid); // ou reserva.id dependendo da sua interface
     if (res.sucesso) {
       setFeedbackSucesso(res.mensagem);
       setComprovanteCheckin(reserva);
@@ -69,7 +69,7 @@ export const PaginaCheckin: React.FC = () => {
 
         <div className="text-right">
           <span className="text-xs font-medium text-[#717971]">Atendente Responsável:</span>
-          <p className="text-xs font-bold text-[#053d1e]">{usuarioAtual?.Nome || 'Sistema'}</p>
+          <p className="text-xs font-bold text-[#053d1e]">{usuarioAtual?.nome || 'Sistema'}</p>
         </div>
       </div>
 
@@ -110,10 +110,10 @@ export const PaginaCheckin: React.FC = () => {
               </div>
             ) : (
               reservasFiltradas.map((res) => {
-                const selecionado = reservaSelecionada?.ReservaId === res.ReservaId;
+                const selecionado = reservaSelecionada?.reservaid === res.reservaid;
                 return (
                   <div
-                    key={res.ReservaId}
+                    key={res.reservaid}
                     onClick={() => setReservaSelecionada(res)}
                     className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
                       selecionado
@@ -124,14 +124,14 @@ export const PaginaCheckin: React.FC = () => {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
                         <span className="font-['Manrope'] text-base font-bold text-[#191c1d]">
-                          {res.HospedeNome}
+                          {res.hospedenome}
                         </span>
                         <span className="text-xs font-bold px-2 py-0.5 rounded bg-[#e6f4ea] text-[#137333]">
-                          {res.Codigo}
+                          {res.codigo}
                         </span>
                       </div>
                       <span className="text-xs font-bold text-[#735c00] bg-[#ffe088] px-2 py-0.5 rounded-full inline-block w-fit">
-                        Chegada: {res.HorarioPrevistoChegada || '09:00'}
+                        Chegada: {res.horarioprevistochegada || '09:00'}
                       </span>
                     </div>
 
@@ -139,29 +139,29 @@ export const PaginaCheckin: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Acomodação:</span>
                         <span className="font-bold text-[#053d1e]">
-                          Quarto {res.QuartoNumero} ({res.QuartoCodigo})
+                          Quarto {res.quartonumero} ({res.quartocodigo})
                         </span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Período:</span>
                         <span className="font-medium text-[#191c1d]">
-                          {formatarData(res.DataEntrada)} a {formatarData(res.DataSaida)}
+                          {formatarData(res.dataentrada)} a {formatarData(res.datasaida)}
                         </span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Ocupantes:</span>
                         <span className="font-medium text-[#191c1d]">
-                          {res.Adultos} Ad / {res.Criancas} Cri
+                          {res.adultos} Ad / {res.criancas} Cri
                         </span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Saldo a Cobrar:</span>
                         <span
                           className={`font-bold ${
-                            res.Saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                            res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
                           }`}
                         >
-                          {formatarMoeda(res.Saldo)}
+                          {formatarMoeda(res.saldo)}
                         </span>
                       </div>
                     </div>
@@ -182,10 +182,10 @@ export const PaginaCheckin: React.FC = () => {
               </h3>
 
               <div className="p-3 rounded-xl bg-[#f8f9fa] border border-[#e1e3e4] space-y-2 text-xs">
-                <p className="font-bold text-sm text-[#191c1d]">{reservaSelecionada.HospedeNome}</p>
-                <p className="text-[#414941]">Tel: {reservaSelecionada.HospedeTelefone || 'Não informado'}</p>
+                <p className="font-bold text-sm text-[#191c1d]">{reservaSelecionada.hospedenome}</p>
+                <p className="text-[#414941]">Tel: {reservaSelecionada.hospedetelefone || 'Não informado'}</p>
                 <p className="text-[#053d1e] font-semibold">
-                  Destinado: Quarto {reservaSelecionada.QuartoNumero} ({reservaSelecionada.QuartoCodigo}) • {reservaSelecionada.QuartoCategoria}
+                  Destinado: Quarto {reservaSelecionada.quartonumero} ({reservaSelecionada.quartocodigo}) • {reservaSelecionada.quartocategoria}
                 </p>
               </div>
 
@@ -193,16 +193,16 @@ export const PaginaCheckin: React.FC = () => {
               <div className="border border-[#c1c9bf] rounded-xl p-3 space-y-2 text-xs">
                 <div className="flex justify-between font-semibold">
                   <span>Valor Total da Estadia:</span>
-                  <span>{formatarMoeda(reservaSelecionada.ValorTotal)}</span>
+                  <span>{formatarMoeda(reservaSelecionada.valortotal)}</span>
                 </div>
                 <div className="flex justify-between text-[#137333] font-semibold">
                   <span>Sinal Pago:</span>
-                  <span>{formatarMoeda(reservaSelecionada.ValorPago)}</span>
+                  <span>{formatarMoeda(reservaSelecionada.valorpago)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold pt-1 border-t border-[#e1e3e4]">
                   <span>Saldo a Receber no Balcão:</span>
-                  <span className={reservaSelecionada.Saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}>
-                    {formatarMoeda(reservaSelecionada.Saldo)}
+                  <span className={reservaSelecionada.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}>
+                    {formatarMoeda(reservaSelecionada.saldo)}
                   </span>
                 </div>
               </div>
@@ -246,18 +246,18 @@ export const PaginaCheckin: React.FC = () => {
             <div className="space-y-2 text-xs p-4 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4]">
               <div className="flex justify-between">
                 <span className="text-[#717971]">Hóspede:</span>
-                <span className="font-bold text-[#191c1d]">{comprovanteCheckin.HospedeNome}</span>
+                <span className="font-bold text-[#191c1d]">{comprovanteCheckin.hospedenome}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#717971]">Quarto Entregue:</span>
                 <span className="font-bold text-[#053d1e]">
-                  Quarto {comprovanteCheckin.QuartoNumero} ({comprovanteCheckin.QuartoCodigo})
+                  Quarto {comprovanteCheckin.quartonumero} ({comprovanteCheckin.quartocodigo})
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#717971]">Período:</span>
                 <span className="font-medium text-[#191c1d]">
-                  {formatarData(comprovanteCheckin.DataEntrada)} até {formatarData(comprovanteCheckin.DataSaida)}
+                  {formatarData(comprovanteCheckin.dataentrada)} até {formatarData(comprovanteCheckin.datasaida)}
                 </span>
               </div>
               <div className="flex justify-between">

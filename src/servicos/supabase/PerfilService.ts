@@ -13,6 +13,6 @@ export interface IPerfilService {
 
 export class PerfilService extends BaseService<Perfil> implements IPerfilService {
   constructor() {
-    super('Perfil', 'PerfilId');
+    super('perfil', 'perfilid');
   }
 }

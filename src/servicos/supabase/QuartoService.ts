@@ -16,7 +16,7 @@ export interface IQuartoService {
 
 export class QuartoService extends BaseService<Quarto> implements IQuartoService {
   constructor() {
-    super('Quarto', 'QuartoId');
+    super('quarto', 'quartoid');
   }
 
   public async obterPorNumero(numero: string): Promise<ResultadoSupabase<Quarto>> {
@@ -25,9 +25,9 @@ export class QuartoService extends BaseService<Quarto> implements IQuartoService
 
     try {
       const { data, error } = await client
-        .from('Quarto')
+        .from('quarto')
         .select('*')
-        .eq('Numero', numero)
+        .eq('numero', numero)
         .maybeSingle();
 
       if (error) return { sucesso: false, erro: error.message };
@@ -45,9 +45,9 @@ export class QuartoService extends BaseService<Quarto> implements IQuartoService
 
     try {
       const { data, error } = await client
-        .from('Quarto')
+        .from('quarto')
         .select('*')
-        .eq('CodigoIdentificador', codigoIdentificador)
+        .eq('codigoIdentificador', codigoIdentificador)
         .maybeSingle();
 
       if (error) return { sucesso: false, erro: error.message };
