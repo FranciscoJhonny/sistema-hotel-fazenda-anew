@@ -257,6 +257,7 @@ export type PaginaNavegacao =
   | 'dashboard'
   | 'quartos'
   | 'reservas'
+  | 'mapa-reservas'
   | 'nova-reserva'
   | 'checkin'
   | 'checkout'

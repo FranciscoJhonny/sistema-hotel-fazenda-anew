@@ -37,9 +37,9 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
     configuracoes: 'Configurações',
   };
 
-  const chegadasHoje = reservas.filter((r) => r.Status === 'AGUARDANDO_CHECKIN');
+  const chegadasHoje = reservas.filter((r) => r.statusreserva === 'AGUARDANDO_CHECKIN');
   const saidasHoje = reservas.filter(
-    (r) => r.Status === 'HOSPEDADO' && r.DataSaida === dataSistema
+    (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
   );
 
   const totalNotificacoes = chegadasHoje.length + saidasHoje.length;
@@ -139,7 +139,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
                   <>
                     {chegadasHoje.map((res) => (
                       <div
-                        key={res.ReservaId}
+                        key={res.reservaid}
                         onClick={() => {
                           navegarPara('checkin');
                           setMostrarNotificacoes(false);
@@ -149,10 +149,10 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
                         <Clock className="w-4 h-4 text-[#d97706] shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-[#111827]">
-                            Check-in previsto: {res.HospedeNome}
+                            Check-in previsto: {res.hospedenome}
                           </p>
                           <p className="text-[11px] text-[#4b5563]">
-                            Quarto {res.QuartoNumero} ({res.QuartoCodigo}) • {res.HorarioPrevistoChegada || '14:00'}
+                            Quarto {res.quartonumero} ({res.quartocodigo}) • {res.horarioprevistochegada || '14:00'}
                           </p>
                         </div>
                       </div>
@@ -160,7 +160,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
 
                     {saidasHoje.map((res) => (
                       <div
-                        key={res.ReservaId}
+                        key={res.reservaid}
                         onClick={() => {
                           navegarPara('checkout');
                           setMostrarNotificacoes(false);
@@ -170,10 +170,10 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
                         <AlertCircle className="w-4 h-4 text-[#dc2626] shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-[#111827]">
-                            Check-out previsto: {res.HospedeNome}
+                            Check-out previsto: {res.hospedenome}
                           </p>
                           <p className="text-[11px] text-[#4b5563]">
-                            Quarto {res.QuartoNumero} ({res.QuartoCodigo}) • {res.HorarioPrevistoSaida || '12:00'}
+                            Quarto {res.quartonumero} ({res.quartocodigo}) • {res.horarioprevistosaida || '12:00'}
                           </p>
                         </div>
                       </div>
@@ -200,27 +200,27 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
           <button
             onClick={() => setMostrarMenuUsuario(!mostrarMenuUsuario)}
             className="w-8 h-8 rounded-lg bg-[#193b27] hover:bg-[#245437] text-white flex items-center justify-center font-bold text-xs tracking-wider shadow-xs cursor-pointer select-none transition-colors"
-            title={usuarioAtual?.Nome || 'Usuário'}
+            title={usuarioAtual?.nome || 'Usuário'}
             aria-label="Perfil do usuário"
           >
-            {usuarioAtual?.Nome ? usuarioAtual.Nome.substring(0, 2).toUpperCase() : 'MP'}
+            {usuarioAtual?.nome ? usuarioAtual.nome.substring(0, 2).toUpperCase() : 'MP'}
           </button>
 
           {mostrarMenuUsuario && (
             <div className="absolute right-0 mt-2 w-64 bg-white border border-[#e5e7eb] rounded-xl shadow-lg p-3 z-50 animate-in fade-in zoom-in-95 duration-100">
               <div className="flex items-center gap-3 pb-3 border-b border-[#f3f4f6]">
                 <div className="w-10 h-10 rounded-lg bg-[#e6f4ea] text-[#053d1e] flex items-center justify-center font-bold text-sm border border-[#b8f0c2]">
-                  {usuarioAtual?.Nome ? usuarioAtual.Nome.substring(0, 2).toUpperCase() : 'MP'}
+                  {usuarioAtual?.nome ? usuarioAtual.nome.substring(0, 2).toUpperCase() : 'MP'}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold text-[#111827] truncate">
-                    {usuarioAtual?.Nome || 'Administrador'}
+                    {usuarioAtual?.nome || 'Administrador'}
                   </p>
                   <p className="text-[11px] text-[#6b7280] font-mono truncate">
-                    {usuarioAtual?.Email || 'admin@fazendaanew.com.br'}
+                    {usuarioAtual?.email || 'admin@fazendaanew.com.br'}
                   </p>
                   <span className="inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.2 bg-[#e6f4ea] text-[#053d1e] rounded">
-                    {usuarioAtual?.Perfil || 'ADMIN'}
+                    {usuarioAtual?.perfil || 'ADMIN'}
                   </span>
                 </div>
               </div>

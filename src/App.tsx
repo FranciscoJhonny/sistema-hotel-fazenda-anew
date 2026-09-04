@@ -5,6 +5,7 @@ import { BarraSuperior } from './componentes/layout/BarraSuperior';
 import { PaginaDashboard } from './paginas/PaginaDashboard';
 import { PaginaQuartos } from './paginas/PaginaQuartos';
 import { PaginaReservas } from './paginas/PaginaReservas';
+import { PaginaMapaReservas } from './paginas/PaginaMapaReservas';
 import { PaginaCheckin } from './paginas/PaginaCheckin';
 import { PaginaCheckout } from './paginas/PaginaCheckout';
 import { PaginaHospedes } from './paginas/PaginaHospedes';
@@ -31,6 +32,8 @@ const ConteudoPrincipal: React.FC = () => {
       case 'reservas':
       case 'nova-reserva':
         return <PaginaReservas abrirModalNova={paginaAtual === 'nova-reserva'} />;
+      case 'mapa-reservas':
+        return <PaginaMapaReservas />;
       case 'checkin':
         return <PaginaCheckin />;
       case 'checkout':

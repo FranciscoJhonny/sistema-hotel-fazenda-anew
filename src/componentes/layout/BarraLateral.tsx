@@ -68,6 +68,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         icone: <CalendarDays className="w-5 h-5" />,
       },
       {
+        id: 'mapa-reservas',
+        label: 'Mapa de Reservas',
+        icone: <CalendarDays className="w-5 h-5" />,
+      },
+      {
         id: 'hospedes',
         label: 'Hóspedes',
         icone: <Users className="w-5 h-5" />,
