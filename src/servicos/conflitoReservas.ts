@@ -1,11 +1,21 @@
 import { Quarto, Reserva, StatusQuarto } from '../tipos';
 
 /**
- * Verifica se dois intervalos de datas [inicioA, fimA] e [inicioB, fimB] possuem sobreposição.
- * No contexto hoteleiro:
- * Uma reserva de 05/09 a 07/09 tem diárias nos dias 05 e 06, com check-out em 07/09.
- * Portanto:
- * Conflito ocorre quando (inicioA < fimB) && (fimA > inicioB).
+ * Helper para normalizar os dados da reserva, 
+ * evitando erros de Case Sensitivity (maiúsculas/minúsculas) vindos do banco.
+ */
+const normalizarReserva = (res: any) => ({
+  quartoid: res.quartoid ?? res.QuartoId ?? res.QUARTOID,
+  statusreserva: (res.statusreserva ?? res.status ?? res.Status ?? res.STATUS ?? '').toUpperCase(),
+  reservaid: res.reservaid ?? res.ReservaId ?? res.RESERVAID,
+  codigo: res.codigo ?? res.Codigo ?? res.CODIGO,
+  hospedenome: res.hospedenome ?? res.HospedeNome ?? res.HOSPEDENOME,
+  dataentrada: res.dataentrada ?? res.DataEntrada ?? res.DATAENTRADA,
+  datasaida: res.datasaida ?? res.DataSaida ?? res.DATASAIDA,
+});
+
+/**
+ * Verifica se dois intervalos de datas possuem sobreposição.
  */
 export function verificarSobreposicaoDatas(
   inicioA: string,
@@ -20,19 +30,17 @@ export function verificarSobreposicaoDatas(
   const dataInicioB = new Date(inicioB + 'T00:00:00').getTime();
   const dataFimB = new Date(fimB + 'T00:00:00').getTime();
 
-  // Se data início for maior ou igual ao fim, datas inválidas
   if (dataInicioA >= dataFimA || dataInicioB >= dataFimB) {
     return true; // Bloqueia datas inválidas
   }
 
-  // Sobreposição de período
   return dataInicioA < dataFimB && dataFimA > dataInicioB;
 }
 
 export interface ResultadoVerificacaoConflito {
   temConflito: boolean;
   motivo?: string;
-  reservaConflitante?: Reserva;
+  reservaConflitante?: any;
 }
 
 /**
@@ -42,13 +50,11 @@ export function verificarConflitoQuarto(
   quartoId: number | string,
   dataEntrada: string,
   dataSaida: string,
-  reservasExistentes: Reserva[],
+  reservasExistentes: any[],
   reservaIdIgnorar?: number | string
 ): ResultadoVerificacaoConflito {
   if (!dataEntrada || !dataSaida) {
-    return {
-      temConflito: false,
-    };
+    return { temConflito: false };
   }
 
   const dEntrada = new Date(dataEntrada + 'T00:00:00');
@@ -61,76 +67,81 @@ export function verificarConflitoQuarto(
     };
   }
 
-  // Filtrar reservas ativas para o quarto
-  const reservasDoQuarto = reservasExistentes.filter(
-    (res) =>
-      String(res.QuartoId) === String(quartoId) &&
-      res.Status !== 'CANCELADA' &&
-      res.Status !== 'FINALIZADA' &&
-      String(res.ReservaId) !== String(reservaIdIgnorar)
-  );
+  const reservasDoQuarto = reservasExistentes.filter((res: any) => {
+    const r = normalizarReserva(res);
+    return (
+      String(r.quartoid) === String(quartoId) &&
+      r.statusreserva !== 'CANCELADA' &&
+      r.statusreserva !== 'FINALIZADA' &&
+      String(r.reservaid) !== String(reservaIdIgnorar)
+    );
+  });
 
-  for (const reserva of reservasDoQuarto) {
+  for (const res of reservasDoQuarto) {
+    const r = normalizarReserva(res);
+    
     const sobrepoe = verificarSobreposicaoDatas(
       dataEntrada,
       dataSaida,
-      reserva.DataEntrada,
-      reserva.DataSaida
+      r.dataentrada,
+      r.datasaida
     );
 
     if (sobrepoe) {
       return {
         temConflito: true,
-        motivo: `Conflito com a reserva ${reserva.Codigo} (${reserva.HospedeNome}) de ${reserva.DataEntrada} até ${reserva.DataSaida}.`,
-        reservaConflitante: reserva,
+        motivo: `Conflito com a reserva ${r.codigo} (${r.hospedenome}) de ${r.dataentrada} até ${r.datasaida}.`,
+        reservaConflitante: res,
       };
     }
   }
 
-  return {
-    temConflito: false,
-  };
+  return { temConflito: false };
 }
 
 export interface StatusDisponibilidadeQuarto {
-  quarto: Quarto;
+  quarto: any;
   disponivel: boolean;
   motivoIndisponibilidade?: string;
   statusCalculado: StatusQuarto;
-  reservaConflitante?: Reserva;
+  reservaConflitante?: any;
 }
 
 /**
  * Calcula a disponibilidade em tempo real dos quartos para um período determinado.
+ * ⚠️ ESTA É A FUNÇÃO QUE ESTAVA DANDO ERRO DE EXPORTAÇÃO.
  */
 export function calcularDisponibilidadeQuartos(
-  quartos: Quarto[],
-  reservas: Reserva[],
+  quartos: any[],
+  reservas: any[],
   dataEntrada?: string,
   dataSaida?: string,
   reservaIdIgnorar?: number | string
 ): StatusDisponibilidadeQuarto[] {
-  return quartos.map((quarto) => {
-    // Se o quarto estiver em manutenção física, fica indisponível
-    if (quarto.Status === 'MANUTENCAO') {
+  return quartos.map((quarto: any) => {
+    const qId = quarto.quartoid ?? quarto.QuartoId ?? quarto.QUARTOID;
+    const qStatus = (quarto.status ?? quarto.Status ?? quarto.STATUS ?? '').toUpperCase();
+    const qMotivo = quarto.motivobloqueio ?? quarto.MotivoBloqueio ?? quarto.MOTIVOBLOQUEIO;
+
+    if (qStatus === 'MANUTENCAO') {
       return {
         quarto,
         disponivel: false,
-        motivoIndisponibilidade: quarto.MotivoBloqueio ? `Quarto em manutenção: ${quarto.MotivoBloqueio}` : 'Quarto em manutenção programada',
-        statusCalculado: 'MANUTENCAO',
+        motivoIndisponibilidade: qMotivo ? `Quarto em manutenção: ${qMotivo}` : 'Quarto em manutenção programada',
+        statusCalculado: 'MANUTENCAO' as StatusQuarto,
       };
     }
 
     if (!dataEntrada || !dataSaida) {
       return {
         quarto,
-        disponivel: quarto.Status === 'DISPONIVEL',
-        statusCalculado: quarto.Status,
+        disponivel: qStatus === 'DISPONIVEL',
+        statusCalculado: qStatus as StatusQuarto,
       };
     }
 
     const resultado = verificarConflitoQuarto(
-      quarto.QuartoId,
+      qId,
       dataEntrada,
       dataSaida,
       reservas,
@@ -142,7 +153,7 @@ export function calcularDisponibilidadeQuartos(
         quarto,
         disponivel: false,
         motivoIndisponibilidade: resultado.motivo,
-        statusCalculado: 'RESERVADO',
+        statusCalculado: 'RESERVADO' as StatusQuarto,
         reservaConflitante: resultado.reservaConflitante,
       };
     }
@@ -150,7 +161,7 @@ export function calcularDisponibilidadeQuartos(
     return {
       quarto,
       disponivel: true,
-      statusCalculado: 'DISPONIVEL',
+      statusCalculado: 'DISPONIVEL' as StatusQuarto,
     };
   });
 }

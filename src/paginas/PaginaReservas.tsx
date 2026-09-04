@@ -1,18 +1,10 @@
 import React, { useState } from 'react';
 import {
-  Calendar,
   Search,
   Plus,
   Filter,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  User,
-  Bed,
-  FileText,
   Trash2,
   Eye,
-  ShieldAlert,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva, StatusReserva } from '../tipos';
@@ -30,7 +22,6 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
     cancelarReserva,
     realizarCheckin,
     realizarCheckout,
-    verificarDisponibilidade,
     navegarPara,
   } = useHotel();
 
@@ -40,11 +31,6 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
   const [reservaParaCancelar, setReservaParaCancelar] = useState<Reserva | null>(null);
   const [modalCancelarAberto, setModalCancelarAberto] = useState<boolean>(false);
   const [reservaSelecionadaVer, setReservaSelecionadaVer] = useState<Reserva | null>(null);
-
-  // Simulador Anti-Conflito
-  const [simuladorAberto, setSimuladorAberto] = useState<boolean>(false);
-  const [simEntrada, setSimEntrada] = useState<string>('2026-09-05');
-  const [simSaida, setSimSaida] = useState<string>('2026-09-07');
 
   // Filtragem
   const reservasFiltradas = reservas.filter((res) => {
@@ -84,35 +70,20 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
     }
   };
 
-  const resultadoSimulador = verificarDisponibilidade(simEntrada, simSaida);
-
   return (
     <div className="space-y-6">
       {/* Cabeçalho */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="font-['Manrope'] text-xl font-bold text-[#191c1d]">
-              Central de Reservas
-            </h1>
-            <span className="text-xs font-bold text-[#053d1e] bg-[#e6f4ea] px-2.5 py-0.5 rounded-full border border-[#b8f0c2]">
-              Proteção Anti-Duplicidade
-            </span>
-          </div>
+          <h1 className="font-['Manrope'] text-xl font-bold text-[#191c1d]">
+            Central de Reservas
+          </h1>
           <p className="text-xs text-[#717971] mt-1">
             Gerenciamento completo das reservas de hospedagem, day use e eventos do Hotel Fazenda Anew.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSimuladorAberto(!simuladorAberto)}
-            className="px-3.5 py-2 text-xs font-semibold rounded-xl border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#053d1e] flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <ShieldAlert className="w-4 h-4 text-[#053d1e]" />
-            <span>{simuladorAberto ? 'Ocultar Validador' : 'Testar Conflitos'}</span>
-          </button>
-
           <button
             onClick={() => setModalNovaReservaAberto(true)}
             className="px-4 py-2 text-xs font-bold bg-[#053d1e] hover:bg-[#225533] text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -122,65 +93,6 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
           </button>
         </div>
       </div>
-
-      {/* Widget do Validador Anti-Conflito */}
-      {simuladorAberto && (
-        <div className="bg-[#f8f9fa] border-2 border-[#053d1e]/40 rounded-2xl p-5 shadow-sm space-y-4 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between pb-2 border-b border-[#e1e3e4]">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="w-5 h-5 text-[#053d1e]" />
-              <h3 className="font-['Manrope'] text-sm font-bold text-[#191c1d]">
-                Simulador & Testador de Conflitos para os 13 Quartos
-              </h3>
-            </div>
-            <span className="text-xs text-[#414941]">
-              Insira qualquer período para checar ocupações instantaneamente.
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div>
-              <label className="block font-semibold text-[#414941] mb-1">Data Entrada:</label>
-              <input
-                type="date"
-                value={simEntrada}
-                onChange={(e) => setSimEntrada(e.target.value)}
-                className="w-full p-2 border border-[#c1c9bf] rounded-lg bg-white"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-[#414941] mb-1">Data Saída:</label>
-              <input
-                type="date"
-                value={simSaida}
-                onChange={(e) => setSimSaida(e.target.value)}
-                className="w-full p-2 border border-[#c1c9bf] rounded-lg bg-white"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-2">
-            {resultadoSimulador.map(({ quarto, disponivel, motivoIndisponibilidade, reservaConflitante }) => (
-              <div
-                key={quarto.quartoid}
-                className={`p-2 rounded-lg border text-xs ${
-                  disponivel
-                    ? 'bg-[#e6f4ea] border-[#b8f0c2] text-[#00210d]'
-                    : 'bg-[#ffdad6] border-[#ffb4ab] text-[#93000a]'
-                }`}
-              >
-                <div className="flex justify-between font-bold">
-                  <span>Q{quarto.numero} ({quarto.codigoidentificador})</span>
-                  <span>{disponivel ? 'LIVRE' : 'BLOQ'}</span>
-                </div>
-                <p className="text-[10px] mt-1 truncate">
-                  {disponivel ? 'Disponível' : reservaConflitante ? `Reserva ${reservaConflitante.codigo}` : 'Manutenção'}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Barra de Busca e Filtros */}
       <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
