@@ -21,7 +21,7 @@ const usuarioPadrao: Usuario = {
 
 const configuracaoPadrao: ConfiguracaoSistema = {
   checkintime: '09:00',
-  checkouttime: '12:00',
+  checkouttime: '15:00',
   hotelnome: 'Fazenda Anew',
   hotellocalizacao: '',
   telefonehotel: '',
@@ -181,7 +181,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           client.from('venda').select('*'),
           client.from('pacote').select('*').eq('ativo', true),
           client.from('usuario').select('*').eq('ativo', true),
-          client.from('configuracao').select('*').limit(1).maybeSingle(),
+          client.from('configuracao').select('*').eq('ativo', true),
         ]);
 
         // Tratamento robusto de Quartos
@@ -222,7 +222,21 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!usuariosResult.error && usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
 
         if (!configuracaoResult.error && configuracaoResult.data) {
-          setConfiguracoes({ ...configuracaoPadrao, ...(configuracaoResult.data as any) });
+          const configuracoesBanco = configuracaoResult.data as any[];
+          const configuracaoBanco = configuracoesBanco.reduce((resultado, item) => {
+            const chave = String(item.chave ?? item.Chave ?? '').toLowerCase();
+            const valor = item.valor ?? item.Valor;
+
+            if (chave === 'checkintime') resultado.checkintime = valor;
+            if (chave === 'checkouttime') resultado.checkouttime = valor;
+            return resultado;
+          }, {} as Record<string, string>);
+
+          setConfiguracoes({
+            ...configuracaoPadrao,
+            checkintime: configuracaoBanco.checkintime ?? configuracaoPadrao.checkintime,
+            checkouttime: configuracaoBanco.checkouttime ?? configuracaoPadrao.checkouttime,
+          });
         }
 
         const usuarioSalvo = authService.getUsuarioLogado();
@@ -338,15 +352,21 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
     if (quarto.status === 'MANUTENCAO') return { sucesso: false, mensagem: `Quarto ${quarto.numero} em manutenção.` };
 
-    const numeroAleatorio = Math.floor(10000 + Math.random() * 90000);
     const agora = new Date().toISOString();
     let statusInicial: StatusReserva = dados.statusreserva || 'CONFIRMADA';
     if (dados.dataentrada === dataSistema && statusInicial !== 'HOSPEDADO') statusInicial = 'AGUARDANDO_CHECKIN';
 
+    const maiorNumeroCodigo = reservas.reduce((maior, reserva) => {
+      const correspondencia = String(reserva.codigo || '').match(/^#RES-(\d+)$/i);
+      const numero = correspondencia ? Number(correspondencia[1]) : 0;
+      return Number.isFinite(numero) ? Math.max(maior, numero) : maior;
+    }, 0);
+    const proximoCodigo = `#RES-${String(maiorNumeroCodigo + 1).padStart(3, '0')}`;
+
     const novaReserva: Reserva = {
       ...dados,
-      reservaid: numeroAleatorio,
-      codigo: `#${numeroAleatorio}`,
+      reservaid: 0,
+      codigo: proximoCodigo,
       quartonumero: quarto.numero,
       quartocodigo: quarto.codigoidentificador,
       quartocategoria: quarto.categoria,
@@ -359,13 +379,47 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       naturezaoperacao: 'INSERT',
     };
 
-    const { data, error } = await client.from('reserva').insert(novaReserva).select().single();
+    const dadosParaBanco = {
+      codigo: novaReserva.codigo,
+      hospedeid: novaReserva.hospedeid,
+      quartoid: novaReserva.quartoid,
+      adultos: novaReserva.adultos,
+      criancas: novaReserva.criancas,
+      dataentrada: novaReserva.dataentrada,
+      datasaida: novaReserva.datasaida,
+      horarioprevistochegada: novaReserva.horarioprevistochegada,
+      tipoatendimento: novaReserva.tipoatendimento,
+      pacoteid: novaReserva.pacoteid,
+      statusreserva: novaReserva.statusreserva,
+      valortotal: novaReserva.valortotal,
+      valorpago: novaReserva.valorpago,
+      saldo: novaReserva.saldo,
+      statuspagamento: novaReserva.statuspagamento,
+      formapagamento: novaReserva.formapagamento,
+      observacoes: novaReserva.observacoes,
+      ativo: novaReserva.ativo,
+      usuarioinclusao: novaReserva.usuarioinclusao,
+      datainclusao: novaReserva.datainclusao,
+      usuariooperacao: novaReserva.usuariooperacao,
+      dataoperacao: novaReserva.dataoperacao,
+      naturezaoperacao: novaReserva.naturezaoperacao,
+    };
+
+    const { data, error } = await client.from('reserva').insert(dadosParaBanco).select().single();
     if (error) return { sucesso: false, mensagem: 'Erro ao salvar: ' + error.message };
 
-    setReservas(prev => [data as Reserva, ...prev]);
+    const reservaSalva = {
+      ...novaReserva,
+      ...data,
+      quartonumero: quarto.numero,
+      quartocodigo: quarto.codigoidentificador,
+      quartocategoria: quarto.categoria,
+    } as Reserva;
+
+    setReservas(prev => [reservaSalva, ...prev]);
     await atualizarStatusQuarto(quarto.quartoid, statusInicial === 'HOSPEDADO' ? 'OCUPADO' : (dados.dataentrada === dataSistema ? 'AGUARDANDO_CHECKIN' : 'RESERVADO'));
 
-    return { sucesso: true, mensagem: `Reserva ${data.codigo} criada com sucesso!`, reserva: data as Reserva };
+    return { sucesso: true, mensagem: `Reserva ${reservaSalva.codigo} criada com sucesso!`, reserva: reservaSalva };
   };
 
   const atualizarReserva = async (id: number | string, dados: Partial<Reserva>): Promise<{ sucesso: boolean; mensagem: string }> => {

@@ -34,7 +34,9 @@ export function verificarSobreposicaoDatas(
     return true; // Bloqueia datas inválidas
   }
 
-  return dataInicioA < dataFimB && dataFimA > dataInicioB;
+  // Checkout ocorre as 15:00 e o próximo check-in as 09:00;
+  // portanto, compartilhar a mesma data tambem representa conflito.
+  return dataInicioA <= dataFimB && dataFimA >= dataInicioB;
 }
 
 export interface ResultadoVerificacaoConflito {

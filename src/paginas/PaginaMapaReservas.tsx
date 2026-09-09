@@ -35,7 +35,7 @@ const formatarMesCurto = (date: Date) =>
 
 const datasSobrepostas = (reserva: any, inicioPeriodo: Date, fimPeriodo: Date) => {
   const inicioReserva = new Date(`${reserva.dataentrada}T00:00:00`);
-  const fimReserva = new Date(`${reserva.datasaida}T00:00:00`);
+  const fimReserva = addDias(new Date(`${reserva.datasaida}T00:00:00`), 1);
   return inicioReserva < fimPeriodo && fimReserva > inicioPeriodo;
 };
 
@@ -191,7 +191,7 @@ export const PaginaMapaReservas: React.FC = () => {
           {datasVisiveis.map((data) => {
             const dataIso = data.toISOString().slice(0, 10);
             const reservaAtiva = reservasDoQuarto.find((reserva) => (
-              dataIso >= reserva.dataentrada && dataIso < reserva.datasaida
+              dataIso >= reserva.dataentrada && dataIso <= reserva.datasaida
             ));
 
             return (
@@ -223,7 +223,7 @@ export const PaginaMapaReservas: React.FC = () => {
               periodoInicio.getDate()
             );
             const inicio = new Date(`${reserva.dataentrada}T00:00:00`);
-            const fim = new Date(`${reserva.datasaida}T00:00:00`);
+            const fim = addDias(new Date(`${reserva.datasaida}T00:00:00`), 1);
             const inicioVisivel = inicio < periodoInicioNormalizado ? periodoInicioNormalizado : inicio;
             const fimPeriodo = addDias(periodoInicioNormalizado, numeroDias);
             const fimVisivel = fim > fimPeriodo ? fimPeriodo : fim;
@@ -242,12 +242,14 @@ export const PaginaMapaReservas: React.FC = () => {
               <button
                 key={String(reserva.reservaid)}
                 type="button"
+                disabled
                 onClick={() => {
                   setQuartoSelecionado(quarto);
                   setDataSelecionada(reserva.dataentrada);
                   setModalAberto(true);
                 }}
-                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold text-white shadow-sm ${mappedStatusColor[reserva.statusreserva] || 'bg-[#00A8E8]'}`}
+                aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${quarto.codigoidentificador || quarto.numero}`}
+                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold text-white shadow-sm disabled:cursor-not-allowed ${mappedStatusColor[reserva.statusreserva] || 'bg-[#00A8E8]'}`}
                 style={{ left: `${startOffset * 80}px`, width: `${Math.max(duration * 80 - 4, 32)}px` }}
               >
                 <span className="flex min-w-0 items-center gap-1 truncate">
