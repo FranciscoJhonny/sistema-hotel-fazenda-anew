@@ -124,6 +124,7 @@ export interface Pacote extends EntidadeAuditavel {
   valor: number;
   adultosinclusos: number;
   criancasinclusas: number;
+  quantidadedias: number;
 }
 
 // =============================================================================
@@ -255,7 +256,7 @@ export interface ConfiguracaoSistema {
 export type PaginaNavegacao = 
   | 'login'
   | 'dashboard'
-  | 'quartos'
+  | 'status-quartos'
   | 'reservas'
   | 'mapa-reservas'
   | 'nova-reserva'

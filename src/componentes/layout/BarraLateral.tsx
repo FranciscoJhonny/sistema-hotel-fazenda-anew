@@ -5,6 +5,7 @@ import {
   CalendarDays,
   HelpCircle,
   LayoutDashboard,
+  LogIn,
   LogOut,
   Settings,
   Users
@@ -40,7 +41,6 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
   const checkinsHoje = reservas.filter(
     (r) => r.statusreserva === 'AGUARDANDO_CHECKIN'
   ).length;
-
   const checkoutsHoje = reservas.filter(
     (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
   ).length;
@@ -51,6 +51,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
     id: PaginaNavegacao;
     label: string;
     icone: React.ReactNode;
+    contador?: number;
   }[] = [
       {
         id: 'dashboard',
@@ -58,8 +59,8 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         icone: <LayoutDashboard className="w-5 h-5" />,
       },
       {
-        id: 'quartos',
-        label: 'Quartos',
+        id: 'status-quartos',
+        label: 'Status dos Quartos',
         icone: <Bed className="w-5 h-5" />,
       },
       {
@@ -71,6 +72,18 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'mapa-reservas',
         label: 'Mapa de Reservas',
         icone: <CalendarDays className="w-5 h-5" />,
+      },
+      {
+        id: 'checkin',
+        label: 'Check-in',
+        icone: <LogIn className="w-5 h-5" />,
+        contador: checkinsHoje,
+      },
+      {
+        id: 'checkout',
+        label: 'Check-out',
+        icone: <LogOut className="w-5 h-5" />,
+        contador: checkoutsHoje,
       },
       {
         id: 'hospedes',
@@ -136,14 +149,24 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
                 key={item.id}
                 onClick={() => handleNavegar(item.id)}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 cursor-pointer ${ativo
-                    ? 'bg-[#245437] text-white font-semibold shadow-xs'
-                    : 'text-[#4b5563] hover:bg-[#f3f4f6] hover:text-[#111827]'
+                  ? 'bg-[#245437] text-white font-semibold shadow-xs'
+                  : 'text-[#4b5563] hover:bg-[#f3f4f6] hover:text-[#111827]'
                   }`}
               >
                 <span className={ativo ? 'text-white' : 'text-[#6b7280]'}>
                   {item.icone}
                 </span>
                 <span>{item.label}</span>
+                {item.contador !== undefined && item.contador > 0 && (
+                  <span
+                    className={`ml-auto min-w-5 rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold ${ativo
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#e6f4ea] text-[#245437]'
+                      }`}
+                  >
+                    {item.contador}
+                  </span>
+                )}
               </button>
             );
           })}

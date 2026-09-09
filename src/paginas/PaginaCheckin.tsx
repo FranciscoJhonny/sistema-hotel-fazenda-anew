@@ -28,7 +28,7 @@ export const PaginaCheckin: React.FC = () => {
   const reservasAguardando = reservas.filter(
     (r) => r.statusreserva === 'AGUARDANDO_CHECKIN' || (r.statusreserva === 'CONFIRMADA' && r.dataentrada <= dataSistema)
   );
-
+  console.log(reservasAguardando);
   const reservasFiltradas = reservasAguardando.filter((r) => {
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();
@@ -115,11 +115,10 @@ export const PaginaCheckin: React.FC = () => {
                   <div
                     key={res.reservaid}
                     onClick={() => setReservaSelecionada(res)}
-                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
-                      selecionado
+                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
                         ? 'border-2 border-[#053d1e] bg-[#b8f0c2]/10 ring-2 ring-[#053d1e]/20 shadow-md'
                         : 'border-[#c1c9bf] hover:border-[#053d1e] hover:shadow-xs'
-                    }`}
+                      }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
@@ -139,7 +138,7 @@ export const PaginaCheckin: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Acomodação:</span>
                         <span className="font-bold text-[#053d1e]">
-                          Quarto {res.quartonumero} ({res.quartocodigo})
+                          Quarto {res.quartocodigo}
                         </span>
                       </div>
                       <div>
@@ -157,9 +156,8 @@ export const PaginaCheckin: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Saldo a Cobrar:</span>
                         <span
-                          className={`font-bold ${
-                            res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
-                          }`}
+                          className={`font-bold ${res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                            }`}
                         >
                           {formatarMoeda(res.saldo)}
                         </span>

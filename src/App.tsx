@@ -3,7 +3,7 @@ import { ContextoHotelProvider, useHotel } from './contextos/ContextoHotel';
 import { BarraLateral } from './componentes/layout/BarraLateral';
 import { BarraSuperior } from './componentes/layout/BarraSuperior';
 import { PaginaDashboard } from './paginas/PaginaDashboard';
-import { PaginaQuartos } from './paginas/PaginaQuartos';
+import { PaginaStatusQuartos } from './paginas/PaginaStatusQuartos';
 import { PaginaReservas } from './paginas/PaginaReservas';
 import { PaginaMapaReservas } from './paginas/PaginaMapaReservas';
 import { PaginaCheckin } from './paginas/PaginaCheckin';
@@ -27,8 +27,8 @@ const ConteudoPrincipal: React.FC = () => {
     switch (paginaAtual) {
       case 'dashboard':
         return <PaginaDashboard />;
-      case 'quartos':
-        return <PaginaQuartos />;
+      case 'status-quartos':
+        return <PaginaStatusQuartos />;
       case 'reservas':
       case 'nova-reserva':
         return <PaginaReservas abrirModalNova={paginaAtual === 'nova-reserva'} />;

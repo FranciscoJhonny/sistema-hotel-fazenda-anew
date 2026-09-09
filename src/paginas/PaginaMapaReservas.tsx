@@ -23,7 +23,10 @@ const addDias = (data: Date, dias: number) => {
   nova.setDate(nova.getDate() + dias);
   return nova;
 };
-
+const isDataPassada = (data: string) => {
+  const hoje = new Date().toISOString().slice(0, 10);
+  return data < hoje;
+};
 const formatarDiaSemana = (date: Date) =>
   new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(date).toUpperCase();
 
@@ -70,7 +73,7 @@ export const PaginaMapaReservas: React.FC = () => {
 
     quartos.forEach((quarto) => {
       if (quarto.ativo === false) return;
-      
+
       const bloco = quarto.bloco || 'B';
       if (blocosMap[bloco]) {
         blocosMap[bloco].push(quarto);
@@ -109,21 +112,21 @@ export const PaginaMapaReservas: React.FC = () => {
       }
       if (filtroStatus === 'OCUPADOS' && reserva.statusreserva !== 'HOSPEDADO') return false;
       if (filtroStatus === 'DAY_USE' && reserva.tipoatendimento !== 'DAY_USE') return false;
-      
+
       if (busca.trim()) {
         const termo = busca.toLowerCase();
         const hospede = hospedeMap.get(Number(reserva.hospedeid));
         const quarto = quartos.find(q => Number(q.quartoid) === Number(reserva.quartoid));
         const nomeHospede = hospede?.nomecompleto || '';
         const numeroQuarto = quarto?.codigoidentificador || '';
-        
+
         return (
           nomeHospede.toLowerCase().includes(termo) ||
           numeroQuarto.toLowerCase().includes(termo) ||
           (reserva.codigo || '').toLowerCase().includes(termo)
         );
       }
-      
+
       return true;
     }).map((reserva) => {
       const hospede = hospedeMap.get(Number(reserva.hospedeid));
@@ -138,14 +141,14 @@ export const PaginaMapaReservas: React.FC = () => {
     if (reservasVisiveis.length === 0 || quartos.length === 0) return 0;
     const totalDias = numeroDias * quartos.length;
     let diasOcupados = 0;
-    
+
     reservasVisiveis.forEach((res) => {
       const inicio = new Date(`${res.dataentrada}T00:00:00`);
       const fim = new Date(`${res.datasaida}T00:00:00`);
       const duracao = Math.ceil((fim.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
       diasOcupados += duracao;
     });
-    
+
     return Math.min(100, Math.round((diasOcupados / totalDias) * 100));
   }, [reservasVisiveis, numeroDias, quartos.length]);
 
@@ -170,7 +173,7 @@ export const PaginaMapaReservas: React.FC = () => {
   }, [quartos, reservas, reservasVisiveis, periodoInicio, numeroDias]);
 
   const renderizarLinhaQuarto = (quarto: Quarto) => {
-    const reservasDoQuarto = reservasVisiveis.filter((reserva) => 
+    const reservasDoQuarto = reservasVisiveis.filter((reserva) =>
       Number(reserva.quartoid) === Number(quarto.quartoid)
     );
 
@@ -195,14 +198,18 @@ export const PaginaMapaReservas: React.FC = () => {
               <button
                 key={`${quarto.quartoid}-${dataIso}`}
                 type="button"
-                disabled={Boolean(reservaAtiva)}
+                disabled={Boolean(reservaAtiva) || isDataPassada(dataIso)}
                 onClick={() => {
                   if (reservaAtiva) return;
+                  if (isDataPassada(dataIso)) return; // Bloqueia data passada
                   setQuartoSelecionado(quarto);
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
                 }}
-                className={`border-r border-[#e5e7eb] bg-[#f8f9fa] transition-colors hover:bg-[#e6f4ea] ${reservaAtiva?.statusreserva === 'HOSPEDADO' ? 'bg-[#053d1e]' : ''}`}
+                className={`border-r border-[#e5e7eb] bg-[#f8f9fa] transition-colors 
+                            ${reservaAtiva?.statusreserva === 'HOSPEDADO' ? 'bg-[#053d1e]' : ''}
+                            ${isDataPassada(dataIso) ? 'opacity-30 cursor-not-allowed hover:bg-[#f8f9fa]' : 'hover:bg-[#e6f4ea]'}
+                            `}
               />
             );
           })}
@@ -295,7 +302,15 @@ export const PaginaMapaReservas: React.FC = () => {
               Ocupação do período: {ocupacao}%
             </div>
 
-            <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-[#053d1e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#225533]">
+            <button
+              type="button"
+              onClick={() => {
+                setQuartoSelecionado(null);
+                setDataSelecionada(periodoInicio.toISOString().slice(0, 10));
+                setModalAberto(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#053d1e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#225533]"
+            >
               <Plus className="h-4 w-4" />
               Adicionar Reserva
             </button>
@@ -326,11 +341,10 @@ export const PaginaMapaReservas: React.FC = () => {
                 key={item.value}
                 type="button"
                 onClick={() => setFiltroStatus(item.value as any)}
-                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
-                  filtroStatus === item.value
-                    ? 'border-[#053d1e] bg-[#053d1e] text-white shadow-sm'
-                    : 'border-[#c1c9bf] bg-white text-[#191c1d] hover:bg-[#f8f9fa]'
-                }`}
+                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${filtroStatus === item.value
+                  ? 'border-[#053d1e] bg-[#053d1e] text-white shadow-sm'
+                  : 'border-[#c1c9bf] bg-white text-[#191c1d] hover:bg-[#f8f9fa]'
+                  }`}
               >
                 {item.label}
               </button>
@@ -352,9 +366,8 @@ export const PaginaMapaReservas: React.FC = () => {
               return (
                 <div
                   key={data.toISOString()}
-                  className={`border-b border-r border-[#e5e7eb] px-2 py-3 text-center text-[10px] font-bold uppercase ${
-                    fimSemana ? 'bg-[#f5f7f6] text-[#053d1e]' : 'bg-white text-[#191c1d]'
-                  }`}
+                  className={`border-b border-r border-[#e5e7eb] px-2 py-3 text-center text-[10px] font-bold uppercase ${fimSemana ? 'bg-[#f5f7f6] text-[#053d1e]' : 'bg-white text-[#191c1d]'
+                    }`}
                 >
                   <div>{formatarDiaSemana(data)}</div>
                   <div className="mt-1 text-base font-black">{data.getDate()}</div>
@@ -431,7 +444,7 @@ export const PaginaMapaReservas: React.FC = () => {
           </div>
           <div className="mt-3 text-2xl font-black text-[#191c1d]">11 Prontos / 2 Em Limpeza</div>
         </div>
-      </div>
+      </div>      
 
       <ModalReservaRapida
         aberto={modalAberto}

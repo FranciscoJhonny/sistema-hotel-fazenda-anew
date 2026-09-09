@@ -1,24 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { calcularDisponibilidadeQuartos, StatusDisponibilidadeQuarto, verificarConflitoQuarto, } from '../servicos/conflitoReservas';
 import { AuthService } from '../servicos/supabase/AuthService';
 import { SupabaseService } from '../servicos/supabase/SupabaseService';
 import {
-  Quarto,
-  Reserva,
-  Hospede,
-  Produto,
-  Venda,
-  Pacote,
-  ConfiguracaoSistema,
-  Usuario,
-  PaginaNavegacao,
-  StatusQuarto,
-  StatusReserva,
+  ConfiguracaoSistema, Hospede, Pacote, PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario, Venda,
 } from '../tipos';
-import {
-  verificarConflitoQuarto,
-  calcularDisponibilidadeQuartos,
-  StatusDisponibilidadeQuarto,
-} from '../servicos/conflitoReservas';
 
 const usuarioPadrao: Usuario = {
   usuarioid: 0,
@@ -121,7 +107,6 @@ const normalizarQuartoDoBanco = (quarto: any): Quarto => {
     codigoidentificador: d.codigoidentificador ?? d.CodigoIdentificador ?? d.numero ?? 'S/N',
     bloco: d.bloco ?? d.Bloco ?? 'A',
     categoria: d.categoria ?? d.Categoria ?? 'Standard',
-    // ⚠️ O SEGREDO: Forçar conversão para Number com fallback 0
     capacidadeadultos: Number(d.capacidadeadultos ?? d.CapacidadeAdultos ?? 2),
     capacidadecriancas: Number(d.capacidadecriancas ?? d.CapacidadeCriancas ?? 0),
     valordiariapadrao: Number(d.valordiariapadrao ?? d.ValorDiariaPadrao ?? 0),
@@ -166,7 +151,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [dataSistema] = useState<string>(new Date().toISOString().slice(0, 10));
   const [online, setOnline] = useState<boolean>(typeof window !== 'undefined' ? navigator.onLine : true);
-  
+
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -204,20 +189,38 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           console.error('[ContextoHotel] ❌ ERRO ao buscar Quartos:', quartosResult.error);
           setErro(`Erro ao buscar quartos: ${quartosResult.error.message}`);
         } else if (quartosResult.data) {
-          console.log(`[ContextoHotel] ✅ ${quartosResult.data.length} quartos brutos encontrados.`);
           const quartosNormalizados = quartosResult.data.map(normalizarQuartoDoBanco);
-          console.log('[ContextoHotel] ✅ Quartos normalizados:', quartosNormalizados);
           setQuartos(quartosNormalizados);
         }
 
         // Tratamento das demais tabelas
-        if (!reservasResult.error && reservasResult.data) setReservas(reservasResult.data as Reserva[]);
+        if (!reservasResult.error && reservasResult.data) {
+          const reservasComQuartos = reservasResult.data.map((reserva: any) => {
+            // Busca o quarto correspondente
+            const quarto = quartosResult.data?.find((q: any) => q.quartoid === reserva.quartoid);
+            const hospede = hospedesResult.data?.find((h: any) =>
+              Number(h.hospedeid) === Number(reserva.hospedeid)
+            );
+            return {
+              ...reserva,
+              // Adiciona os dados do quarto na reserva
+              quartonumero: quarto?.numero || 'N/A',
+              quartocodigo: quarto?.codigoidentificador || quarto?.numero || 'N/A',
+              quartocategoria: quarto?.categoria || 'N/A',
+              hospedenome: hospede?.nomecompleto || 'Hóspede não encontrado',
+              hospedetelefone: hospede?.telefone || '',
+              hospedeemail: hospede?.email || '',
+            };
+          });
+
+          setReservas(reservasComQuartos);
+        }
         if (!hospedesResult.error && hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
         if (!produtosResult.error && produtosResult.data) setProdutos(produtosResult.data as Produto[]);
         if (!vendasResult.error && vendasResult.data) setVendas(vendasResult.data as Venda[]);
         if (!pacotesResult.error && pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
         if (!usuariosResult.error && usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
-        
+
         if (!configuracaoResult.error && configuracaoResult.data) {
           setConfiguracoes({ ...configuracaoPadrao, ...(configuracaoResult.data as any) });
         }
@@ -399,17 +402,17 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const client = supabaseService.getClient();
     const reserva = reservas.find((r) => String(r.reservaid) === String(id));
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
-    
+
     const agora = new Date().toISOString();
     const dadosAtualizados = {
       statusreserva: 'CANCELADA' as StatusReserva,
       observacoes: motivo ? `${reserva.observacoes || ''} [Cancelada: ${motivo}]` : reserva.observacoes,
       dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE',
     };
-    
+
     if (client) await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
     setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
-    
+
     if (reserva.quartoid && (reserva.statusreserva === 'CONFIRMADA' || reserva.statusreserva === 'AGUARDANDO_CHECKIN')) {
       await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
     }
@@ -562,7 +565,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ContextoHotel.Provider value={{
       quartos, reservas, hospedes, produtos, vendas, pacotes, configuracoes,
-      usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado, 
+      usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado,
       carregando, erro,
       login, logout, navegarPara, trocarUsuario,
       atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,

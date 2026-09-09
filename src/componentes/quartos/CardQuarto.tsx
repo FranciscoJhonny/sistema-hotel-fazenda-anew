@@ -136,10 +136,12 @@ export const CardQuarto: React.FC<CardQuartoProps> = ({
   return (
     <div
       onClick={() => aoClicar && aoClicar(quarto as Quarto)}
-      className={`border rounded-2xl p-4.5 bg-white transition-all duration-200 relative group cursor-pointer shadow-xs flex flex-col justify-between ${
+      className={`border rounded-2xl p-4.5 bg-white transition-all duration-200 relative group shadow-xs flex flex-col justify-between ${
+        aoClicar ? 'cursor-pointer hover:shadow-md hover:border-[#245437]' : ''
+      } ${
         selecionado
           ? 'border-2 border-[#245437] bg-[#f0fdf4] ring-2 ring-[#245437]/20 shadow-md scale-[1.01]'
-          : 'border-[#e5e7eb] hover:shadow-md hover:border-[#245437]'
+          : 'border-[#e5e7eb]'
       }`}
     >
       <div>
