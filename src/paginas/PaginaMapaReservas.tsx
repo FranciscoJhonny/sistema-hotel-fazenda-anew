@@ -99,6 +99,11 @@ export const PaginaMapaReservas: React.FC = () => {
         return false;
       }
 
+      // Day use não ocupa quarto e não deve aparecer no mapa de hospedagem.
+      if (String(reserva.tipoatendimento || '').toUpperCase() === 'DAY_USE') {
+        return false;
+      }
+
       const dentroPeriodo = datasSobrepostas(reserva, periodoInicio, addDias(periodoInicio, numeroDias));
       if (!dentroPeriodo) return false;
 

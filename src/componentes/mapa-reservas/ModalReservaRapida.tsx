@@ -192,8 +192,14 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   useEffect(() => {
     if (!pacoteSelecionado || !dataEntrada) return;
 
+    const tipoPacote = String(pacoteSelecionado.tipopacote || '').toUpperCase();
+    const eDayUse = tipoPacote === 'DAY_USE';
+    setTipoAtendimento(eDayUse ? 'DAY_USE' : 'HOSPEDAGEM');
+
     const quantidadeDias = Number(pacoteSelecionado.quantidadedias ?? 2);
-    const novaDataSaida = calcularDataSaida(dataEntrada, quantidadeDias);
+    const novaDataSaida = eDayUse
+      ? dataEntrada
+      : calcularDataSaida(dataEntrada, quantidadeDias);
 
     if (novaDataSaida !== dataSaida) {
       setDataSaida(novaDataSaida);
@@ -318,7 +324,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       const quantidadeDias = Number(pacoteSelecionado.quantidadedias ?? 2);
       const saidaCorreta = calcularDataSaida(dataEntrada, quantidadeDias);
 
-      if (dataSaida !== saidaCorreta) {
+      if (dataSaida !== saidaCorreta && tipoAtendimento !== 'DAY_USE') {
         setErro(`O check-out deve ser em ${formatarData(saidaCorreta)} (${quantidadeDias} dias após o check-in). O pacote selecionado é "${pacoteSelecionado.nome}".`);
         return;
       }
@@ -469,6 +475,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               <span>Tipo de atendimento</span>
               <select
                 value={tipoAtendimento}
+                disabled={String(pacoteSelecionado?.tipopacote || '').toUpperCase() === 'DAY_USE'}
                 onChange={(e) => setTipoAtendimento(e.target.value as 'HOSPEDAGEM' | 'DAY_USE')}
                 className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20"
               >

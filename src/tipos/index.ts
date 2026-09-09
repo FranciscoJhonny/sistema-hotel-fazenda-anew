@@ -125,6 +125,7 @@ export interface Pacote extends EntidadeAuditavel {
   adultosinclusos: number;
   criancasinclusas: number;
   quantidadedias: number;
+  tipopacote?: 'HOSPEDAGEM' | 'DAY_USE' | 'FERIADO' | string;
 }
 
 // =============================================================================

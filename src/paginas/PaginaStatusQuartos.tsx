@@ -67,7 +67,9 @@ export const PaginaStatusQuartos: React.FC = () => {
 
         if (resultado.sucesso && resultado.dados) {
           const reservasAtivas = (resultado.dados as any[]).filter(
-            (r: any) => r.statusreserva !== 'CANCELADA' && r.statusreserva !== 'FINALIZADA'
+            (r: any) => r.statusreserva !== 'CANCELADA' &&
+              r.statusreserva !== 'FINALIZADA' &&
+              String(r.tipoatendimento || '').toUpperCase() !== 'DAY_USE'
           ) as Reserva[];
           setReservas(reservasAtivas);
         } else {

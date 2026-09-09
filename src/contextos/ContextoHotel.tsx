@@ -345,7 +345,14 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const client = supabaseService.getClient();
     if (!client) return { sucesso: false, mensagem: 'Sem conexão com o banco.' };
 
-    const conflito = verificarConflitoQuarto(dados.quartoid, dados.dataentrada, dados.datasaida, reservas);
+    const conflito = verificarConflitoQuarto(
+      dados.quartoid,
+      dados.dataentrada,
+      dados.datasaida,
+      reservas,
+      undefined,
+      dados.tipoatendimento
+    );
     if (conflito.temConflito) return { sucesso: false, mensagem: conflito.motivo || 'Conflito de datas.' };
 
     const quarto = obterQuartoPorId(dados.quartoid);
@@ -417,7 +424,14 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     } as Reserva;
 
     setReservas(prev => [reservaSalva, ...prev]);
-    await atualizarStatusQuarto(quarto.quartoid, statusInicial === 'HOSPEDADO' ? 'OCUPADO' : (dados.dataentrada === dataSistema ? 'AGUARDANDO_CHECKIN' : 'RESERVADO'));
+    if (String(dados.tipoatendimento || '').toUpperCase() !== 'DAY_USE') {
+      await atualizarStatusQuarto(
+        quarto.quartoid,
+        statusInicial === 'HOSPEDADO'
+          ? 'OCUPADO'
+          : (dados.dataentrada === dataSistema ? 'AGUARDANDO_CHECKIN' : 'RESERVADO')
+      );
+    }
 
     return { sucesso: true, mensagem: `Reserva ${reservaSalva.codigo} criada com sucesso!`, reserva: reservaSalva };
   };

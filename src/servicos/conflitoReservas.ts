@@ -12,6 +12,7 @@ const normalizarReserva = (res: any) => ({
   hospedenome: res.hospedenome ?? res.HospedeNome ?? res.HOSPEDENOME,
   dataentrada: res.dataentrada ?? res.DataEntrada ?? res.DATAENTRADA,
   datasaida: res.datasaida ?? res.DataSaida ?? res.DATASAIDA,
+  tipoatendimento: (res.tipoatendimento ?? res.TipoAtendimento ?? '').toUpperCase(),
 });
 
 /**
@@ -53,7 +54,8 @@ export function verificarConflitoQuarto(
   dataEntrada: string,
   dataSaida: string,
   reservasExistentes: any[],
-  reservaIdIgnorar?: number | string
+  reservaIdIgnorar?: number | string,
+  tipoAtendimento?: string
 ): ResultadoVerificacaoConflito {
   if (!dataEntrada || !dataSaida) {
     return { temConflito: false };
@@ -62,17 +64,22 @@ export function verificarConflitoQuarto(
   const dEntrada = new Date(dataEntrada + 'T00:00:00');
   const dSaida = new Date(dataSaida + 'T00:00:00');
 
-  if (dEntrada >= dSaida) {
+  const eDayUse = String(tipoAtendimento || '').toUpperCase() === 'DAY_USE';
+  if (dEntrada > dSaida || (dEntrada.getTime() === dSaida.getTime() && !eDayUse)) {
     return {
       temConflito: true,
       motivo: 'A data de saída deve ser posterior à data de entrada.',
     };
   }
 
+  // Day use não ocupa quarto durante a noite e não participa do bloqueio de hospedagem.
+  if (eDayUse) return { temConflito: false };
+
   const reservasDoQuarto = reservasExistentes.filter((res: any) => {
     const r = normalizarReserva(res);
     return (
       String(r.quartoid) === String(quartoId) &&
+      r.tipoatendimento !== 'DAY_USE' &&
       r.statusreserva !== 'CANCELADA' &&
       r.statusreserva !== 'FINALIZADA' &&
       String(r.reservaid) !== String(reservaIdIgnorar)
