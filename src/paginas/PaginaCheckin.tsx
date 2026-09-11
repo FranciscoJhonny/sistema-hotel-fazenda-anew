@@ -24,11 +24,10 @@ export const PaginaCheckin: React.FC = () => {
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
   const [comprovanteCheckin, setComprovanteCheckin] = useState<Reserva | null>(null);
 
-  // Reservas aguardando check-in (CORRIGIDO)
+  // Reservas aguardando check-in
   const reservasAguardando = reservas.filter(
-    (r) => r.statusreserva === 'AGUARDANDO_CHECKIN' || (r.statusreserva === 'CONFIRMADA' && r.dataentrada <= dataSistema)
-  );
-  console.log(reservasAguardando);
+    (r) => (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema
+  );  
   const reservasFiltradas = reservasAguardando.filter((r) => {
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();

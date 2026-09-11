@@ -35,9 +35,22 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
     loja: 'Lojinha',
     relatorios: 'Relatórios',
     configuracoes: 'Configurações',
+    'status-quartos': 'Status dos Quartos',
+    'mapa-reservas': 'Mapa de Reservas',
   };
 
-  const chegadasHoje = reservas.filter((r) => r.statusreserva === 'AGUARDANDO_CHECKIN');
+  // Função para formatar a data atual
+  const formatarDataAtual = (): string => {
+    const hoje = new Date();
+    const dia = hoje.getDate();
+    const mes = hoje.toLocaleString('pt-BR', { month: 'long' });
+    const ano = hoje.getFullYear();
+    return `${dia} de ${mes} de ${ano}`;
+  };
+
+  const chegadasHoje = reservas.filter((r) =>
+    (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada === dataSistema
+  );
   const saidasHoje = reservas.filter(
     (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
   );
@@ -60,35 +73,19 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
           <div>
             <h2 className="font-['Manrope'] text-xl font-bold text-[#111827]">
               {titulos[paginaAtual] || 'Dashboard'}
-            </h2>
-            {paginaAtual === 'quartos' && (
-              <p className="font-['Inter'] text-xs text-[#6b7280]">
-                31 de agosto de 2026
-              </p>
-            )}
+            </h2>            
           </div>
 
           {paginaAtual === 'dashboard' && (
             <div className="hidden sm:flex items-center gap-5 text-sm font-medium pt-1">
               <button
                 onClick={() => setAbaAtiva('visao-geral')}
-                className={`pb-4 pt-4 border-b-2 transition-colors cursor-pointer font-semibold ${
-                  abaAtiva === 'visao-geral'
-                    ? 'border-[#245437] text-[#245437]'
-                    : 'border-transparent text-[#6b7280] hover:text-[#111827]'
-                }`}
+                className={`pb-4 pt-4 border-b-2 transition-colors cursor-pointer font-semibold ${abaAtiva === 'visao-geral'
+                  ? 'border-[#245437] text-[#245437]'
+                  : 'border-transparent text-[#6b7280] hover:text-[#111827]'
+                  }`}
               >
                 Visão Geral
-              </button>
-              <button
-                onClick={() => setAbaAtiva('metricas')}
-                className={`pb-4 pt-4 border-b-2 transition-colors cursor-pointer font-medium ${
-                  abaAtiva === 'metricas'
-                    ? 'border-[#245437] text-[#245437]'
-                    : 'border-transparent text-[#6b7280] hover:text-[#111827]'
-                }`}
-              >
-                Métricas
               </button>
             </div>
           )}
@@ -96,12 +93,10 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
       </div>
 
       {/* Direita: Data (em outras páginas) + Notificações + Buscar + Avatar */}
-      <div className="flex items-center gap-4">
-        {paginaAtual !== 'quartos' && (
+      <div className="flex items-center gap-4">        
           <span className="font-['Inter'] text-sm text-[#4b5563] hidden sm:inline font-medium">
-            31 de agosto de 2026
-          </span>
-        )}
+            {formatarDataAtual()}
+          </span>        
 
         {/* Notificações com Dropdown */}
         <div className="relative">

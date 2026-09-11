@@ -39,7 +39,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
   // Contadores para badges
   const checkinsHoje = reservas.filter(
-    (r) => r.statusreserva === 'AGUARDANDO_CHECKIN'
+    (r) => (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema
   ).length;
   const checkoutsHoje = reservas.filter(
     (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema

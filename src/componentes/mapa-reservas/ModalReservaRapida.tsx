@@ -9,6 +9,7 @@ interface ModalReservaRapidaProps {
   quarto: Quarto | null;
   dataSelecionada: string | null;
   onFechar: () => void;
+  onSucesso?: (mensagem: string) => void;
 }
 
 const somarDias = (data: string, dias: number): string => {
@@ -127,6 +128,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   quarto,
   dataSelecionada,
   onFechar,
+  onSucesso,
 }) => {
   const {
     hospedes,
@@ -146,7 +148,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [tipoAtendimento, setTipoAtendimento] = useState<'HOSPEDAGEM' | 'DAY_USE'>('HOSPEDAGEM');
   const [observacoes, setObservacoes] = useState('');
   const [formaPagamento, setFormaPagamento] = useState<string>(configuracoes?.formapagamentopadrao || 'PIX');
-  const [pagamentoMaiorOuTotal, setPagamentoMaiorOuTotal] = useState(false);
+  const [preReserva, setPreReserva] = useState(false);
   const [valorPago, setValorPago] = useState(0);
   const [valorPagoTexto, setValorPagoTexto] = useState('');
   const [erro, setErro] = useState<string | null>(null);
@@ -275,14 +277,16 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   );
 
   const valorMinimoEntrada = valorCalculado.total * 0.5;
-  const valorPagamento = pagamentoMaiorOuTotal ? valorPago : valorMinimoEntrada;
+  const valorPagamento = preReserva ? 0 : valorPago;
   const saldoHotel = Math.max(0, valorCalculado.total - valorPagamento);
-  const statusPagamento = saldoHotel === 0 ? 'PAGO' : 'PARCIAL';
+  const statusPagamento = valorPagamento === 0 ? 'PENDENTE' : saldoHotel === 0 ? 'PAGO' : 'PARCIAL';
 
   useEffect(() => {
-    setValorPago(valorMinimoEntrada);
-    setValorPagoTexto(valorMinimoEntrada > 0 ? valorMinimoEntrada.toFixed(2).replace('.', ',') : '');
-  }, [valorMinimoEntrada]);
+    if (!preReserva && valorPago === 0) {
+      setValorPago(valorMinimoEntrada);
+      setValorPagoTexto(valorMinimoEntrada > 0 ? valorMinimoEntrada.toFixed(2).replace('.', ',') : '');
+    }
+  }, [preReserva, valorMinimoEntrada, valorPago]);
 
   // ============================================
   // Validações e Salvamento
@@ -330,13 +334,13 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       }
     }
 
-    if (valorPagamento < valorMinimoEntrada) {
-      setErro(`O pagamento mínimo é de ${formatarMoeda(valorMinimoEntrada)} (50% da reserva).`);
+    if (valorPagamento > valorCalculado.total) {
+      setErro('O valor pago não pode ser maior que o valor total da reserva.');
       return;
     }
 
-    if (valorPagamento > valorCalculado.total) {
-      setErro('O valor pago não pode ser maior que o valor total da reserva.');
+    if (!preReserva && valorPagamento < valorMinimoEntrada) {
+      setErro(`O pagamento mínimo para confirmar a reserva é de ${formatarMoeda(valorMinimoEntrada)} (50% do total).`);
       return;
     }
 
@@ -360,7 +364,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         horarioprevistosaida: configuracoes.checkouttime || '12:00',
         tipoatendimento: tipoAtendimento,
         pacoteid: pacoteSelecionado.pacoteid,
-        statusreserva: 'AGUARDANDO_CHECKIN',
         valortotal: valorCalculado.total,
         valorpago: valorPagamento,
         saldo: saldoHotel,
@@ -374,6 +377,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         return;
       }
 
+      onSucesso?.(resultado.mensagem || 'Reserva gravada com sucesso!');
       onFechar();
     } catch (error: any) {
       setErro(error?.message || 'Erro ao salvar a reserva.');
@@ -392,7 +396,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       <div className="w-full max-w-4xl rounded-2xl border border-[#c1c9bf] bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-[#c1c9bf] bg-[#053d1e] px-6 py-4 text-white">
           <div>
-            <h3 className="font-['Manrope'] text-xl font-bold">Nova Reserva Rápida</h3>
+            <h3 className="font-['Manrope'] text-xl font-bold">Nova Reserva</h3>
             <p className="text-xs text-white/70">
               Quarto {quarto.numero} • Capacidade {capacidadeMaxAdultos} ad + {capacidadeMaxCriancas} cri
             </p>
@@ -561,21 +565,24 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               <label className="flex items-center gap-2 text-xs font-semibold text-[#191c1d]">
                 <input
                   type="checkbox"
-                  checked={pagamentoMaiorOuTotal}
+                  checked={preReserva}
                   onChange={(e) => {
                     const marcado = e.target.checked;
-                    setPagamentoMaiorOuTotal(marcado);
-                    if (marcado && valorPago < valorMinimoEntrada) {
+                    setPreReserva(marcado);
+                    if (marcado) {
+                      setValorPago(0);
+                      setValorPagoTexto('');
+                    } else if (valorPago === 0) {
                       setValorPago(valorMinimoEntrada);
                       setValorPagoTexto(valorMinimoEntrada.toFixed(2).replace('.', ','));
                     }
                   }}
                   className="h-4 w-4 accent-[#053d1e]"
                 />
-                Informar pagamento maior que 50% ou pagamento total
+                Salvar como pré-reserva (sem pagamento)
               </label>
 
-              {pagamentoMaiorOuTotal && (
+              {!preReserva && (
                 <label className="block space-y-1 text-xs font-semibold text-[#191c1d]">
                   <span>Valor da entrada/pagamento</span>
                   <div className="relative">

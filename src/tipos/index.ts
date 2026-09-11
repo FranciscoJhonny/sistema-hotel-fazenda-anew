@@ -15,10 +15,10 @@ export type CategoriaQuarto =
 export type BlocoQuarto = 'B' | 'C' | 'D';
 
 export type StatusReserva = 
-  | 'CONFIRMADA' 
-  | 'AGUARDANDO_CHECKIN' 
+  | 'PRE_RESERVA'
+  | 'RESERVADO'
   | 'HOSPEDADO' 
-  | 'FINALIZADA' 
+  | 'CONCLUIDA'
   | 'CANCELADA';
 
 export type TipoAtendimento = 'HOSPEDAGEM' | 'DAY_USE' | 'ALMOCO';

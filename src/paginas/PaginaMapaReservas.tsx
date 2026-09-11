@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CalendarDays,
@@ -7,13 +7,12 @@ import {
   ChevronRight,
   CircleDashed,
   Clock3,
-  Plus,
   Search,
   Wrench,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
-import { Quarto, Reserva, Hospede } from '../tipos';
+import { Quarto, Hospede } from '../tipos';
 import { formatarData } from '../utilitarios/formatadores';
 
 const periodoInicialPadrao = new Date('2026-08-27T00:00:00');
@@ -23,10 +22,12 @@ const addDias = (data: Date, dias: number) => {
   nova.setDate(nova.getDate() + dias);
   return nova;
 };
+
 const isDataPassada = (data: string) => {
   const hoje = new Date().toISOString().slice(0, 10);
   return data < hoje;
 };
+
 const formatarDiaSemana = (date: Date) =>
   new Intl.DateTimeFormat('pt-BR', { weekday: 'short' }).format(date).toUpperCase();
 
@@ -39,14 +40,31 @@ const datasSobrepostas = (reserva: any, inicioPeriodo: Date, fimPeriodo: Date) =
   return inicioReserva < fimPeriodo && fimReserva > inicioPeriodo;
 };
 
+const coresStatusReserva: Record<string, string> = {
+  PRE_RESERVA: 'bg-[#F4C542] text-[#424242]',
+  RESERVADO: 'bg-[#2196F3] text-white',
+  HOSPEDADO: 'bg-[#4CAF50] text-white',
+  CONCLUIDA: 'bg-[#BDBDBD] text-[#424242]',
+  CANCELADA: 'bg-[#E53935] text-white',
+};
+
+const nomesStatusReserva: Record<string, string> = {
+  PRE_RESERVA: 'Pré-reserva',
+  RESERVADO: 'Reservado',
+  HOSPEDADO: 'Hospedado',
+  CONCLUIDA: 'Concluída',
+  CANCELADA: 'Cancelada',
+};
+
 export const PaginaMapaReservas: React.FC = () => {
-  const { quartos, reservas, hospedes, navegarPara } = useHotel();
+  const { quartos, reservas, hospedes } = useHotel();
   const [periodoInicio, setPeriodoInicio] = useState<Date>(periodoInicialPadrao);
-  const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'CONFIRMADA' | 'PENDENTES' | 'OCUPADOS' | 'DAY_USE'>('TODOS');
+  const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE'>('TODOS');
   const [busca, setBusca] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
   const [quartoSelecionado, setQuartoSelecionado] = useState<Quarto | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState<string | null>(null);
+  const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
 
   const numeroDias = 12;
   const datasVisiveis = useMemo(
@@ -91,14 +109,59 @@ export const PaginaMapaReservas: React.FC = () => {
     return blocosMap;
   }, [quartos]);
 
+  // 🔥 DATA ATUAL DO SISTEMA
+  const dataAtual = new Date().toISOString().slice(0, 10);
+
+  // 🔥 CALCULAR CHECK-INS DE HOJE (data atual)
+  const checkinsHoje = useMemo(() => {
+    return reservas.filter((reserva) => {
+      // Reservas que têm data de entrada igual à data atual
+      return reserva.dataentrada === dataAtual &&
+        reserva.statusreserva !== 'CANCELADA' &&
+        reserva.statusreserva !== 'CONCLUIDA';
+    }).map((reserva) => {
+      const hospede = hospedeMap.get(Number(reserva.hospedeid));
+      return {
+        ...reserva,
+        hospedenome: hospede?.nomecompleto || `Hóspede ${reserva.hospedeid}`,
+      };
+    });
+  }, [reservas, dataAtual, hospedeMap]);
+
+  // 🔥 CALCULAR CHECK-OUTS DE HOJE
+  const checkoutsHoje = useMemo(() => {
+    return reservas.filter((reserva) => {
+      // Reservas que têm data de saída igual à data atual E estão hospedados
+      return reserva.datasaida === dataAtual &&
+        reserva.statusreserva === 'HOSPEDADO';
+    }).map((reserva) => {
+      const hospede = hospedeMap.get(Number(reserva.hospedeid));
+      return {
+        ...reserva,
+        hospedenome: hospede?.nomecompleto || `Hóspede ${reserva.hospedeid}`,
+      };
+    });
+  }, [reservas, dataAtual, hospedeMap]);
+
+  // 🔥 CALCULAR QUARTOS EM LIMPEZA (OCUPADOS COM CHECK-OUT HOJE)
+  const quartosEmLimpeza = useMemo(() => {
+    const checkoutsHojeIds = checkoutsHoje.map(r => r.quartoid);
+    return quartos.filter(q =>
+      checkoutsHojeIds.includes(q.quartoid) &&
+      q.status === 'OCUPADO'
+    );
+  }, [quartos, checkoutsHoje]);
+
+  // 🔥 CALCULAR QUARTOS PRONTOS (DISPONÍVEIS E NÃO EM MANUTENÇÃO)
+  const quartosProntos = useMemo(() => {
+    return quartos.filter(q =>
+      q.status === 'DISPONIVEL' || q.status === 'RESERVADO'
+    );
+  }, [quartos]);
+
   // Filtrar e enriquecer reservas
   const reservasVisiveis = useMemo(() => {
     return reservas.filter((reserva) => {
-      // Filtrar apenas reservas ativas e não canceladas/finalizadas
-      if (reserva.statusreserva === 'CANCELADA' || reserva.statusreserva === 'FINALIZADA') {
-        return false;
-      }
-
       // Day use não ocupa quarto e não deve aparecer no mapa de hospedagem.
       if (String(reserva.tipoatendimento || '').toUpperCase() === 'DAY_USE') {
         return false;
@@ -107,15 +170,7 @@ export const PaginaMapaReservas: React.FC = () => {
       const dentroPeriodo = datasSobrepostas(reserva, periodoInicio, addDias(periodoInicio, numeroDias));
       if (!dentroPeriodo) return false;
 
-      if (filtroStatus === 'CONFIRMADA' && reserva.statusreserva !== 'CONFIRMADA') return false;
-      if (
-        filtroStatus === 'PENDENTES' &&
-        reserva.statusreserva !== 'AGUARDANDO_CHECKIN' &&
-        reserva.statuspagamento !== 'PENDENTE'
-      ) {
-        return false;
-      }
-      if (filtroStatus === 'OCUPADOS' && reserva.statusreserva !== 'HOSPEDADO') return false;
+      if (filtroStatus !== 'TODOS' && filtroStatus !== 'DAY_USE' && reserva.statusreserva !== filtroStatus) return false;
       if (filtroStatus === 'DAY_USE' && reserva.tipoatendimento !== 'DAY_USE') return false;
 
       if (busca.trim()) {
@@ -160,27 +215,25 @@ export const PaginaMapaReservas: React.FC = () => {
   const avancarPeriodo = () => setPeriodoInicio((prev) => addDias(prev, 7));
   const retrocederPeriodo = () => setPeriodoInicio((prev) => addDias(prev, -7));
 
-  // Debug
-  useEffect(() => {
-    console.log(' Total quartos:', quartos.length);
-    console.log('📊 Quartos:', quartos.map(q => ({ id: q.quartoid, numero: q.numero, codigo: q.codigoidentificador, bloco: q.bloco, ativo: q.ativo })));
-    console.log(' Total reservas:', reservas.length);
-    console.log('📊 Reservas visíveis:', reservasVisiveis.length);
-    console.log('📊 Período:', periodoInicio.toISOString().slice(0, 10), 'a', addDias(periodoInicio, numeroDias).toISOString().slice(0, 10));
-    console.log('📊 Reservas visíveis:', reservasVisiveis.map(r => ({
-      id: r.reservaid,
-      quartoid: r.quartoid,
-      hospede: r.hospedenome,
-      entrada: r.dataentrada,
-      saida: r.datasaida,
-      status: r.statusreserva
-    })));
-  }, [quartos, reservas, reservasVisiveis, periodoInicio, numeroDias]);
+  // 🔥 FORMATAR MÊS/ANO DO PERÍODO
+  const mesAnoTexto = useMemo(() => {
+    const inicio = new Date(periodoInicio);
+    const fim = addDias(periodoInicio, numeroDias - 1);
+    const mesInicio = inicio.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+    const mesFim = fim.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+    const ano = inicio.getFullYear();
+
+    if (mesInicio === mesFim) {
+      return `${mesInicio} ${ano}`;
+    }
+    return `${mesInicio} / ${mesFim} ${ano}`;
+  }, [periodoInicio, numeroDias]);
 
   const renderizarLinhaQuarto = (quarto: Quarto) => {
     const reservasDoQuarto = reservasVisiveis.filter((reserva) =>
       Number(reserva.quartoid) === Number(quarto.quartoid)
     );
+    const quartoBloqueado = quarto.status === 'MANUTENCAO';
 
     return (
       <div key={quarto.quartoid} className="relative col-span-full h-12 border-b border-[#e5e7eb]">
@@ -190,7 +243,9 @@ export const PaginaMapaReservas: React.FC = () => {
               <span className="h-2.5 w-2.5 rounded-full bg-[#ff69b4]" />
               <span className="text-sm font-bold text-[#191c1d]">{quarto.codigoidentificador || quarto.numero}</span>
             </div>
-            <span className="text-[10px] font-semibold text-[#717971]">{quarto.capacidadeadultos} ad + {quarto.capacidadecriancas} cri</span>
+            <span className={`text-[10px] font-semibold ${quartoBloqueado ? 'text-[#424242]' : 'text-[#717971]'}`}>
+              {quartoBloqueado ? 'Bloqueado' : `${quarto.capacidadeadultos} ad + ${quarto.capacidadecriancas} cri`}
+            </span>
           </div>
 
           {datasVisiveis.map((data) => {
@@ -203,16 +258,16 @@ export const PaginaMapaReservas: React.FC = () => {
               <button
                 key={`${quarto.quartoid}-${dataIso}`}
                 type="button"
-                disabled={Boolean(reservaAtiva) || isDataPassada(dataIso)}
+                disabled={quartoBloqueado || Boolean(reservaAtiva) || isDataPassada(dataIso)}
                 onClick={() => {
-                  if (reservaAtiva) return;
-                  if (isDataPassada(dataIso)) return; // Bloqueia data passada
+                  if (quartoBloqueado || reservaAtiva) return;
+                  if (isDataPassada(dataIso)) return;
                   setQuartoSelecionado(quarto);
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
                 }}
                 className={`border-r border-[#e5e7eb] bg-[#f8f9fa] transition-colors 
-                            ${reservaAtiva?.statusreserva === 'HOSPEDADO' ? 'bg-[#053d1e]' : ''}
+                            ${quartoBloqueado ? 'bg-[#424242]' : reservaAtiva?.statusreserva === 'HOSPEDADO' ? 'bg-[#4CAF50]' : ''}
                             ${isDataPassada(dataIso) ? 'opacity-30 cursor-not-allowed hover:bg-[#f8f9fa]' : 'hover:bg-[#e6f4ea]'}
                             `}
               />
@@ -235,14 +290,6 @@ export const PaginaMapaReservas: React.FC = () => {
             const startOffset = Math.max(0, Math.floor((inicioVisivel.getTime() - periodoInicioNormalizado.getTime()) / (1000 * 60 * 60 * 24)));
             const duration = Math.max(1, Math.ceil((fimVisivel.getTime() - inicioVisivel.getTime()) / (1000 * 60 * 60 * 24)));
 
-            const mappedStatusColor = {
-              CONFIRMADA: 'bg-[#00A8E8]',
-              AGUARDANDO_CHECKIN: 'bg-[#FF6B6B]',
-              HOSPEDADO: 'bg-[#053d1e]',
-              FINALIZADA: 'bg-[#d1d5db]',
-              CANCELADA: 'bg-[#9ca3af]',
-            };
-
             return (
               <button
                 key={String(reserva.reservaid)}
@@ -254,14 +301,16 @@ export const PaginaMapaReservas: React.FC = () => {
                   setModalAberto(true);
                 }}
                 aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${quarto.codigoidentificador || quarto.numero}`}
-                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold text-white shadow-sm disabled:cursor-not-allowed ${mappedStatusColor[reserva.statusreserva] || 'bg-[#00A8E8]'}`}
+                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm disabled:cursor-not-allowed ${coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'}`}
                 style={{ left: `${startOffset * 80}px`, width: `${Math.max(duration * 80 - 4, 32)}px` }}
               >
                 <span className="flex min-w-0 items-center gap-1 truncate">
-                  {reserva.statusreserva === 'CONFIRMADA' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : reserva.statusreserva === 'AGUARDANDO_CHECKIN' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> : reserva.statusreserva === 'HOSPEDADO' ? <Clock3 className="h-3.5 w-3.5 shrink-0" /> : <Wrench className="h-3.5 w-3.5 shrink-0" />}
+                  {reserva.statusreserva === 'RESERVADO' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : reserva.statusreserva === 'PRE_RESERVA' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> : reserva.statusreserva === 'HOSPEDADO' ? <Clock3 className="h-3.5 w-3.5 shrink-0" /> : <Wrench className="h-3.5 w-3.5 shrink-0" />}
                   <span className="truncate">{reserva.hospedenome}</span>
                 </span>
-                <span className="ml-1 shrink-0 rounded bg-white/10 px-1 py-0.5 text-[9px]">{reserva.statusreserva === 'HOSPEDADO' ? 'Check-in' : reserva.statusreserva === 'AGUARDANDO_CHECKIN' ? 'Pendente' : `${duration} noites`}</span>
+                <span className="ml-1 shrink-0 rounded bg-white/10 px-1 py-0.5 text-[9px]">
+                  {nomesStatusReserva[reserva.statusreserva] || 'Status desconhecido'}
+                </span>
               </button>
             );
           })}
@@ -272,17 +321,18 @@ export const PaginaMapaReservas: React.FC = () => {
 
   return (
     <div className="space-y-5 rounded-2xl bg-[#f8f9fa]">
-      {/* ... (mesmo JSX de antes, mantenha igual) ... */}
+      {mensagemSucesso && (
+        <div
+          role="status"
+          className="fixed right-4 top-4 z-[100] flex items-center gap-2 rounded-xl border border-[#86efac] bg-[#f0fdf4] px-4 py-3 text-sm font-semibold text-[#166534] shadow-lg"
+        >
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
+          <span>{mensagemSucesso}</span>
+        </div>
+      )}
       <div className="flex flex-col gap-3 rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navegarPara('reservas')}
-              className="rounded-xl border border-[#c1c9bf] bg-white p-2 text-[#191c1d] hover:bg-[#f3f4f6]"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
             <div>
               <h1 className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">Mapa de Reservas</h1>
               <p className="text-xs text-[#717971]">Visão operacional do hotel para o período selecionado</p>
@@ -290,12 +340,17 @@ export const PaginaMapaReservas: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-full border border-[#c1c9bf] bg-[#e6f4ea] px-3 py-1.5 text-sm font-bold text-[#053d1e]">
+              Ocupação do período: {ocupacao}%
+            </div>
             <div className="flex items-center gap-2 rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] p-1.5">
               <button type="button" onClick={retrocederPeriodo} className="rounded-lg p-2 hover:bg-white">
                 <ChevronLeft className="h-4 w-4 text-[#191c1d]" />
               </button>
               <div className="min-w-[240px] text-center">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#717971]">MÊS DE AGOSTO / SETEMBRO 2026</div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#717971]">
+                  {mesAnoTexto}
+                </div>
                 <div className="text-sm font-bold text-[#191c1d]">
                   {formatarData(periodoInicio.toISOString().slice(0, 10))} à {formatarData(addDias(periodoInicio, numeroDias - 1).toISOString().slice(0, 10))}
                 </div>
@@ -304,23 +359,6 @@ export const PaginaMapaReservas: React.FC = () => {
                 <ChevronRight className="h-4 w-4 text-[#191c1d]" />
               </button>
             </div>
-
-            <div className="rounded-full border border-[#c1c9bf] bg-[#e6f4ea] px-3 py-1.5 text-sm font-bold text-[#053d1e]">
-              Ocupação do período: {ocupacao}%
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setQuartoSelecionado(null);
-                setDataSelecionada(periodoInicio.toISOString().slice(0, 10));
-                setModalAberto(true);
-              }}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#053d1e] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#225533]"
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar Reserva
-            </button>
           </div>
         </div>
 
@@ -339,9 +377,11 @@ export const PaginaMapaReservas: React.FC = () => {
           <div className="flex flex-wrap gap-2">
             {[
               { label: 'Todos', value: 'TODOS' },
-              { label: 'Confirmados', value: 'CONFIRMADA' },
-              { label: 'Pendentes', value: 'PENDENTES' },
-              { label: 'Ocupados', value: 'OCUPADOS' },
+              { label: 'Pré-reserva', value: 'PRE_RESERVA' },
+              { label: 'Reservado', value: 'RESERVADO' },
+              { label: 'Hospedado', value: 'HOSPEDADO' },
+              { label: 'Concluída', value: 'CONCLUIDA' },
+              { label: 'Cancelada', value: 'CANCELADA' },
               { label: 'Day Use', value: 'DAY_USE' },
             ].map((item) => (
               <button
@@ -410,14 +450,16 @@ export const PaginaMapaReservas: React.FC = () => {
       <div className="rounded-xl border border-[#c1c9bf] bg-white px-4 py-3">
         <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] font-semibold text-[#191c1d]">
           <span className="font-bold uppercase text-[#191c1d]">Legenda:</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#00A8E8]" /> Confirmada</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#FF6B6B]" /> Pagamento Pendente</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#FFE66D]" /> Pré-reserva</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#053d1e]" /> Check-in Feito</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#4A5568]" /> Manutenção</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#F4C542]" /> Pré-reserva</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#2196F3]" /> Reservado</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#4CAF50]" /> Hospedado</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#BDBDBD]" /> Concluída</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#E53935]" /> Cancelada</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#424242]" /> Bloqueado</span>
         </div>
       </div>
 
+      {/* 🔥 CARDS DINÂMICOS COM DADOS REAIS */}
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between">
@@ -425,9 +467,27 @@ export const PaginaMapaReservas: React.FC = () => {
               <CalendarDays className="h-5 w-5" />
               <span className="text-[10px] font-bold uppercase tracking-wide text-[#191c1d]">Entradas Hoje</span>
             </div>
-            <span className="rounded-full bg-[#e6f4ea] px-2 py-1 text-[10px] font-bold text-[#053d1e]">100% Pontual</span>
+            <span className="rounded-full bg-[#e6f4ea] px-2 py-1 text-[10px] font-bold text-[#053d1e]">
+              {checkinsHoje.length > 0 ? `${checkinsHoje.length} Check-ins` : 'Sem entradas'}
+            </span>
           </div>
-          <div className="mt-3 text-2xl font-black text-[#191c1d]">4 Check-ins</div>
+          <div className="mt-2">
+            {checkinsHoje.length > 0 ? (
+              <div className="space-y-1">
+                {checkinsHoje.slice(0, 3).map((res) => (
+                  <div key={res.reservaid} className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-[#191c1d]">{res.hospedenome}</span>
+                    <span className="text-[#717971]">Q{res.quartonumero}</span>
+                  </div>
+                ))}
+                {checkinsHoje.length > 3 && (
+                  <span className="text-[10px] text-[#717971]">+{checkinsHoje.length - 3} outros</span>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-[#717971]">Nenhum check-in agendado para hoje</p>
+            )}
+          </div>
         </div>
 
         <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
@@ -436,9 +496,27 @@ export const PaginaMapaReservas: React.FC = () => {
               <ChevronRight className="h-5 w-5" />
               <span className="text-[10px] font-bold uppercase tracking-wide text-[#191c1d]">Saídas Previstas</span>
             </div>
-            <span className="rounded-full bg-[#dfeeff] px-2 py-1 text-[10px] font-bold text-[#1e3a8a]">2 Realizados</span>
+            <span className="rounded-full bg-[#dfeeff] px-2 py-1 text-[10px] font-bold text-[#1e3a8a]">
+              {checkoutsHoje.length > 0 ? `${checkoutsHoje.length} Saídas` : 'Sem saídas'}
+            </span>
           </div>
-          <div className="mt-3 text-2xl font-black text-[#191c1d]">3 Check-outs</div>
+          <div className="mt-2">
+            {checkoutsHoje.length > 0 ? (
+              <div className="space-y-1">
+                {checkoutsHoje.slice(0, 3).map((res) => (
+                  <div key={res.reservaid} className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-[#191c1d]">{res.hospedenome}</span>
+                    <span className="text-[#717971]">Q{res.quartonumero}</span>
+                  </div>
+                ))}
+                {checkoutsHoje.length > 3 && (
+                  <span className="text-[10px] text-[#717971]">+{checkoutsHoje.length - 3} outros</span>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-[#717971]">Nenhum check-out agendado para hoje</p>
+            )}
+          </div>
         </div>
 
         <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
@@ -447,11 +525,31 @@ export const PaginaMapaReservas: React.FC = () => {
               <CircleDashed className="h-5 w-5" />
               <span className="text-[10px] font-bold uppercase tracking-wide text-[#191c1d]">Governança</span>
             </div>
-            <span className="rounded-full bg-[#fff3cd] px-2 py-1 text-[10px] font-bold text-[#7c5400]">Atualizado</span>
+            <span className="rounded-full bg-[#fff3cd] px-2 py-1 text-[10px] font-bold text-[#7c5400]">
+              {checkoutsHoje.length > 0 ? `${quartosEmLimpeza.length} Em limpeza` : 'Limpo'}
+            </span>
           </div>
-          <div className="mt-3 text-2xl font-black text-[#191c1d]">11 Prontos / 2 Em Limpeza</div>
+          <div className="mt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-[#191c1d]">
+                <span className="font-bold text-[#053d1e]">{quartosProntos.length}</span> Prontos
+              </span>
+              <span className="text-xs text-[#191c1d]">
+                <span className="font-bold text-[#dc2626]">{quartosEmLimpeza.length}</span> Em limpeza
+              </span>
+            </div>
+            <div className="mt-2 h-2 w-full rounded-full bg-[#f3f4f6]">
+              <div
+                className="h-2 rounded-full bg-[#053d1e] transition-all duration-300"
+                style={{ width: `${(quartosProntos.length / Math.max(quartos.length, 1)) * 100}%` }}
+              />
+            </div>
+            <p className="mt-1 text-[10px] text-[#717971]">
+              {Math.round((quartosProntos.length / Math.max(quartos.length, 1)) * 100)}% dos quartos disponíveis
+            </p>
+          </div>
         </div>
-      </div>      
+      </div>
 
       <ModalReservaRapida
         aberto={modalAberto}
@@ -461,6 +559,10 @@ export const PaginaMapaReservas: React.FC = () => {
           setModalAberto(false);
           setQuartoSelecionado(null);
           setDataSelecionada(null);
+        }}
+        onSucesso={(mensagem) => {
+          setMensagemSucesso(mensagem);
+          window.setTimeout(() => setMensagemSucesso(null), 4000);
         }}
       />
     </div>

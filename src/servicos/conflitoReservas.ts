@@ -81,7 +81,7 @@ export function verificarConflitoQuarto(
       String(r.quartoid) === String(quartoId) &&
       r.tipoatendimento !== 'DAY_USE' &&
       r.statusreserva !== 'CANCELADA' &&
-      r.statusreserva !== 'FINALIZADA' &&
+      r.statusreserva !== 'CONCLUIDA' &&
       String(r.reservaid) !== String(reservaIdIgnorar)
     );
   });

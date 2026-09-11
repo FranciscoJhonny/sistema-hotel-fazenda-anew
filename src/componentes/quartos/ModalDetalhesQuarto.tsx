@@ -64,9 +64,9 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
   const reservaAtual = reservas.find(
     (r) =>
       String(r.quartoid) === String(getVal(quarto, ['quartoid', 'QuartoId'])) &&
-      (r.status === 'HOSPEDADO' ||
-        r.status === 'AGUARDANDO_CHECKIN' ||
-        r.status === 'CONFIRMADA')
+      (r.statusreserva === 'HOSPEDADO' ||
+        r.statusreserva === 'PRE_RESERVA' ||
+        r.statusreserva === 'RESERVADO')
   );
 
   const handleCheckin = async () => {
@@ -275,7 +275,7 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
           </button>
 
           <div className="flex items-center gap-2">
-            {reservaAtual?.status === 'AGUARDANDO_CHECKIN' && (
+            {(reservaAtual?.statusreserva === 'PRE_RESERVA' || reservaAtual?.statusreserva === 'RESERVADO') && (
               <button
                 onClick={handleCheckin}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[#053d1e] hover:bg-[#225533] text-white transition-colors shadow-xs cursor-pointer"
@@ -285,7 +285,7 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
               </button>
             )}
 
-            {reservaAtual?.status === 'HOSPEDADO' && (
+            {reservaAtual?.statusreserva === 'HOSPEDADO' && (
               <button
                 onClick={handleCheckout}
                 className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-[#ba1a1a] hover:bg-[#93000a] text-white transition-colors shadow-xs cursor-pointer"

@@ -58,15 +58,15 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   // Estadia
   const [dataEntrada, setDataEntrada] = useState<string>(dataSistema);
   const [dataSaida, setDataSaida] = useState<string>('2026-09-02');
-  const [horarioEntrada, setHorarioEntrada] = useState<string>(configuracoes.HorarioCheckinPadrao || '09:00');
-  const [horarioSaida, setHorarioSaida] = useState<string>(configuracoes.HorarioCheckoutPadrao || '15:00');
+  const [horarioEntrada, setHorarioEntrada] = useState<string>(configuracoes.checkintime || '09:00');
+  const [horarioSaida, setHorarioSaida] = useState<string>(configuracoes.checkouttime || '15:00');
   const [tipoAtendimento, setTipoAtendimento] = useState<TipoAtendimento>('HOSPEDAGEM');
   const [adultos, setAdultos] = useState<number>(2);
   const [criancas, setCriancas] = useState<number>(0);
 
   // Quarto
   const [quartoSelecionadoId, setQuartoSelecionadoId] = useState<number>(
-    quartoPreSelecionado ? quartoPreSelecionado.QuartoId : 1
+    quartoPreSelecionado ? Number(quartoPreSelecionado.quartoid) : 1
   );
 
   // Pacote & Financeiro
@@ -85,16 +85,16 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   // Sincroniza quarto pré-selecionado quando a modal abre
   useEffect(() => {
     if (quartoPreSelecionado) {
-      setQuartoSelecionadoId(quartoPreSelecionado.QuartoId);
-      setValorDiaria(quartoPreSelecionado.ValorDiariaPadrao);
+      setQuartoSelecionadoId(Number(quartoPreSelecionado.quartoid));
+      setValorDiaria(quartoPreSelecionado.valordiariapadrao);
     }
   }, [quartoPreSelecionado]);
 
   // Atualiza valor diária quando quarto muda
   useEffect(() => {
-    const q = quartos.find((item) => item.QuartoId === quartoSelecionadoId);
+    const q = quartos.find((item) => Number(item.quartoid) === quartoSelecionadoId);
     if (q) {
-      setValorDiaria(q.ValorDiariaPadrao);
+      setValorDiaria(q.valordiariapadrao);
     }
   }, [quartoSelecionadoId, quartos]);
 
@@ -103,14 +103,14 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
     const id = idStr ? Number(idStr) : null;
     setHospedeId(id);
     if (id) {
-      const h = hospedes.find((item) => item.HospedeId === id);
+      const h = hospedes.find((item) => Number(item.hospedeid) === id);
       if (h) {
-        setNomeHospede(h.NomeCompleto);
-        setCpfHospede(h.Cpf);
-        setTelefoneHospede(h.Telefone);
-        setEmailHospede(h.Email || '');
-        setCidadeHospede(h.Cidade || '');
-        setEstadoHospede(h.Estado || 'MS');
+        setNomeHospede(h.nomecompleto);
+        setCpfHospede(h.cpf);
+        setTelefoneHospede(h.telefone);
+        setEmailHospede(h.email || '');
+        setCidadeHospede(h.cidade || '');
+        setEstadoHospede(h.estado || 'MS');
         setModoNovoHospede(false);
       }
     } else {
@@ -124,10 +124,10 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
 
   // Cálculo de diárias e valor total
   const numeroDiarias = calcularDiarias(dataEntrada, dataSaida);
-  const pacoteSelecionado = pacotes.find((p) => p.PacoteId === pacoteId);
+  const pacoteSelecionado = pacotes.find((p) => String(p.pacoteid) === String(pacoteId));
 
   const valorTotalBruto = pacoteSelecionado
-    ? pacoteSelecionado.Valor
+    ? pacoteSelecionado.valor
     : valorDiaria * numeroDiarias;
 
   const valorTotalFinal = Math.max(0, valorTotalBruto - valorDesconto);
@@ -137,7 +137,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   const statusDisponibilidade = verificarDisponibilidade(dataEntrada, dataSaida);
   const quartoAtualStatus = statusDisponibilidade.find((s) => s.quarto.QuartoId === quartoSelecionadoId);
 
-  const handleSalvarReserva = (e: React.FormEvent) => {
+  const handleSalvarReserva = async (e: React.FormEvent) => {
     e.preventDefault();
     setErroValidacao(null);
 
@@ -172,15 +172,15 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
       // 1. Cadastra hóspede se for novo
       let idFinalHospede = hospedeId;
       if (modoNovoHospede || !idFinalHospede) {
-        const novo = cadastrarHospede({
-          NomeCompleto: nomeHospede,
-          Cpf: cpfHospede || '000.000.000-00',
-          Telefone: telefoneHospede,
-          Email: emailHospede,
-          Cidade: cidadeHospede,
-          Estado: estadoHospede,
+        const novo = await cadastrarHospede({
+          nomecompleto: nomeHospede,
+          cpf: cpfHospede || '000.000.000-00',
+          telefone: telefoneHospede,
+          email: emailHospede,
+          cidade: cidadeHospede,
+          estado: estadoHospede,
         });
-        idFinalHospede = novo.HospedeId;
+        idFinalHospede = Number(novo.hospedeid);
       }
 
       // 2. Status de pagamento
@@ -192,30 +192,30 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
       }
 
       // 3. Cria a reserva através do serviço com proteção anti-duplicidade
-      const resultado = criarReserva({
-        HospedeId: idFinalHospede,
-        HospedeNome: nomeHospede,
-        HospedeTelefone: telefoneHospede,
-        HospedeEmail: emailHospede,
-        QuartoId: quartoSelecionadoId,
-        QuartoNumero: quartoAtualStatus?.quarto.Numero || 'B1',
-        QuartoCodigo: quartoAtualStatus?.quarto.CodigoIdentificador || 'B1',
-        QuartoCategoria: quartoAtualStatus?.quarto.Categoria || 'Standard Duplo',
-        Adultos: adultos,
-        Criancas: criancas,
-        DataEntrada: dataEntrada,
-        DataSaida: dataSaida,
-        HorarioPrevistoChegada: horarioEntrada,
-        HorarioPrevistoSaida: horarioSaida,
-        TipoAtendimento: tipoAtendimento,
-        PacoteId: pacoteId,
-        PacoteNome: pacoteSelecionado?.Nome,
-        ValorTotal: valorTotalFinal,
-        ValorPago: valorPago,
-        Saldo: saldoRestante,
-        StatusPagamento: statusPag,
-        FormaPagamento: formaPagamento,
-        Observacoes: observacoes,
+      const resultado = await criarReserva({
+        hospedeid: idFinalHospede,
+        hospedenome: nomeHospede,
+        hospedetelefone: telefoneHospede,
+        hospedeemail: emailHospede,
+        quartoid: quartoSelecionadoId,
+        quartonumero: quartoAtualStatus?.quarto.numero || 'B1',
+        quartocodigo: quartoAtualStatus?.quarto.codigoidentificador || 'B1',
+        quartocategoria: quartoAtualStatus?.quarto.categoria || 'Standard Duplo',
+        adultos,
+        criancas,
+        dataentrada: dataEntrada,
+        datasaida: dataSaida,
+        horarioprevistochegada: horarioEntrada,
+        horarioprevistosaida: horarioSaida,
+        tipoatendimento: tipoAtendimento,
+        pacoteid: pacoteId,
+        pacotename: pacoteSelecionado?.nome,
+        valortotal: valorTotalFinal,
+        valorpago: valorPago,
+        saldo: saldoRestante,
+        statuspagamento: statusPag,
+        formapagamento: formaPagamento,
+        observacoes,
       });
 
       if (!resultado.sucesso) {
@@ -294,7 +294,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                       type="button"
                       onClick={() => {
                         setModoNovoHospede(false);
-                        if (hospedes.length > 0) handleSelecionarHospede(String(hospedes[0].HospedeId));
+                        if (hospedes.length > 0) handleSelecionarHospede(String(hospedes[0].hospedeid));
                       }}
                       className={`px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer ${
                         !modoNovoHospede
@@ -329,8 +329,8 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                       className="w-full p-2 text-xs bg-[#f8f9fa] border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
                     >
                       {hospedes.map((h) => (
-                        <option key={h.HospedeId} value={String(h.HospedeId)}>
-                          {h.NomeCompleto} • CPF: {h.Cpf} • {h.Telefone}
+                        <option key={h.hospedeid} value={String(h.hospedeid)}>
+                          {h.nomecompleto} • CPF: {h.cpf} • {h.telefone}
                         </option>
                       ))}
                     </select>
@@ -609,8 +609,8 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                     >
                       <option value="">Nenhum (Diária Normal)</option>
                       {pacotes.map((p) => (
-                        <option key={p.PacoteId} value={String(p.PacoteId)}>
-                          {p.Nome} ({formatarMoeda(p.Valor)})
+                        <option key={p.pacoteid} value={String(p.pacoteid)}>
+                          {p.nome} ({formatarMoeda(p.valor)})
                         </option>
                       ))}
                     </select>
@@ -762,7 +762,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                     <div className="flex justify-between py-1 border-b border-[#e1e3e4]">
                       <span>Pacote:</span>
                       <span className="font-semibold text-[#053d1e] text-right truncate max-w-[140px]">
-                        {pacoteSelecionado.Nome}
+                        {pacoteSelecionado.nome}
                       </span>
                     </div>
                   )}

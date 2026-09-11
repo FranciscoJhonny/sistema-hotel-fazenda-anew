@@ -57,7 +57,7 @@ export const PaginaDashboard: React.FC = () => {
       const reservasDoQuarto = reservas.filter(r =>
         String(r.quartoid) === String(quarto.quartoid) &&
         r.statusreserva !== 'CANCELADA' &&
-        r.statusreserva !== 'FINALIZADA'
+        r.statusreserva !== 'CONCLUIDA'
       );
 
       // ✅ AQUI USA A DATA CONSULTA PARA CALCULAR O STATUS
@@ -83,13 +83,14 @@ export const PaginaDashboard: React.FC = () => {
 
   // Reservas de hoje (baseado na dataConsulta)
   const checkinsHoje = reservas.filter((r) => {
-    const dataEntrada = new Date(r.dataentrada).toISOString().split('T')[0];
-    return r.statusreserva === 'AGUARDANDO_CHECKIN' && dataEntrada === dataConsulta;
+    const dataEntrada = new Date(r.dataentrada).toISOString().split('T')[0];    
+    return (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema;
   });
+  
 
   const checkoutsHoje = reservas.filter((r) => {
     const dataSaida = new Date(r.datasaida).toISOString().split('T')[0];
-    return r.statusreserva === 'HOSPEDADO' && dataSaida === dataConsulta;
+    return r.statusreserva === 'HOSPEDADO';
   });
 
   // Total de hóspedes no local
@@ -315,7 +316,7 @@ export const PaginaDashboard: React.FC = () => {
               <CardQuarto
                 key={quarto.quartoid}
                 quarto={quarto}
-                aoClicar={handleAbrirDetalhesQuarto}
+                //aoClicar={handleAbrirDetalhesQuarto}
               />
             ))
           )}
@@ -340,7 +341,7 @@ export const PaginaDashboard: React.FC = () => {
             {checkinsHoje.length === 0 ? (
               <p className="text-xs text-[#6b7280] text-center py-6">Nenhum check-in para esta data.</p>
             ) : (
-              checkinsHoje.map((res) => (
+              checkinsHoje.slice(0, 2).map((res) => (
                 <div key={res.reservaid} className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#245437] transition-colors">
                   <div>
                     <div className="flex items-center gap-2">
@@ -375,7 +376,7 @@ export const PaginaDashboard: React.FC = () => {
             {checkoutsHoje.length === 0 ? (
               <p className="text-xs text-[#6b7280] text-center py-6">Nenhum check-out para esta data.</p>
             ) : (
-              checkoutsHoje.map((res) => (
+              checkoutsHoje.slice(0, 2).map((res) => (
                 <div key={res.reservaid} className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#dc2626] transition-colors">
                   <div>
                     <div className="flex items-center gap-2">

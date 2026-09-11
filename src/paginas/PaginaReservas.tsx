@@ -55,14 +55,14 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
 
   const getStatusBadge = (status: StatusReserva) => {
     switch (status) {
-      case 'CONFIRMADA':
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#d5e3ff] text-[#00417e]">Confirmada</span>;
-      case 'AGUARDANDO_CHECKIN':
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#ffe088] text-[#4f3e00]">Aguardando Check-in</span>;
+      case 'RESERVADO':
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#d5e3ff] text-[#00417e]">Reservado</span>;
+      case 'PRE_RESERVA':
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#ffe088] text-[#4f3e00]">Pré-reserva</span>;
       case 'HOSPEDADO':
         return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#ffdad6] text-[#93000a]">Hospedado</span>;
-      case 'FINALIZADA':
-        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#e6f4ea] text-[#137333]">Finalizada</span>;
+      case 'CONCLUIDA':
+        return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#e6f4ea] text-[#137333]">Concluída</span>;
       case 'CANCELADA':
         return <span className="px-2 py-0.5 rounded text-xs font-semibold bg-[#e1e3e4] text-[#414941]">Cancelada</span>;
       default:
@@ -117,10 +117,10 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
             className="p-1.5 bg-[#f8f9fa] border border-[#c1c9bf] rounded-md font-semibold text-xs focus:outline-none"
           >
             <option value="TODAS">Todas as Reservas</option>
-            <option value="AGUARDANDO_CHECKIN">Aguardando Check-in</option>
+            <option value="PRE_RESERVA">Pré-reserva</option>
             <option value="HOSPEDADO">Hospedado</option>
-            <option value="CONFIRMADA">Confirmada</option>
-            <option value="FINALIZADA">Finalizada</option>
+            <option value="RESERVADO">Reservado</option>
+            <option value="CONCLUIDA">Concluída</option>
             <option value="CANCELADA">Cancelada</option>
           </select>
         </div>
@@ -196,7 +196,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {res.statusreserva === 'AGUARDANDO_CHECKIN' && (
+                        {(res.statusreserva === 'PRE_RESERVA' || res.statusreserva === 'RESERVADO') && (
                           <button
                             onClick={() => realizarCheckin(res.reservaid)}
                             className="px-2.5 py-1 bg-[#053d1e] hover:bg-[#225533] text-white rounded font-semibold text-[11px] shadow-xs cursor-pointer"
@@ -214,7 +214,7 @@ export const PaginaReservas: React.FC<PaginaReservasProps> = ({ abrirModalNova =
                           </button>
                         )}
 
-                        {res.statusreserva !== 'CANCELADA' && res.statusreserva !== 'FINALIZADA' && (
+                        {res.statusreserva !== 'CANCELADA' && res.statusreserva !== 'CONCLUIDA' && (
                           <button
                             onClick={() => {
                               setReservaParaCancelar(res);

@@ -115,7 +115,7 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
 
   public async realizarCheckout(id: number | string, usuario: string): Promise<ResultadoSupabase<Reserva>> {
     return this.atualizar(id, {
-      statusreserva: 'FINALIZADA',
+      statusreserva: 'CONCLUIDA',
       checkoutrealizadoem: new Date().toISOString(),
       checkoutusuario: usuario,
     });

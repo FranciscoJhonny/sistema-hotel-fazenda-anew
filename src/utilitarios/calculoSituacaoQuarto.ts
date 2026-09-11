@@ -13,7 +13,7 @@ export const calcularStatusQuarto = (
 
   // Filtra apenas reservas válidas (não canceladas ou finalizadas)
   const reservasValidas = reservas.filter(r => 
-    r.statusreserva !== 'CANCELADA' && r.statusreserva !== 'FINALIZADA'
+    r.statusreserva !== 'CANCELADA' && r.statusreserva !== 'CONCLUIDA'
   );
 
   // 1. Verifica se há reserva ATIVA hoje (hóspede hospedado)

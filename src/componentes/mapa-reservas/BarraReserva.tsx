@@ -24,18 +24,18 @@ export const BarraReserva: React.FC<BarraReservaProps> = ({
   const width = (diffDuracao / totalDiasPeriodo) * 100;
 
   const statusClasses: Record<string, string> = {
-    CONFIRMADA: 'bg-[#00A8E8] text-white',
-    AGUARDANDO_CHECKIN: 'bg-[#FF6B6B] text-white',
+    RESERVADO: 'bg-[#00A8E8] text-white',
+    PRE_RESERVA: 'bg-[#FF6B6B] text-white',
     HOSPEDADO: 'bg-[#053d1e] text-white',
-    FINALIZADA: 'bg-[#d1d5db] text-[#191c1d]',
+    CONCLUIDA: 'bg-[#d1d5db] text-[#191c1d]',
     CANCELADA: 'bg-[#9ca3af] text-white line-through',
   };
 
   const statusIcon: Record<string, React.ReactNode> = {
-    CONFIRMADA: <CalendarCheck2 className="w-3.5 h-3.5" />,
-    AGUARDANDO_CHECKIN: <Clock3 className="w-3.5 h-3.5" />,
+    RESERVADO: <CalendarCheck2 className="w-3.5 h-3.5" />,
+    PRE_RESERVA: <Clock3 className="w-3.5 h-3.5" />,
     HOSPEDADO: <Hotel className="w-3.5 h-3.5" />,
-    FINALIZADA: <CalendarCheck2 className="w-3.5 h-3.5" />,
+    CONCLUIDA: <CalendarCheck2 className="w-3.5 h-3.5" />,
     CANCELADA: <UserRoundX className="w-3.5 h-3.5" />,
   };
 

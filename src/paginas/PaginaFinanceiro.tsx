@@ -15,7 +15,7 @@ export const PaginaFinanceiro: React.FC = () => {
   // Cálculos financeiros
   const totalRecebidoReservas = reservas.reduce((acc, curr) => acc + curr.valorpago, 0);
   const totalSaldosPendentes = reservas
-    .filter((r) => r.statusreserva !== 'CANCELADA' && r.statusreserva !== 'FINALIZADA')
+    .filter((r) => r.statusreserva !== 'CANCELADA' && r.statusreserva !== 'CONCLUIDA')
     .reduce((acc, curr) => acc + curr.saldo, 0);
 
   const totalVendasLoja = vendas.reduce((acc, curr) => acc + curr.valortotal, 0);

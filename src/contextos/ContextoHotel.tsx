@@ -128,6 +128,20 @@ const normalizarQuartoDoBanco = (quarto: any): Quarto => {
   };
 };
 
+const normalizarStatusReserva = (status: unknown): StatusReserva => {
+  const statusNormalizado = String(status || '').toUpperCase();
+
+  if (statusNormalizado === 'CONFIRMADA') return 'RESERVADO';
+  if (statusNormalizado === 'FINALIZADA') return 'CONCLUIDA';
+  if (statusNormalizado === 'PRE_RESERVA' || statusNormalizado === 'RESERVADO' ||
+      statusNormalizado === 'HOSPEDADO' || statusNormalizado === 'CONCLUIDA' ||
+      statusNormalizado === 'CANCELADA') {
+    return statusNormalizado as StatusReserva;
+  }
+
+  return 'PRE_RESERVA';
+};
+
 // ============================================
 // PROVIDER
 // ============================================
@@ -203,6 +217,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
             );
             return {
               ...reserva,
+              statusreserva: normalizarStatusReserva(reserva.statusreserva ?? reserva.status),
               // Adiciona os dados do quarto na reserva
               quartonumero: quarto?.numero || 'N/A',
               quartocodigo: quarto?.codigoidentificador || quarto?.numero || 'N/A',
@@ -360,8 +375,13 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (quarto.status === 'MANUTENCAO') return { sucesso: false, mensagem: `Quarto ${quarto.numero} em manutenção.` };
 
     const agora = new Date().toISOString();
-    let statusInicial: StatusReserva = dados.statusreserva || 'CONFIRMADA';
-    if (dados.dataentrada === dataSistema && statusInicial !== 'HOSPEDADO') statusInicial = 'AGUARDANDO_CHECKIN';
+    const valorTotal = Number(dados.valortotal || 0);
+    const valorPago = Number(dados.valorpago || 0);
+    const percentualPago = valorTotal > 0 ? (valorPago / valorTotal) * 100 : 0;
+    let statusInicial: StatusReserva = percentualPago >= 50 ? 'RESERVADO' : 'PRE_RESERVA';
+    if (dados.statusreserva === 'HOSPEDADO' || dados.statusreserva === 'CANCELADA') {
+      statusInicial = dados.statusreserva;
+    }
 
     const maiorNumeroCodigo = reservas.reduce((maior, reserva) => {
       const correspondencia = String(reserva.codigo || '').match(/^#RES-(\d+)$/i);
@@ -429,7 +449,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         quarto.quartoid,
         statusInicial === 'HOSPEDADO'
           ? 'OCUPADO'
-          : (dados.dataentrada === dataSistema ? 'AGUARDANDO_CHECKIN' : 'RESERVADO')
+          : 'RESERVADO'
       );
     }
 
@@ -481,7 +501,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (client) await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
     setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
 
-    if (reserva.quartoid && (reserva.statusreserva === 'CONFIRMADA' || reserva.statusreserva === 'AGUARDANDO_CHECKIN')) {
+    if (reserva.quartoid && (reserva.statusreserva === 'RESERVADO' || reserva.statusreserva === 'PRE_RESERVA')) {
       await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
     }
 
@@ -517,7 +537,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const agora = new Date().toISOString();
     const dadosReserva = {
-      statusreserva: 'FINALIZADA' as StatusReserva,
+      statusreserva: 'CONCLUIDA' as StatusReserva,
       checkoutrealizadoem: agora, checkoutusuario: usuarioAtual?.usuarioid,
       dataoperacao: agora, naturezaoperacao: 'UPDATE'
     };
@@ -561,7 +581,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const client = supabaseService.getClient();
     const temReservaAtiva = reservas.some(r =>
       String(r.hospedeid) === String(id) &&
-      (r.statusreserva === 'CONFIRMADA' || r.statusreserva === 'AGUARDANDO_CHECKIN' || r.statusreserva === 'HOSPEDADO')
+      (r.statusreserva === 'RESERVADO' || r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'HOSPEDADO')
     );
     if (temReservaAtiva) return false;
 

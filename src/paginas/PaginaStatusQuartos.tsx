@@ -68,7 +68,7 @@ export const PaginaStatusQuartos: React.FC = () => {
         if (resultado.sucesso && resultado.dados) {
           const reservasAtivas = (resultado.dados as any[]).filter(
             (r: any) => r.statusreserva !== 'CANCELADA' &&
-              r.statusreserva !== 'FINALIZADA' &&
+              r.statusreserva !== 'CONCLUIDA' &&
               String(r.tipoatendimento || '').toUpperCase() !== 'DAY_USE'
           ) as Reserva[];
           setReservas(reservasAtivas);
@@ -240,7 +240,7 @@ export const PaginaStatusQuartos: React.FC = () => {
               <CardQuarto
                 key={obterIdQuarto(quarto) || `quarto-${index}`}
                 quarto={quarto}
-                aoClicar={handleAbrirDetalhesQuarto}
+                //aoClicar={handleAbrirDetalhesQuarto}
                 //reservas={reservasParaCard}
               />
             );
@@ -253,7 +253,7 @@ export const PaginaStatusQuartos: React.FC = () => {
         </div>
       </div>
 
-      <ModalReservaRapida
+      {/* <ModalReservaRapida
         quarto={quartoSelecionado}
         aberto={modalReservaAberto}
         dataSelecionada={dataConsulta}
@@ -261,7 +261,7 @@ export const PaginaStatusQuartos: React.FC = () => {
           setModalReservaAberto(false);
           setQuartoSelecionado(null);
         }}
-      />
+      /> */}
 
     </div>
   );

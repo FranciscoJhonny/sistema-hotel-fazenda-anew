@@ -3,10 +3,10 @@ import { CalendarRange, Clock3, ShieldCheck, ShieldAlert, Wrench, XCircle } from
 
 export const Legenda: React.FC = () => {
   const itens = [
-    { label: 'Confirmada', cor: 'bg-[#00A8E8]', icone: <ShieldCheck className="w-3.5 h-3.5" /> },
+    { label: 'Reservado', cor: 'bg-[#00A8E8]', icone: <ShieldCheck className="w-3.5 h-3.5" /> },
     { label: 'Pagamento Pendente', cor: 'bg-[#FF6B6B]', icone: <Clock3 className="w-3.5 h-3.5" /> },
     { label: 'Hospedado', cor: 'bg-[#053d1e]', icone: <CalendarRange className="w-3.5 h-3.5" /> },
-    { label: 'Finalizada', cor: 'bg-[#d1d5db]', icone: <ShieldCheck className="w-3.5 h-3.5" /> },
+    { label: 'Concluída', cor: 'bg-[#d1d5db]', icone: <ShieldCheck className="w-3.5 h-3.5" /> },
     { label: 'Manutenção', cor: 'bg-[#4b5563] bg-[repeating-linear-gradient(135deg,#4b5563_0,#4b5563_8px,#6b7280_8px,#6b7280_16px)]', icone: <Wrench className="w-3.5 h-3.5" /> },
     { label: 'Cancelada', cor: 'bg-[#9ca3af] line-through', icone: <XCircle className="w-3.5 h-3.5" /> },
   ];
