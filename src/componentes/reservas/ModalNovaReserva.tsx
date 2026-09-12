@@ -20,6 +20,8 @@ import {
   formatarTelefone,
   formatarCpf,
   calcularDiarias,
+  converterValorMonetario,
+  sanitizarValorMonetario,
 } from '../../utilitarios/formatadores';
 import { CardQuarto } from '../quartos/CardQuarto';
 
@@ -72,8 +74,8 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   // Pacote & Financeiro
   const [pacoteId, setPacoteId] = useState<number | undefined>(undefined);
   const [valorDiaria, setValorDiaria] = useState<number>(450);
-  const [valorDesconto, setValorDesconto] = useState<number>(0);
-  const [valorPago, setValorPago] = useState<number>(0);
+  const [valorDesconto, setValorDesconto] = useState<string>('');
+  const [valorPago, setValorPago] = useState<string>('');
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('PIX');
   const [observacoes, setObservacoes] = useState<string>('');
 
@@ -130,8 +132,10 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
     ? pacoteSelecionado.valor
     : valorDiaria * numeroDiarias;
 
-  const valorTotalFinal = Math.max(0, valorTotalBruto - valorDesconto);
-  const saldoRestante = Math.max(0, valorTotalFinal - valorPago);
+  const valorDescontoNumerico = converterValorMonetario(valorDesconto);
+  const valorPagoNumerico = converterValorMonetario(valorPago);
+  const valorTotalFinal = Math.max(0, valorTotalBruto - valorDescontoNumerico);
+  const saldoRestante = Math.max(0, valorTotalFinal - valorPagoNumerico);
 
   // Status de disponibilidade em tempo real dos 13 quartos para as datas selecionadas
   const statusDisponibilidade = verificarDisponibilidade(dataEntrada, dataSaida);
@@ -185,9 +189,9 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
 
       // 2. Status de pagamento
       let statusPag: StatusPagamento = 'PENDENTE';
-      if (valorPago >= valorTotalFinal && valorTotalFinal > 0) {
+      if (valorPagoNumerico >= valorTotalFinal && valorTotalFinal > 0) {
         statusPag = 'PAGO';
-      } else if (valorPago > 0) {
+      } else if (valorPagoNumerico > 0) {
         statusPag = 'PARCIAL';
       }
 
@@ -211,7 +215,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
         pacoteid: pacoteId,
         pacotename: pacoteSelecionado?.nome,
         valortotal: valorTotalFinal,
-        valorpago: valorPago,
+        valorpago: valorPagoNumerico,
         saldo: saldoRestante,
         statuspagamento: statusPag,
         formapagamento: formaPagamento,
@@ -623,7 +627,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                       type="number"
                       min={0}
                       value={valorDesconto}
-                      onChange={(e) => setValorDesconto(Number(e.target.value))}
+                      onChange={(e) => setValorDesconto(sanitizarValorMonetario(e.target.value))}
                       className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
                     />
                   </div>
@@ -632,10 +636,11 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                       Valor de Entrada / Sinal (R$)
                     </label>
                     <input
-                      type="number"
-                      min={0}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0,00"
                       value={valorPago}
-                      onChange={(e) => setValorPago(Number(e.target.value))}
+                      onChange={(e) => setValorPago(sanitizarValorMonetario(e.target.value))}
                       className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
                     />
                   </div>
@@ -767,10 +772,10 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                     </div>
                   )}
 
-                  {valorDesconto > 0 && (
+                  {valorDescontoNumerico > 0 && (
                     <div className="flex justify-between py-1 border-b border-[#e1e3e4] text-[#ba1a1a]">
                       <span>Desconto:</span>
-                      <span className="font-semibold">-{formatarMoeda(valorDesconto)}</span>
+                      <span className="font-semibold">-{formatarMoeda(valorDescontoNumerico)}</span>
                     </div>
                   )}
                 </div>
@@ -787,7 +792,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   <div className="flex justify-between text-xs">
                     <span className="text-[#414941]">Sinal / Pago:</span>
                     <span className="font-semibold text-[#137333]">
-                      {formatarMoeda(valorPago)}
+                      {formatarMoeda(valorPagoNumerico)}
                     </span>
                   </div>
 

@@ -11,6 +11,7 @@ import { PaginaCheckout } from './paginas/PaginaCheckout';
 import { PaginaHospedes } from './paginas/PaginaHospedes';
 import { PaginaFinanceiro } from './paginas/PaginaFinanceiro';
 import { PaginaLoja } from './paginas/PaginaLoja';
+import { PaginaProdutos } from './paginas/PaginaProdutos';
 import { PaginaRelatorios } from './paginas/PaginaRelatorios';
 import { PaginaConfiguracoes } from './paginas/PaginaConfiguracoes';
 import { PaginaLogin } from './paginas/PaginaLogin';
@@ -44,6 +45,8 @@ const ConteudoPrincipal: React.FC = () => {
         return <PaginaFinanceiro />;
       case 'loja':
         return <PaginaLoja />;
+      case 'produtos':
+        return <PaginaProdutos />;
       case 'relatorios':
         return <PaginaRelatorios />;
       case 'configuracoes':

@@ -25,9 +25,9 @@ export class PagamentoService extends BaseService<Pagamento> implements IPagamen
       const { data, error } = await client
         .from('pagamento')
         .select('*')
-        .eq('reservaId', reservaId)
+        .eq('reservaid', reservaId)
         .eq('ativo', true)
-        .order('dataPagamento', { ascending: false });
+        .order('datapagamento', { ascending: false });
 
       if (error) return { sucesso: false, erro: error.message };
       return { sucesso: true, dados: (data as unknown as Pagamento[]) || [] };

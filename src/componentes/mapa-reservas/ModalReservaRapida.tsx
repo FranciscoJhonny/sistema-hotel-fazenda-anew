@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, CreditCard, X, Users, Bed } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, Pacote, FormaPagamento } from '../../tipos';
-import { formatarData, formatarMoeda } from '../../utilitarios/formatadores';
+import { formatarData, formatarMoeda, sanitizarValorMonetario } from '../../utilitarios/formatadores';
 
 interface ModalReservaRapidaProps {
   aberto: boolean;
@@ -596,7 +596,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                     placeholder="0,00"
                     onChange={(e) => {
                       const texto = e.target.value;
-                      setValorPagoTexto(texto);
+                      setValorPagoTexto(sanitizarValorMonetario(texto));
                       setValorPago(converterValorMonetario(texto));
                     }}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white py-2 pl-9 pr-3 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20"

@@ -5,6 +5,19 @@ export function formatarMoeda(valor: number): string {
   }).format(valor || 0);
 }
 
+export function sanitizarValorMonetario(valor: string): string {
+  const somenteNumeros = valor.replace(/[^\d,]/g, '');
+  const [parteInteira, ...partesDecimais] = somenteNumeros.split(',');
+  return partesDecimais.length > 0
+    ? `${parteInteira},${partesDecimais.join('')}`
+    : somenteNumeros;
+}
+
+export function converterValorMonetario(valor: string): number {
+  const numero = Number(sanitizarValorMonetario(valor).replace(',', '.'));
+  return Number.isFinite(numero) ? Math.max(0, numero) : 0;
+}
+
 export function formatarData(dataString: string): string {
   if (!dataString) return '--';
   // If format is YYYY-MM-DD

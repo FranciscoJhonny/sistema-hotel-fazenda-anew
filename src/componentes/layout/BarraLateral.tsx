@@ -8,6 +8,7 @@ import {
   LogIn,
   LogOut,
   Settings,
+  Package,
   Users
 } from 'lucide-react';
 import React from 'react';
@@ -94,6 +95,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'financeiro',
         label: 'Financeiro',
         icone: <BadgePercent className="w-5 h-5" />,
+      },
+      {
+        id: 'produtos',
+        label: 'Produtos',
+        icone: <Package className="w-5 h-5" />,
       },
       {
         id: 'relatorios',

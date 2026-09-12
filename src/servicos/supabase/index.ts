@@ -13,6 +13,7 @@ export { ProdutoService } from './ProdutoService';
 export { VendaService } from './VendaService';
 export { ItemVendaService } from './ItemVendaService';
 export { ConfiguracaoService } from './ConfiguracaoService';
+export { ConsumoExtraService } from './ConsumoExtraService';
 
 // Tipos e Interfaces exportados
 export type {

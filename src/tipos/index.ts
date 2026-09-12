@@ -33,6 +33,12 @@ export type FormaPagamento =
 
 export type StatusPagamento = 'PAGO' | 'PENDENTE' | 'PARCIAL';
 
+export type TipoLancamentoPagamento =
+  | 'SINAL_RESERVA'
+  | 'SALDO_DIARIAS'
+  | 'CONSUMO_EXTRA'
+  | 'FECHAMENTO_GERAL';
+
 export type PerfilUsuario = 'ADMIN' | 'RECEPCAO' | 'VENDAS';
 
 export type TipoVenda = 'LOJA' | 'ALMOCO' | 'DAY_USE' | 'CONSUMO_QUARTO';
@@ -176,6 +182,7 @@ export interface Pagamento extends EntidadeAuditavel {
   datapagamento: string;
   comprovanteurl?: string;
   observacoes?: string;
+  tipolancamento: TipoLancamentoPagamento;
 }
 
 // =============================================================================
@@ -188,6 +195,21 @@ export interface Produto extends EntidadeAuditavel {
   categoria: string;
   preco: number;
   estoque: number;
+}
+
+export type CategoriaProduto = 'FRIGOBAR' | 'LOJINHA' | 'SERVICOS' | string;
+
+export interface ConsumoExtra extends EntidadeAuditavel {
+  consumoid: number | string;
+  reservaid: number | string;
+  produtoid?: number | string;
+  produtonome?: string;
+  quantidade: number;
+  valorunitario: number;
+  valortotal: number;
+  dataconsumo: string;
+  categoria: CategoriaProduto;
+  descricao?: string;
 }
 
 // =============================================================================
@@ -266,5 +288,6 @@ export type PaginaNavegacao =
   | 'hospedes'
   | 'financeiro'
   | 'loja'
+  | 'produtos'
   | 'relatorios'
   | 'configuracoes';

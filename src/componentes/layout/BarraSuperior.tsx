@@ -33,6 +33,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
     hospedes: 'Hóspedes',
     financeiro: 'Financeiro',
     loja: 'Lojinha',
+    produtos: 'Produtos',
     relatorios: 'Relatórios',
     configuracoes: 'Configurações',
     'status-quartos': 'Status dos Quartos',
