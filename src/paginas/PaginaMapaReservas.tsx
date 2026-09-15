@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleDashed,
   Clock3,
+  LoaderCircle,
   Search,
   Wrench,
 } from 'lucide-react';
@@ -65,6 +66,7 @@ export const PaginaMapaReservas: React.FC = () => {
   const [quartoSelecionado, setQuartoSelecionado] = useState<Quarto | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState<string | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
+  const [carregandoReserva, setCarregandoReserva] = useState(false);
 
   const numeroDias = 12;
   const datasVisiveis = useMemo(
@@ -561,10 +563,27 @@ export const PaginaMapaReservas: React.FC = () => {
           setDataSelecionada(null);
         }}
         onSucesso={(mensagem) => {
+          // 1. Exibe a mensagem de sucesso
           setMensagemSucesso(mensagem);
+          
+          // 2. Fecha a modal e limpa os dados selecionados para a próxima reserva
+          setModalAberto(false);
+          setQuartoSelecionado(null);
+          setDataSelecionada(null);
+          
+          // 3. Remove a mensagem de sucesso após 4 segundos
           window.setTimeout(() => setMensagemSucesso(null), 4000);
         }}
+        onCarregandoChange={setCarregandoReserva}
       />
+
+      {carregandoReserva && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs" role="status" aria-live="polite">
+          <div className="rounded-xl bg-white px-5 py-4 shadow-xl flex items-center gap-3 text-sm font-semibold text-[#053d1e]">
+            <LoaderCircle className="h-5 w-5 animate-spin" /> Salvando reserva...
+          </div>
+        </div>
+      )}
     </div>
   );
 };

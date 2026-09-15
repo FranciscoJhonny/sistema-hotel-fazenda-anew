@@ -11,6 +11,7 @@ import {
   Calendar,
   AlertCircle,
   FileCheck,
+  LoaderCircle, // Adicionado para o ícone de loading
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva } from '../tipos';
@@ -23,7 +24,8 @@ export const PaginaCheckin: React.FC = () => {
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
   const [comprovanteCheckin, setComprovanteCheckin] = useState<Reserva | null>(null);
-
+  const [carregandoCheckin, setCarregandoCheckin] = useState<boolean>(false); // Novo estado de loading
+console.log(dataSistema)
   // Reservas aguardando check-in
   const reservasAguardando = reservas.filter(
     (r) => (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema
@@ -39,12 +41,17 @@ export const PaginaCheckin: React.FC = () => {
   });
 
   const handleEfetivarCheckin = async (reserva: Reserva) => {
-    const res = await realizarCheckin(reserva.reservaid); // ou reserva.id dependendo da sua interface
-    if (res.sucesso) {
-      setFeedbackSucesso(res.mensagem);
-      setComprovanteCheckin(reserva);
-      setReservaSelecionada(null);
-      setTimeout(() => setFeedbackSucesso(null), 4000);
+    setCarregandoCheckin(true); // Ativa o loading
+    try {
+      const res = await realizarCheckin(reserva.reservaid);
+      if (res.sucesso) {
+        setFeedbackSucesso(res.mensagem);
+        setComprovanteCheckin(reserva);
+        setReservaSelecionada(null);
+        setTimeout(() => setFeedbackSucesso(null), 4000);
+      }
+    } finally {
+      setCarregandoCheckin(false); // Desativa o loading ao final (sucesso ou erro)
     }
   };
 
@@ -114,10 +121,11 @@ export const PaginaCheckin: React.FC = () => {
                   <div
                     key={res.reservaid}
                     onClick={() => setReservaSelecionada(res)}
-                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
+                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
+                      selecionado
                         ? 'border-2 border-[#053d1e] bg-[#b8f0c2]/10 ring-2 ring-[#053d1e]/20 shadow-md'
                         : 'border-[#c1c9bf] hover:border-[#053d1e] hover:shadow-xs'
-                      }`}
+                    }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
@@ -155,8 +163,9 @@ export const PaginaCheckin: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Saldo a Cobrar:</span>
                         <span
-                          className={`font-bold ${res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
-                            }`}
+                          className={`font-bold ${
+                            res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                          }`}
                         >
                           {formatarMoeda(res.saldo)}
                         </span>
@@ -207,10 +216,15 @@ export const PaginaCheckin: React.FC = () => {
               <div className="space-y-2 pt-2">
                 <button
                   onClick={() => handleEfetivarCheckin(reservaSelecionada)}
-                  className="w-full py-3 bg-[#053d1e] hover:bg-[#225533] text-white rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                  disabled={carregandoCheckin} // Desabilita o botão durante o carregamento
+                  className={`w-full py-3 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${
+                    carregandoCheckin 
+                      ? 'bg-[#053d1e]/60 cursor-not-allowed text-white/80' 
+                      : 'bg-[#053d1e] hover:bg-[#225533] text-white'
+                  }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  Efetivar Check-in & Entregar Chave
+                  {carregandoCheckin ? 'Processando...' : 'Efetivar Check-in & Entregar Chave'}
                 </button>
               </div>
             </div>
@@ -266,18 +280,27 @@ export const PaginaCheckin: React.FC = () => {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => window.print()}
-                className="flex-1 py-2 rounded-lg border border-[#c1c9bf] hover:bg-[#f3f4f5] text-xs font-semibold flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 rounded-lg border border-[#c1c9bf] hover:bg-[#f3f4f5] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 Imprimir Ficha
               </button>
               <button
                 onClick={() => setComprovanteCheckin(null)}
-                className="flex-1 py-2 bg-[#053d1e] text-white rounded-lg text-xs font-bold hover:bg-[#225533]"
+                className="flex-1 py-2 bg-[#053d1e] text-white rounded-lg text-xs font-bold hover:bg-[#225533] cursor-pointer"
               >
                 Concluir
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay de Carregamento (Loading) */}
+      {carregandoCheckin && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs" role="status" aria-live="polite">
+          <div className="bg-white rounded-xl px-5 py-4 shadow-xl flex items-center gap-3 text-sm font-semibold text-[#053d1e]">
+            <LoaderCircle className="w-5 h-5 animate-spin" /> Processando check-in...
           </div>
         </div>
       )}

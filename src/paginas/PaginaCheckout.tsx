@@ -7,7 +7,7 @@ import { formatarData, formatarMoeda, sanitizarValorMonetario, converterValorMon
 type PagamentoCheckout = {
   valor: string;
   formaPagamento: FormaPagamento;
-  tipoLancamento: 'SALDO_DIARIAS' | 'CONSUMO_EXTRA';
+  tipoLancamento: 'SALDO_RESERVA' | 'CONSUMO_EXTRA';
 };
 
 type ConsumoPendente = {
@@ -73,7 +73,7 @@ export const PaginaCheckout: React.FC = () => {
         {
           valor: formatarMoeda(reservaSelecionada.saldo),
           formaPagamento: 'PIX',
-          tipoLancamento: 'SALDO_DIARIAS'
+          tipoLancamento: 'SALDO_RESERVA'
         }
       ];
 
@@ -89,42 +89,60 @@ export const PaginaCheckout: React.FC = () => {
   }, [reservaSelecionada, modoPagamento, totalConsumosDaConta]);
 
   const handleEfetivarCheckout = async (reserva: Reserva) => {
-    const pagamentos = modoPagamento === 'junto'
-      ? [{ valor: totalAcobrar, formapagamento: formaPagamentoFinal, tipolancamento: 'FECHAMENTO_GERAL' as const }]
-      : pagamentosSeparados
+    // Vamos montar os pagamentos de forma categorizada, mesmo no modo "junto"
+    let pagamentosParaSalvar: Array<{
+      valor: number;
+      formapagamento: FormaPagamento;
+      tipolancamento: 'SALDO_RESERVA' | 'CONSUMO_EXTRA'
+    }> = [];
+
+    if (modoPagamento === 'junto') {
+      // Se houver saldo de diárias, cria o lançamento de diárias
+      if (Number(reserva.saldo) > 0) {
+        pagamentosParaSalvar.push({
+          valor: Number(reserva.saldo),
+          formapagamento: formaPagamentoFinal,
+          tipolancamento: 'SALDO_RESERVA'
+        });
+      }
+      // Se houver consumos, cria o lançamento de consumos
+      if (totalConsumosDaConta > 0) {
+        pagamentosParaSalvar.push({
+          valor: totalConsumosDaConta,
+          formapagamento: formaPagamentoFinal,
+          tipolancamento: 'CONSUMO_EXTRA'
+        });
+      }
+    } else {
+      // Modo separado: usa exatamente o que foi configurado nos blocos
+      pagamentosParaSalvar = pagamentosSeparados
         .map((pagamento) => ({
           valor: converterValorMonetario(pagamento.valor),
           formapagamento: pagamento.formaPagamento,
           tipolancamento: pagamento.tipoLancamento,
         }))
-        .filter((pagamento) => pagamento.valor > 0);
+        .filter((pagamento) => pagamento.valor > 0) as any;
 
-    const totalInformado = pagamentos.reduce((total, pagamento) => total + pagamento.valor, 0);
+      // Validação do modo separado (mantida)
+      const totalInformado = pagamentosParaSalvar.reduce((total, p) => total + p.valor, 0);
+      const totalDiarias = pagamentosParaSalvar.filter(p => p.tipolancamento === 'SALDO_RESERVA').reduce((t, p) => t + p.valor, 0);
+      const totalExtras = pagamentosParaSalvar.filter(p => p.tipolancamento === 'CONSUMO_EXTRA').reduce((t, p) => t + p.valor, 0);
 
-    if (modoPagamento === 'separado') {
-      const totalDiarias = pagamentos
-        .filter((pagamento) => pagamento.tipolancamento === 'SALDO_DIARIAS')
-        .reduce((total, pagamento) => total + pagamento.valor, 0);
-      const totalExtras = pagamentos
-        .filter((pagamento) => pagamento.tipolancamento === 'CONSUMO_EXTRA')
-        .reduce((total, pagamento) => total + pagamento.valor, 0);
-
-      // Validação com tolerância de 1 centavo para evitar erros de ponto flutuante do JS
       const diffTotal = Math.abs(totalInformado - totalAcobrar);
       const diffDiarias = Math.abs(totalDiarias - Number(reserva.saldo));
       const diffExtras = Math.abs(totalExtras - totalConsumosDaConta);
 
       if (diffTotal > 0.01 || diffDiarias > 0.01 || diffExtras > 0.01) {
-        setFeedbackErro(`Valores não conferem. Diárias: ${formatarMoeda(reserva.saldo)}, Consumos: ${formatarMoeda(totalConsumosDaConta)}. Total informado: ${formatarMoeda(totalInformado)}`);
+        setFeedbackErro(`Valores não conferem. Diárias: ${formatarMoeda(reserva.saldo)}, Consumos: ${formatarMoeda(totalConsumosDaConta)}. Total: ${formatarMoeda(totalInformado)}`);
+        return;
+      }
+      if (totalInformado === 0) {
+        setFeedbackErro('Informe os valores dos pagamentos separados.');
         return;
       }
     }
 
-    if (modoPagamento === 'separado' && totalInformado === 0) {
-      setFeedbackErro('Informe os valores dos pagamentos separados.');
-      return;
-    }
-
+    // Salva consumos pendentes se houver
     if (consumosPendentes.length > 0) {
       setSalvandoConsumo(true);
       const resultadoConsumos = await salvarConsumosPendentes(reserva);
@@ -135,9 +153,10 @@ export const PaginaCheckout: React.FC = () => {
       }
     }
 
+    // Chama o checkout passando os pagamentos já categorizados
     const res = await realizarCheckout(
       reserva.reservaid,
-      totalAcobrar > 0 ? pagamentos : []
+      pagamentosParaSalvar.length > 0 ? pagamentosParaSalvar : []
     );
 
     if (res.sucesso) {
@@ -326,8 +345,8 @@ export const PaginaCheckout: React.FC = () => {
                       setModoPagamento('junto'); // Reseta para junto ao trocar de reserva
                     }}
                     className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
-                        ? 'border-2 border-[#ba1a1a] bg-[#ffdad6]/20 ring-2 ring-[#ba1a1a]/20 shadow-md'
-                        : 'border-[#c1c9bf] hover:border-[#ba1a1a] hover:shadow-xs'
+                      ? 'border-2 border-[#ba1a1a] bg-[#ffdad6]/20 ring-2 ring-[#ba1a1a]/20 shadow-md'
+                      : 'border-[#c1c9bf] hover:border-[#ba1a1a] hover:shadow-xs'
                       }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
@@ -344,7 +363,7 @@ export const PaginaCheckout: React.FC = () => {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs text-[#414941]">
                       <div>
                         <span className="text-[#717971] text-[10px] block">Acomodação:</span>
-                        <span className="font-bold text-[#053d1e]">Quarto {res.quartonumero}</span>
+                        <span className="font-bold text-[#053d1e]">Quarto {res.quartocodigo}</span>
                       </div>
                       <div>
                         <span className="text-[#717971] text-[10px] block">Entrada / Saída:</span>
@@ -462,7 +481,7 @@ export const PaginaCheckout: React.FC = () => {
                       onChange={(e) => setFormaPagamentoFinal(e.target.value as FormaPagamento)}
                       className="w-full p-2.5 border border-[#c1c9bf] rounded-lg bg-[#f8f9fa] font-semibold"
                     >
-                      <option value="PIX">PIX Fazenda Anew</option>
+                      <option value="PIX">PIX</option>
                       <option value="CARTAO_CREDITO">Cartão de Crédito</option>
                       <option value="CARTAO_DEBITO">Cartão de Débito</option>
                       <option value="DINHEIRO">Dinheiro em Espécie</option>
@@ -471,7 +490,7 @@ export const PaginaCheckout: React.FC = () => {
                     <div className="space-y-3">
                       {/* Renderização dos blocos de pagamento separado com valores TRAVADOS */}
                       {pagamentosSeparados.map((pagamento, indice) => {
-                        const isDiaria = pagamento.tipoLancamento === 'SALDO_DIARIAS';
+                        const isDiaria = pagamento.tipoLancamento === 'SALDO_RESERVA';
                         const valorEsperado = isDiaria ? reservaSelecionada.saldo : totalConsumosDaConta;
 
                         return (

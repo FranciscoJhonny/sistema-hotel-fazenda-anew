@@ -7,308 +7,453 @@ import {
   Receipt,
   TrendingUp,
   AlertCircle,
-  Calendar
+  Calendar,
+  LoaderCircle,
+  CheckCircle2,
+  Clock
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
-import { Pagamento, Reserva, ConsumoExtra, Venda } from '../tipos';
+import { Pagamento, Reserva, ConsumoExtra } from '../tipos';
+import * as XLSX from 'xlsx-js-style';
+
+// Função auxiliar para formatar o nome do pagamento de forma legível
+const formatarNomePagamento = (forma: string) => {
+  switch (forma) {
+    case 'PIX': return 'PIX';
+    case 'CARTAO_CREDITO': return 'Crédito';
+    case 'CARTAO_DEBITO': return 'Débito';
+    case 'DINHEIRO': return 'Dinheiro';
+    case 'TRANSFERENCIA': return 'Transferência';
+    default: return forma || 'Não informado';
+  }
+};
 
 export const PaginaFinanceiro: React.FC = () => {
-  const { reservas, vendas, consumosExtras, pagamentos } = useHotel();
+  const { reservas, consumosExtras, pagamentos, quartos } = useHotel();
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
-  
-  // NOVOS ESTADOS PARA FILTRO DE DATA PERSONALIZADO
-  const [dataInicio, setDataInicio] = useState<string>('');
-  const [dataFim, setDataFim] = useState<string>('');
+
+  const [dataInicioInput, setDataInicioInput] = useState<string>('');
+  const [dataFimInput, setDataFimInput] = useState<string>('');
+  const [dataInicioFiltro, setDataInicioFiltro] = useState<string>('');
+  const [dataFimFiltro, setDataFimFiltro] = useState<string>('');
   const [usarFiltroData, setUsarFiltroData] = useState<boolean>(false);
+  const [carregando, setCarregando] = useState<boolean>(false);
 
-  const reservasConcluidas = useMemo(() => {
-    return (reservas || []).filter((r: Reserva) => r.statusreserva === 'CONCLUIDA');
-  }, [reservas]);
+  const statusPermitidos = ['RESERVADO', 'HOSPEDADO', 'CONCLUIDA'];
 
-  // Função para verificar se data está no período
-  const filtrarPorPeriodo = (data: string) => {
-    if (!data) return false;
-    const dataLancamento = new Date(data);
-    
-    // Se estiver usando filtro personalizado de data
-    if (usarFiltroData) {
-      if (dataInicio && dataFim) {
-        const inicio = new Date(dataInicio + 'T00:00:00');
-        const fim = new Date(dataFim + 'T23:59:59');
-        return dataLancamento >= inicio && dataLancamento <= fim;
-      }
-      return false;
-    }
-    
-    // Filtros rápidos
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    const diffDias = Math.floor((hoje.getTime() - dataLancamento.getTime()) / (1000 * 60 * 60 * 24));
+  // 1. FILTRAR RESERVAS
+  const reservasDoPeriodo = useMemo(() => {
+    if (!usarFiltroData || !dataInicioFiltro || !dataFimFiltro) return [];
 
-    switch (filtroTipo) {
-      case 'HOJE':
-        return dataLancamento.toDateString() === hoje.toDateString();
-      case 'SEMANA':
-        return diffDias <= 7;
-      case 'MES':
-        return dataLancamento.getMonth() === hoje.getMonth() && 
-               dataLancamento.getFullYear() === hoje.getFullYear();
-      case 'TODOS':
-      default:
-        return true;
-    }
-  };
+    const inicio = new Date(dataInicioFiltro + 'T00:00:00');
+    const fim = new Date(dataFimFiltro + 'T23:59:59');
 
-  const analytics = useMemo(() => {
-    const pagamentosDoPeriodo = (pagamentos || []).filter((p: Pagamento) => {
-      if (p.status !== 'CONFIRMADO' && p.status !== 'PAGO') return false;
-      
-      const reserva = reservasConcluidas.find((r: Reserva) => 
-        String(r.reservaid) === String(p.reservaid)
-      );
-      
-      if (!reserva) return false;
-      
-      return filtrarPorPeriodo(p.datapagamento);
+    return (reservas || []).filter((r: Reserva) => {
+      if (!statusPermitidos.includes(r.statusreserva)) return false;
+      const dataReferencia = r.dataentrada;
+      if (!dataReferencia) return false;
+
+      const dataLimpa = String(dataReferencia).split('T')[0].split(' ')[0];
+      const dataReserva = new Date(dataLimpa + 'T12:00:00');
+
+      return dataReserva >= inicio && dataReserva <= fim;
     });
+  }, [reservas, dataInicioFiltro, dataFimFiltro, usarFiltroData]);
 
-    const totalDiarias = pagamentosDoPeriodo
-      .filter((p: Pagamento) => 
-        p.tipolancamento === 'SINAL_RESERVA' || 
-        p.tipolancamento === 'SALDO_DIARIAS' || 
-        p.tipolancamento === 'FECHAMENTO_GERAL'
-      )
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+  // 2. PAGAMENTOS E CONSUMOS VINCULADOS
+  const pagamentosDoPeriodo = useMemo(() => {
+    if (!pagamentos || reservasDoPeriodo.length === 0) return [];
+    const idsReservasPeriodo = new Set(reservasDoPeriodo.map(r => String(r.reservaid)));
+    return pagamentos.filter((p: Pagamento) => {
+      if (p.status !== 'CONFIRMADO' && p.status !== 'PAGO') return false;
+      return idsReservasPeriodo.has(String(p.reservaid));
+    });
+  }, [pagamentos, reservasDoPeriodo]);
 
-    const totalConsumosFrigobar = pagamentosDoPeriodo
-      .filter((p: Pagamento) => {
-        if (p.tipolancamento !== 'CONSUMO_EXTRA') return false;
-        
-        const consumo = (consumosExtras || []).find((c: ConsumoExtra) => 
-          String(c.reservaid) === String(p.reservaid) &&
-          Math.abs(Number(c.valortotal || 0) - Number(p.valor || 0)) < 0.01
-        );
-        
-        return consumo && (
-          consumo.categoria?.toUpperCase() === 'FRIGOBAR' || 
-          consumo.categoria?.toUpperCase() === 'SERVICOS'
-        );
-      })
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+  const consumosDessasReservas = useMemo(() => {
+    if (!consumosExtras || reservasDoPeriodo.length === 0) return [];
+    const idsReservasPeriodo = new Set(reservasDoPeriodo.map(r => String(r.reservaid)));
+    return consumosExtras.filter((c: ConsumoExtra) => {
+      return idsReservasPeriodo.has(String(c.reservaid)) && c.ativo;
+    });
+  }, [consumosExtras, reservasDoPeriodo]);
 
-    const totalVendasLojinhaConsumos = pagamentosDoPeriodo
-      .filter((p: Pagamento) => {
-        if (p.tipolancamento !== 'CONSUMO_EXTRA') return false;
-        
-        const consumo = (consumosExtras || []).find((c: ConsumoExtra) => 
-          String(c.reservaid) === String(p.reservaid) &&
-          Math.abs(Number(c.valortotal || 0) - Number(p.valor || 0)) < 0.01
-        );
-        
-        return consumo && consumo.categoria?.toUpperCase() === 'LOJINHA';
-      })
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+  // 3. NOVA GRID VIEW: RESUMO POR RESERVA (CORRIGIDO)
+  const resumoReservas = useMemo(() => {
+    return reservasDoPeriodo.map(reserva => {
+      // Encontrar o quarto
+      const quarto = quartos?.find(q => String(q.quartoid) === String(reserva.quartoid));
 
-    const totalVendasLojaVendas = (vendas || [])
-      .filter((v: Venda) => filtrarPorPeriodo(v.datahora))
-      .reduce((acc: number, v: Venda) => acc + Number(v.valortotal || 0), 0) || 0;
+      // Consumos de Lojinha desta reserva
+      const consumosLojinha = consumosDessasReservas.filter(
+        c => String(c.reservaid) === String(reserva.reservaid) && c.categoria?.toUpperCase() === 'LOJINHA'
+      );
+      const valorLojinha = consumosLojinha.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
+      const produtosLojinhaConcat = consumosLojinha.length > 0
+        ? consumosLojinha.map(c => `${c.quantidade}x ${c.descricao || c.categoria}`).join(', ')
+        : '';
 
-    const totalVendasLoja = totalVendasLojinhaConsumos + totalVendasLojaVendas;
+      // Pagamentos desta reserva
+      const pagamentosDaReserva = pagamentosDoPeriodo.filter(p => String(p.reservaid) === String(reserva.reservaid));
 
-    const totalPix = pagamentosDoPeriodo
-      .filter((p: Pagamento) => p.formapagamento === 'PIX')
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+      // CORREÇÃO: Valor da Reserva = Soma dos pagamentos com tipolancamento === 'SINAL_RESERVA'
+      const pagamentosSinal = pagamentosDaReserva.filter(p => p.tipolancamento === 'SINAL_RESERVA');
+      const valorReservaPago = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
+      const metodosSinal = [...new Set(pagamentosSinal.map(p => formatarNomePagamento(p.formapagamento)))].join('/') || '';
 
-    const totalCartaoCredito = pagamentosDoPeriodo
-      .filter((p: Pagamento) => p.formapagamento === 'CARTAO_CREDITO')
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+      // CORREÇÃO: Valor do Checkout = Soma dos pagamentos com tipolancamento === 'SALDO_RESERVA'
+      const pagamentosCheckout = pagamentosDaReserva.filter(p => p.tipolancamento === 'SALDO_RESERVA');
+      const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
+      const metodosCheckout = [...new Set(pagamentosCheckout.map(p => formatarNomePagamento(p.formapagamento)))].join('/') || '';
 
-    const totalCartaoDebito = pagamentosDoPeriodo
-      .filter((p: Pagamento) => p.formapagamento === 'CARTAO_DEBITO')
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+      // Pagamento específico da lojinha (se houver)
+      const pagtoLojinhaEspecifico = pagamentosDaReserva.find(p =>
+        p.tipolancamento === 'CONSUMO_EXTRA' && Math.abs(Number(p.valor || 0) - valorLojinha) < 0.01
+      );
 
-    const totalDinheiro = pagamentosDoPeriodo
-      .filter((p: Pagamento) => p.formapagamento === 'DINHEIRO')
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+      let metodoPagamentoLojinha = '';
+      if (pagtoLojinhaEspecifico) {
+        metodoPagamentoLojinha = formatarNomePagamento(pagtoLojinhaEspecifico.formapagamento);
+      }
 
-    const totalTransferencia = pagamentosDoPeriodo
-      .filter((p: Pagamento) => p.formapagamento === 'TRANSFERENCIA')
-      .reduce((acc: number, p: Pagamento) => acc + Number(p.valor || 0), 0);
+      // CORREÇÃO: Total Geral = Sinal + Checkout + Lojinha
+      const totalGeral = valorReservaPago + valorCheckoutPago + valorLojinha;
 
-    const totalSaldosPendentes = reservasConcluidas
-      .filter((r: Reserva) => r.saldo > 0)
-      .reduce((acc: number, r: Reserva) => acc + Number(r.saldo || 0), 0);
+      // STATUS: Só é "PAGO" se estiver CONCLUIDA (fez check-out) e o saldo for zerado
+      let status = 'PENDENTE';
+      if (reserva.statusreserva === 'CONCLUIDA' && Number(reserva.saldo || 0) <= 0.01) {
+        status = 'PAGO';
+      } else if (Number(reserva.valorpago || 0) > 0 && Number(reserva.saldo || 0) > 0) {
+        status = 'PARCIAL';
+      }
 
-    const totalConsumosNaoPagos = (consumosExtras || [])
-      .filter((c: ConsumoExtra) => {
-        if (!c.ativo) return false;
-        if (c.categoria?.toUpperCase() === 'LOJINHA') return false;
-        
-        const reserva = reservasConcluidas.find((r: Reserva) => 
-          String(r.reservaid) === String(c.reservaid)
-        );
-        
-        if (!reserva) return false;
-        
-        const pagamentoConsumo = (pagamentos || []).find((p: Pagamento) =>
-          String(p.reservaid) === String(c.reservaid) &&
-          p.tipolancamento === 'CONSUMO_EXTRA' &&
-          (p.status === 'CONFIRMADO' || p.status === 'PAGO') &&
-          Math.abs(Number(p.valor || 0) - Number(c.valortotal || 0)) < 0.01
-        );
-        
-        const pagamentoGeral = (pagamentos || []).find((p: Pagamento) =>
-          String(p.reservaid) === String(c.reservaid) &&
-          p.tipolancamento === 'FECHAMENTO_GERAL' &&
-          (p.status === 'CONFIRMADO' || p.status === 'PAGO')
-        );
-        
-        if (pagamentoConsumo || pagamentoGeral) return false;
-        
-        return true;
-      })
-      .reduce((acc: number, c: ConsumoExtra) => acc + Number(c.valortotal || 0), 0);
+      return {
+        quarto: quarto?.codigoidentificador || reserva.quartonumero || '',
+        codigo: reserva.codigo,
+        hospede: reserva.hospedenome,
+        dataReserva: reserva.datareserva,
+        dataEntrada: reserva.dataentrada,
+        dataSaida: reserva.datasaida,
+        valorReserva: valorReservaPago, // <-- AGORA USA O SINAL_RESERVA
+        produtosLojinha: produtosLojinhaConcat,
+        valorLojinha: valorLojinha,
+        pagtoLojinha: metodoPagamentoLojinha,
+        pagtoReserva: metodosSinal, // <-- ADICIONADO: Pagamento do Sinal/Reserva
+        valorCheckout: valorCheckoutPago, // <-- AGORA USA O SALDO_RESERVA
+        pagtoCheckout: metodosCheckout,
+        total: totalGeral, // <-- AGORA É A SOMA CORRETA
+        status: status
+      };
+    }).sort((a, b) => new Date(b.dataEntrada).getTime() - new Date(a.dataEntrada).getTime());
+  }, [reservasDoPeriodo, consumosDessasReservas, pagamentosDoPeriodo, quartos]);
 
-    const receitaTotalRealizada = totalDiarias + totalConsumosFrigobar + totalVendasLojinhaConsumos;
+  // 4. CÁLCULOS FINANCEIROS GERAIS
+  const analytics = useMemo(() => {
+    const totalConsumosFrigobar = consumosDessasReservas
+      .filter(c => c.categoria?.toUpperCase() === 'FRIGOBAR' || c.categoria?.toUpperCase() === 'SERVICOS')
+      .reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
+
+    const totalVendasLoja = consumosDessasReservas
+      .filter(c => c.categoria?.toUpperCase() === 'LOJINHA')
+      .reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
+
+    const totalSinalReserva = pagamentosDoPeriodo
+      .filter(p => p.tipolancamento === 'SINAL_RESERVA')
+      .reduce((acc, p) => acc + Number(p.valor || 0), 0);
+
+    const totalSaldoReserva = pagamentosDoPeriodo
+      .filter(p => p.tipolancamento === 'SALDO_RESERVA')
+      .reduce((acc, p) => acc + Number(p.valor || 0), 0);
+
+    const receitaTotalRealizada = totalSinalReserva + totalSaldoReserva + totalVendasLoja + totalConsumosFrigobar;
+
+    const totalSaldosPendentes = reservasDoPeriodo
+      .filter(r => Number(r.saldo || 0) > 0)
+      .reduce((acc, r) => acc + Number(r.saldo || 0), 0);
 
     return {
-      totalDiarias, 
-      totalConsumos: totalConsumosFrigobar,
-      totalPix, 
-      totalCartaoCredito, 
-      totalCartaoDebito,
-      totalDinheiro, 
-      totalTransferencia, 
-      totalSaldosPendentes, 
-      totalConsumosNaoPagos,
-      receitaTotalRealizada, 
+      receitaTotalRealizada,
+      totalSinalReserva,
+      totalSaldoReserva,
       totalVendasLoja,
-      totalPagamentos: pagamentosDoPeriodo.length
+      totalConsumosFrigobar,
+      totalSaldosPendentes,
     };
-  }, [pagamentos, reservasConcluidas, consumosExtras, vendas, filtroTipo, dataInicio, dataFim, usarFiltroData]);
+  }, [pagamentosDoPeriodo, consumosDessasReservas, reservasDoPeriodo]);
 
-  const extratoLancamentos = useMemo(() => {
-    const lancamentos: Array<{
-      tipo: 'PAGAMENTO' | 'CONSUMO';
-      codigo: string;
-      descricao: string;
-      hospede: string;
-      formaPagamento: string;
-      valor: number;
-      data: string;
-      status: string;
-      tipolancamento?: string;
-    }> = [];
-
-    if (pagamentos) {
-      (pagamentos as Pagamento[]).forEach((pagamento: Pagamento) => {
-        const reserva = reservasConcluidas.find((r: Reserva) => 
-          String(r.reservaid) === String(pagamento.reservaid)
-        );
-        
-        if (!reserva || !filtrarPorPeriodo(pagamento.datapagamento)) return;
-        
-        lancamentos.push({
-          tipo: 'PAGAMENTO',
-          codigo: reserva.codigo || `PAG-${pagamento.pagamentoid}`,
-          descricao: (() => {
-            if (pagamento.tipolancamento === 'SINAL_RESERVA') return 'Sinal de Reserva';
-            if (pagamento.tipolancamento === 'SALDO_DIARIAS') return 'Saldo de Diárias';
-            if (pagamento.tipolancamento === 'CONSUMO_EXTRA') {
-              const consumo = (consumosExtras || []).find((c: ConsumoExtra) => 
-                String(c.reservaid) === String(pagamento.reservaid) &&
-                Math.abs(Number(c.valortotal || 0) - Number(pagamento.valor || 0)) < 0.01
-              );
-              
-              if (consumo?.categoria?.toUpperCase() === 'LOJINHA') {
-                return 'Venda Lojinha';
-              }
-              return 'Consumo Extra (Frigobar/Lojinha)';
-            }
-            if (pagamento.tipolancamento === 'FECHAMENTO_GERAL') return 'Check-out (Pagamento Total)';
-            return 'Pagamento';
-          })(),
-          hospede: reserva.hospedenome || 'N/A',
-          formaPagamento: pagamento.formapagamento,
-          valor: Number(pagamento.valor || 0),
-          data: pagamento.datapagamento,
-          status: pagamento.status,
-          tipolancamento: pagamento.tipolancamento
-        });
-      });
+  // FUNÇÃO DE EXPORTAÇÃO PARA EXCEL (Mantida exatamente como você ajustou)
+  const exportarParaExcel = () => {
+    if (resumoReservas.length === 0) {
+      alert('Não há dados para exportar. Aplique um filtro primeiro.');
+      return;
     }
 
-    if (consumosExtras) {
-      (consumosExtras as ConsumoExtra[]).forEach((consumo: ConsumoExtra) => {
-        const reserva = reservasConcluidas.find((r: Reserva) => 
-          String(r.reservaid) === String(consumo.reservaid)
-        );
-        
-        if (!reserva) return;
-        
-        if (consumo.categoria?.toUpperCase() === 'LOJINHA') return;
-        
-        let statusConsumo = 'PENDENTE';
-        const pagamentoConsumo = (pagamentos || []).find((p: Pagamento) =>
-          String(p.reservaid) === String(consumo.reservaid) &&
-          p.tipolancamento === 'CONSUMO_EXTRA' && (p.status === 'CONFIRMADO' || p.status === 'PAGO')
-        );
-        const pagamentoGeral = (pagamentos || []).find((p: Pagamento) =>
-          String(p.reservaid) === String(consumo.reservaid) &&
-          p.tipolancamento === 'FECHAMENTO_GERAL' && (p.status === 'CONFIRMADO' || p.status === 'PAGO')
-        );
-        if (pagamentoConsumo || pagamentoGeral) statusConsumo = 'PAGO';
-        
-        lancamentos.push({
-          tipo: 'CONSUMO',
-          codigo: `CONS-${consumo.consumoid}`,
-          descricao: `${consumo.quantidade}x ${consumo.descricao || consumo.categoria}`,
-          hospede: reserva.hospedenome || 'N/A',
-          formaPagamento: statusConsumo,
-          valor: Number(consumo.valortotal || 0),
-          data: consumo.dataconsumo,
-          status: statusConsumo,
-          tipolancamento: 'CONSUMO_EXTRA'
-        });
-      });
+    const wb = XLSX.utils.book_new();
+    const wsData: any[][] = [];
+
+    const titulo = 'HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO';
+    const periodo = `Período: ${formatarData(dataInicioFiltro)} a ${formatarData(dataFimFiltro)}`;
+
+    // ORDEM CORRIGIDA DAS COLUNAS
+    wsData.push([titulo]);
+    wsData.push([periodo]);
+    wsData.push([
+      'Nº Quarto',
+      'Nome do Hóspede',
+      'Data Entrada',
+      'Data Saída',
+      'Data Reserva',
+      'Valor Reserva (R$)',
+      'Pagamento Reserva',      // <-- MOVIDO PARA CÁ (depois de Valor Reserva)
+      'Produtos (Loja)',
+      'Valor Loja (R$)',
+      'Pagamento Loja',
+      'Valor Checkout',
+      'Pagamento Checkout',
+      'Total Geral (R$)'
+    ]);
+
+    let totalValorReserva = 0;
+    let totalValorLoja = 0;
+    let totalValorCheckout = 0;
+    let totalGeral = 0;
+
+    resumoReservas.forEach((resumo) => {
+      // ORDEM CORRIGIDA DOS DADOS
+      wsData.push([
+        resumo.quarto,
+        resumo.hospede,
+        formatarData(resumo.dataEntrada),
+        formatarData(resumo.dataSaida),
+        formatarData(resumo.dataReserva),
+        Number(resumo.valorReserva || 0),
+        resumo.pagtoReserva || '',          // <-- MOVIDO PARA CÁ
+        resumo.produtosLojinha || '',
+        Number(resumo.valorLojinha || 0),
+        resumo.pagtoLojinha || '',
+        Number(resumo.valorCheckout || 0),
+        resumo.pagtoCheckout || '',
+        Number(resumo.total || 0)
+      ]);
+
+      totalValorReserva += Number(resumo.valorReserva || 0);
+      totalValorLoja += Number(resumo.valorLojinha || 0);
+      totalValorCheckout += Number(resumo.valorCheckout || 0);
+      totalGeral += Number(resumo.total || 0);
+    });
+
+    // ORDEM CORRIGIDA DO TOTAL
+    const linhaTotalIndex = wsData.length;
+    wsData.push([
+      'Total Geral',      // Coluna A
+      '', '', '', '',     // Colunas B, C, D, E (vazias)
+      totalValorReserva,  // Coluna F - Valor Reserva
+      '',                 // Coluna G - Pagamento Reserva (vazia)
+      '',                 // Coluna H - Produtos (vazia)
+      totalValorLoja,     // Coluna I - Valor Loja
+      '',                 // Coluna J - Pagamento Loja (vazia)
+      totalValorCheckout, // Coluna K - Valor Checkout
+      '',                 // Coluna L - Pagamento Checkout (vazia)
+      totalGeral          // Coluna M - Total Geral
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // LARGURAS ATUALIZADAS (13 colunas)
+    ws['!cols'] = [
+      { wch: 10 },  // A Nº Quarto
+      { wch: 29 },  // B Nome
+      { wch: 11 },  // C Data Entrada
+      { wch: 10 },  // D Data Saída
+      { wch: 11 },  // E Data Reserva
+      { wch: 19 },  // F Valor Reserva
+      { wch: 16 },  // G Pagamento Reserva
+      { wch: 45 },  // H Produtos Loja
+      { wch: 16 },  // I Valor Loja
+      { wch: 14 },  // J Pagamento Loja
+      { wch: 16 },  // K Valor Checkout
+      { wch: 16 },  // L Pagamento Checkout
+      { wch: 19 }   // M Total Geral
+    ];
+
+    // Mesclagens para 13 colunas (A-M)
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 12 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 12 } }
+    ];
+
+    const COR_TITULO = '2E5A27';
+    const COR_CABECALHO = '4A7C59';
+    const COR_DESTAQUE = '92D050';
+    const COR_ZEBRA = 'F2F6F0';
+    const COR_BORDA = '6B8066';
+    const COR_TOTAL = '375623';
+    const BRANCO = 'FFFFFF';
+    const PRETO = '000000';
+
+    const bordaFina = {
+      top: { style: 'thin', color: { rgb: COR_BORDA } },
+      bottom: { style: 'thin', color: { rgb: COR_BORDA } },
+      left: { style: 'thin', color: { rgb: COR_BORDA } },
+      right: { style: 'thin', color: { rgb: COR_BORDA } }
+    };
+
+    const fonteBase = {
+      name: 'Calibri',
+      sz: 11,
+      color: { rgb: PRETO }
+    };
+
+    const formatoMoeda = '[$R$-pt-BR] #,##0.00;[$R$-pt-BR] #,##0.00;[$R$-pt-BR] -';
+
+    // Título - A1:M1
+    for (let c = 0; c < 13; c++) {
+      const addr = XLSX.utils.encode_col(c) + '1';
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      ws[addr].s = {
+        fill: { fgColor: { rgb: COR_TITULO } },
+        font: { name: 'Calibri', sz: 16, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      };
     }
 
-    return lancamentos.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
-  }, [pagamentos, consumosExtras, reservasConcluidas, filtroTipo, dataInicio, dataFim, usarFiltroData]);
+    // Período - A2:M2
+    for (let c = 0; c < 13; c++) {
+      const addr = XLSX.utils.encode_col(c) + '2';
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+      ws[addr].s = {
+        fill: { fgColor: { rgb: COR_CABECALHO } },
+        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      };
+    }
 
-  const getIconeFormaPagamento = (forma: string) => {
-    switch (forma) {
-      case 'PIX': return <QrCode className="w-4 h-4 text-[#053d1e]" />;
-      case 'CARTAO_CREDITO': return <CreditCard className="w-4 h-4 text-[#1d5fa8]" />;
-      case 'CARTAO_DEBITO': return <CreditCard className="w-4 h-4 text-[#137333]" />;
-      case 'DINHEIRO': return <Banknote className="w-4 h-4 text-[#ba1a1a]" />;
-      default: return <Receipt className="w-4 h-4 text-[#717971]" />;
+    // Cabeçalho - A3:M3
+    for (let c = 0; c < 13; c++) {
+      const addr = XLSX.utils.encode_col(c) + '3';
+      ws[addr].s = {
+        fill: { fgColor: { rgb: COR_CABECALHO } },
+        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: bordaFina
+      };
+    }
+
+    // Dados - A4:M...
+    const primeiraLinhaDadosExcel = 4;
+    const ultimaLinhaDadosExcel = linhaTotalIndex;
+
+    for (let excelRow = primeiraLinhaDadosExcel; excelRow <= ultimaLinhaDadosExcel; excelRow++) {
+      const arrayRow = excelRow - 1;
+      const dados = wsData[arrayRow];
+      if (!dados || dados.length === 0) continue;
+
+      const corFundo = (excelRow - primeiraLinhaDadosExcel) % 2 === 0 ? BRANCO : COR_ZEBRA;
+
+      for (let c = 0; c < 13; c++) {
+        const addr = XLSX.utils.encode_col(c) + excelRow;
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+
+        let horizontal: 'left' | 'center' | 'right' = 'center';
+        if (c === 1 || c === 7) horizontal = 'left';  // Nome e Produtos
+        if (c === 5 || c === 8 || c === 10 || c === 12) horizontal = 'right';  // Valores
+
+        ws[addr].s = {
+          fill: { fgColor: { rgb: corFundo } },
+          font: fonteBase,
+          alignment: { horizontal, vertical: 'center', wrapText: false },
+          border: bordaFina
+        };
+
+        // Formatação de moeda nas colunas F, I, K, M (índices 5, 8, 10, 12)
+        if (c === 5 || c === 8 || c === 10 || c === 12) {
+          ws[addr].z = formatoMoeda;
+        }
+      }
+    }
+
+    // Total Geral - linha final
+    const totalExcelRow = linhaTotalIndex + 1;
+    for (let c = 0; c < 13; c++) {
+      const addr = XLSX.utils.encode_col(c) + totalExcelRow;
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+
+      ws[addr].s = {
+        fill: { fgColor: { rgb: COR_TOTAL } },
+        font: { name: 'Calibri', sz: 14, bold: true, color: { rgb: BRANCO } },
+        alignment: {
+          horizontal: c === 0 || c === 6 || c === 7 || c === 9 || c === 11 ? 'center' : 'right',
+          vertical: 'center',
+          wrapText: false
+        },
+        border: {
+          top: { style: 'medium', color: { rgb: PRETO } },
+          bottom: { style: 'medium', color: { rgb: PRETO } },
+          left: { style: 'thin', color: { rgb: PRETO } },
+          right: { style: 'thin', color: { rgb: PRETO } }
+        }
+      };
+
+      if (c === 5 || c === 8 || c === 10 || c === 12) {
+        ws[addr].z = formatoMoeda;
+      }
+    }
+
+    ws['!rows'] = [];
+    ws['!rows'][0] = { hpt: 27 };
+    ws['!rows'][1] = { hpt: 22 };
+    ws['!rows'][2] = { hpt: 40 };
+
+    for (let r = 3; r < totalExcelRow - 1; r++) {
+      ws['!rows'][r] = { hpt: 20 };
+    }
+    ws['!rows'][totalExcelRow - 1] = { hpt: 28 };
+
+    ws['!freeze'] = { xSplit: 0, ySplit: 3 };
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Relatório Financeiro');
+
+    const nomeArquivo = `Relatorio_Financeiro_${dataInicioFiltro.replace(/-/g, '')}_a_${dataFimFiltro.replace(/-/g, '')}.xlsx`;
+    XLSX.writeFile(wb, nomeArquivo);
+  };
+
+  const limparFiltroData = () => {
+    setCarregando(true);
+    setDataInicioInput('');
+    setDataFimInput('');
+    setDataInicioFiltro('');
+    setDataFimFiltro('');
+    setUsarFiltroData(false);
+    setTimeout(() => setCarregando(false), 400);
+  };
+
+  const aplicarFiltroData = () => {
+    if (dataInicioInput && dataFimInput) {
+      setCarregando(true);
+      setDataInicioFiltro(dataInicioInput);
+      setDataFimFiltro(dataFimInput);
+      setUsarFiltroData(true);
+      setTimeout(() => setCarregando(false), 600);
     }
   };
 
   const getCorStatus = (status: string) => {
-    if (status === 'CONFIRMADO' || status === 'PAGO') return 'bg-[#e6f4ea] text-[#137333]';
-    if (status === 'PENDENTE') return 'bg-[#fff8e1] text-[#b58900]';
-    if (status === 'CANCELADO') return 'bg-[#ffdad6] text-[#93000a]';
-    return 'bg-[#f3f4f5] text-[#414941]';
+    if (status === 'PAGO') return 'bg-[#e6f4ea] text-[#137333]';
+    if (status === 'PARCIAL') return 'bg-[#fff8e1] text-[#b58900]';
+    return 'bg-[#ffdad6] text-[#93000a]';
   };
 
-  const limparFiltroData = () => {
-    setDataInicio('');
-    setDataFim('');
-    setUsarFiltroData(false);
-  };
-
-  const aplicarFiltroData = () => {
-    if (dataInicio && dataFim) {
-      setUsarFiltroData(true);
-    }
+  const getIconeStatus = (status: string) => {
+    if (status === 'PAGO') return <CheckCircle2 className="w-3.5 h-3.5" />;
+    if (status === 'PARCIAL') return <Clock className="w-3.5 h-3.5" />;
+    return <AlertCircle className="w-3.5 h-3.5" />;
   };
 
   return (
     <div className="space-y-6">
+      {/* Cabeçalho */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -316,75 +461,68 @@ export const PaginaFinanceiro: React.FC = () => {
             <span className="text-xs font-bold text-[#053d1e] bg-[#e6f4ea] px-2.5 py-0.5 rounded-full border border-[#b8f0c2]">Hotel Fazenda Anew</span>
           </div>
           <p className="text-xs text-[#717971] mt-1">
-            Faturamento de reservas CONCLUÍDAS no período selecionado.
+            Selecione o período de <strong>Data Inicio e Data Final</strong> e clique em "Pesquisar" para processar os dados.
           </p>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={() => window.print()} 
-            className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+          <button
+            onClick={exportarParaExcel}
+            disabled={!usarFiltroData || resumoReservas.length === 0}
+            className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" /><span>Exportar Relatório</span>
           </button>
         </div>
       </div>
 
-      {/* FILTRO DE DATA PERSONALIZADO */}
+      {/* Filtro de Data */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs">
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
           <div className="flex-1">
-            <label className="block text-xs font-semibold text-[#414941] mb-1.5">
-              <Calendar className="w-3.5 h-3.5 inline mr-1" />
-              Data Inicial
-            </label>
+            <label className="block text-xs font-semibold text-[#414941] mb-1.5"><Calendar className="w-3.5 h-3.5 inline mr-1" />Data Inicial</label>
             <input
               type="date"
-              value={dataInicio}
-              onChange={(e) => setDataInicio(e.target.value)}
+              value={dataInicioInput}
+              onChange={(e) => setDataInicioInput(e.target.value)}
               className="w-full px-3 py-2 text-xs font-semibold border border-[#c1c9bf] rounded-xl bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e]"
             />
           </div>
-          
           <div className="flex-1">
-            <label className="block text-xs font-semibold text-[#414941] mb-1.5">
-              <Calendar className="w-3.5 h-3.5 inline mr-1" />
-              Data Final
-            </label>
+            <label className="block text-xs font-semibold text-[#414941] mb-1.5"><Calendar className="w-3.5 h-3.5 inline mr-1" />Data Final</label>
             <input
               type="date"
-              value={dataFim}
-              onChange={(e) => setDataFim(e.target.value)}
+              value={dataFimInput}
+              onChange={(e) => setDataFimInput(e.target.value)}
               className="w-full px-3 py-2 text-xs font-semibold border border-[#c1c9bf] rounded-xl bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e]"
             />
           </div>
-          
           <div className="flex gap-2">
             <button
               onClick={aplicarFiltroData}
-              disabled={!dataInicio || !dataFim}
-              className="px-4 py-2 text-xs font-semibold bg-[#053d1e] text-white rounded-xl hover:bg-[#0a4f2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              disabled={!dataInicioInput || !dataFimInput || carregando}
+              className="px-4 py-2 text-xs font-semibold bg-[#053d1e] text-white rounded-xl hover:bg-[#0a4f2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
-              Filtrar
+              {carregando ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
+              Pesquisar
             </button>
             <button
               onClick={limparFiltroData}
-              className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#414941] rounded-xl transition-colors"
+              disabled={carregando}
+              className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#414941] rounded-xl transition-colors disabled:opacity-50"
             >
               Limpar
             </button>
           </div>
         </div>
-        
-        {usarFiltroData && dataInicio && dataFim && (
+        {usarFiltroData && dataInicioFiltro && dataFimFiltro && (
           <div className="mt-3 px-3 py-2 bg-[#e6f4ea] border border-[#b8f0c2] rounded-lg text-xs text-[#053d1e] flex items-center gap-2">
             <Calendar className="w-3.5 h-3.5" />
-            <span>
-              Período: <strong>{formatarData(dataInicio)}</strong> até <strong>{formatarData(dataFim)}</strong>
-            </span>
+            <span>Período filtrado: <strong>{formatarData(dataInicioFiltro)}</strong> até <strong>{formatarData(dataFimFiltro)}</strong></span>
           </div>
         )}
       </div>
 
+      {/* Cards de Resumo Financeiro */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
           <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Receita Total Realizada</p>
@@ -392,205 +530,140 @@ export const PaginaFinanceiro: React.FC = () => {
             {formatarMoeda(analytics.receitaTotalRealizada)}
           </h3>
           <p className="text-[11px] text-[#137333] font-semibold mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5" /> Diárias + Consumos
+            <ArrowUpRight className="w-3.5 h-3.5" /> Soma exata dos 4 pilares
           </p>
-          <div className="mt-2 pt-2 border-t border-[#e1e3e4] text-[10px] text-[#717971]">
-            <div>Diárias: {formatarMoeda(analytics.totalDiarias)}</div>
-            <div>Consumos: {formatarMoeda(analytics.totalConsumos)}</div>
-          </div>
         </div>
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Saldos Pendentes (Concluídas)</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#ba1a1a] mt-1">
-            {formatarMoeda(analytics.totalSaldosPendentes)}
-          </h3>
-          <p className="text-[11px] text-[#717971] mt-1 flex items-center gap-1">
-            <AlertCircle className="w-3.5 h-3.5" /> Reservas concluídas com saldo
-          </p>
-          <div className="mt-2 pt-2 border-t border-[#e1e3e4] text-[10px] text-[#717971]">
-            <div>Consumos não pagos: {formatarMoeda(analytics.totalConsumosNaoPagos)}</div>
-          </div>
+          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Valor de Reserva</p>
+          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">{formatarMoeda(analytics.totalSinalReserva)}</h3>
         </div>
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Recebido via PIX</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">
-            {formatarMoeda(analytics.totalPix)}
-          </h3>
-          <p className="text-[11px] text-[#717971] mt-1 flex items-center gap-1">
-            <QrCode className="w-3.5 h-3.5 text-[#053d1e]" /> Compensação instantânea
-          </p>
-          <div className="mt-2 pt-2 border-t border-[#e1e3e4] text-[10px] text-[#717971]">
-            <div>{analytics.totalPagamentos} transações</div>
-          </div>
+          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Valor do Check-out</p>
+          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">{formatarMoeda(analytics.totalSaldoReserva)}</h3>
         </div>
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Vendas da Loja</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">
-            {formatarMoeda(analytics.totalVendasLoja)}
-          </h3>
-          <p className="text-[11px] text-[#717971] mt-1">Doces, Mel, Ovos e Lembranças</p>
+          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Consumos Lojinha</p>
+          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">{formatarMoeda(analytics.totalVendasLoja)}</h3>
         </div>
       </div>
 
-      <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs">
-        <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d] mb-4">Resumo por Forma de Pagamento</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div className="p-3 rounded-xl bg-[#e6f4ea] border border-[#b8f0c2]">
-            <div className="flex items-center gap-2 mb-1">
-              <QrCode className="w-4 h-4 text-[#053d1e]" />
-              <span className="text-xs font-semibold text-[#053d1e]">PIX</span>
-            </div>
-            <p className="text-lg font-bold text-[#053d1e]">{formatarMoeda(analytics.totalPix)}</p>
-          </div>
-          <div className="p-3 rounded-xl bg-[#e3f2fd] border border-[#90caf9]">
-            <div className="flex items-center gap-2 mb-1">
-              <CreditCard className="w-4 h-4 text-[#1d5fa8]" />
-              <span className="text-xs font-semibold text-[#1d5fa8]">Cartão Crédito</span>
-            </div>
-            <p className="text-lg font-bold text-[#1d5fa8]">{formatarMoeda(analytics.totalCartaoCredito)}</p>
-          </div>
-          <div className="p-3 rounded-xl bg-[#e8f5e9] border border-[#a5d6a7]">
-            <div className="flex items-center gap-2 mb-1">
-              <CreditCard className="w-4 h-4 text-[#137333]" />
-              <span className="text-xs font-semibold text-[#137333]">Cartão Débito</span>
-            </div>
-            <p className="text-lg font-bold text-[#137333]">{formatarMoeda(analytics.totalCartaoDebito)}</p>
-          </div>
-          <div className="p-3 rounded-xl bg-[#ffebee] border border-[#ef9a9a]">
-            <div className="flex items-center gap-2 mb-1">
-              <Banknote className="w-4 h-4 text-[#ba1a1a]" />
-              <span className="text-xs font-semibold text-[#ba1a1a]">Dinheiro</span>
-            </div>
-            <p className="text-lg font-bold text-[#ba1a1a]">{formatarMoeda(analytics.totalDinheiro)}</p>
-          </div>
-          <div className="p-3 rounded-xl bg-[#f3f4f5] border border-[#c1c9bf]">
-            <div className="flex items-center gap-2 mb-1">
-              <Receipt className="w-4 h-4 text-[#414941]" />
-              <span className="text-xs font-semibold text-[#414941]">Transferência</span>
-            </div>
-            <p className="text-lg font-bold text-[#414941]">{formatarMoeda(analytics.totalTransferencia)}</p>
-          </div>
-        </div>
-      </div>
-
+      {/* GRID VIEW: RESUMO DETALHADO POR RESERVA */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl shadow-xs overflow-hidden">
         <div className="px-5 py-4 border-b border-[#c1c9bf] flex items-center justify-between">
-          <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d]">Extrato de Lançamentos (Reservas Concluídas)</h3>
-          <div className="flex gap-2">
-            <select 
-              value={filtroTipo} 
-              onChange={(e) => {
-                setFiltroTipo(e.target.value);
-                setUsarFiltroData(false);
-              }}
-              disabled={usarFiltroData}
-              className="px-3 py-1.5 text-xs font-semibold border border-[#c1c9bf] rounded-lg bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e] disabled:opacity-50"
-            >
-              <option value="TODOS">Todos os Lançamentos</option>
-              <option value="PAGAMENTO">Apenas Pagamentos</option>
-              <option value="CONSUMO">Apenas Consumos</option>
-            </select>
+          <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d]">Resumo Financeiro por Reserva</h3>
+        </div>
+
+        {!usarFiltroData ? (
+          <div className="p-12 text-center text-[#717971]">
+            <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+            <p className="font-semibold text-sm text-[#191c1d]">Nenhum período selecionado</p>
+            <p className="text-xs mt-1">Defina a Data Inicial e Final acima e clique em "Filtrar".</p>
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#f8f9fa] border-b border-[#c1c9bf] text-[#414941] font-semibold uppercase text-[11px]">
-              <tr>
-                <th className="py-3 px-4">Código</th>
-                <th className="py-3 px-4">Descrição</th>
-                <th className="py-3 px-4">Hóspede</th>
-                <th className="py-3 px-4">Forma Pagamento</th>
-                <th className="py-3 px-4">Data</th>
-                <th className="py-3 px-4 text-right">Valor</th>
-                <th className="py-3 px-4 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#e1e3e4] text-[#191c1d]">
-              {extratoLancamentos
-                .filter(l => filtroTipo === 'TODOS' || l.tipo === filtroTipo)
-                .slice(0, 50)
-                .map((lancamento, indice) => (
-                <tr key={`${lancamento.tipo}-${indice}`} className="hover:bg-[#f8f9fa]">
-                  <td className="py-3 px-4 font-bold text-[#053d1e]">{lancamento.codigo}</td>
-                  <td className="py-3 px-4">
-                    <div className="flex flex-col">
-                      <span className="font-semibold">{lancamento.descricao}</span>
-                      <span className="text-[10px] text-[#717971]">
-                        {lancamento.tipo === 'PAGAMENTO' ? (
-                          lancamento.tipolancamento === 'SINAL_RESERVA' ? 'Sinal' : 
-                          lancamento.tipolancamento === 'SALDO_DIARIAS' ? 'Saldo Diárias' :
-                          lancamento.tipolancamento === 'CONSUMO_EXTRA' ? 'Consumo Extra' : 'Geral'
-                        ) : 'Consumo Extra'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 font-medium">{lancamento.hospede}</td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-1.5">
-                      {getIconeFormaPagamento(lancamento.formaPagamento)}
-                      <span className="font-medium">
-                        {lancamento.formaPagamento === 'CARTAO_CREDITO' ? 'Crédito' :
-                         lancamento.formaPagamento === 'CARTAO_DEBITO' ? 'Débito' :
-                         lancamento.formaPagamento}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-[#717971]">{formatarData(lancamento.data)}</td>
-                  <td className={`py-3 px-4 text-right font-bold ${
-                    lancamento.tipo === 'CONSUMO' && lancamento.status === 'PENDENTE' 
-                      ? 'text-[#b58900]' 
-                      : 'text-[#053d1e]'
-                  }`}>
-                    {formatarMoeda(lancamento.valor)}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold ${getCorStatus(lancamento.status)}`}>
-                      {lancamento.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              
-              {extratoLancamentos.filter(l => filtroTipo === 'TODOS' || l.tipo === filtroTipo).length === 0 && (
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#f8f9fa] border-b border-[#c1c9bf] text-[#414941] font-semibold uppercase text-[10px]">
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-[#717971]">
-                    <Receipt className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>Nenhum lançamento encontrado no período selecionado.</p>
-                  </td>
+                  <th className="py-3 px-3 whitespace-nowrap">Quarto</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Hóspede</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Entrada</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Saída</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Reserva</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Reserva</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Pag. Reserva</th> 
+                  <th className="py-3 px-3 whitespace-nowrap">Produtos Lojinha</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Lojinha</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Pag. Lojinha</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Check-out</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Pag. Check-out</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Total</th>
+                  <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
                 </tr>
+              </thead>
+              <tbody className="divide-y divide-[#e1e3e4] text-[#191c1d]">
+                {resumoReservas.map((resumo, indice) => (
+                  <tr key={indice} className={`hover:bg-[#f8f9fa] transition-colors ${resumo.valorCheckout > 0 ? 'bg-[#e6f4ea]/30' : ''}`}>
+                    <td className="py-3 px-3 font-bold text-[#053d1e]">{resumo.quarto}</td>
+                    <td className="py-3 px-3 font-medium">{resumo.hospede}</td>
+                    <td className="py-3 px-3">{formatarData(resumo.dataEntrada)}</td>
+                    <td className="py-3 px-3">{formatarData(resumo.dataSaida)}</td>
+                    <td className="py-3 px-3">{formatarData(resumo.dataReserva)}</td>
+                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorReserva)}</td>
+                    <td className="py-3 px-3">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoReserva ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
+                        {resumo.pagtoReserva || '-'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 max-w-[200px] truncate" title={resumo.produtosLojinha}>
+                      {resumo.produtosLojinha || '-'}
+                    </td>
+                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorLojinha)}</td>
+                    <td className="py-3 px-3">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoLojinha ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
+                        {resumo.pagtoLojinha || '-'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorCheckout)}</td>
+                    <td className="py-3 px-3">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoCheckout ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
+                        {resumo.pagtoCheckout || '-'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-extrabold text-[#053d1e]">{formatarMoeda(resumo.total)}</td>
+                    <td className="py-3 px-3 text-center">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold ${getCorStatus(resumo.status)}`}>
+                        {getIconeStatus(resumo.status)}
+                        {resumo.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+
+                {resumoReservas.length === 0 && (
+                  <tr>
+                    <td colSpan={14} className="py-8 text-center text-[#717971]">
+                      <Receipt className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p>Nenhuma reserva encontrada para o período selecionado.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {resumoReservas.length > 0 && (
+                <tfoot className="bg-[#f8f9fa] font-bold text-[#053d1e]">
+                  <tr>
+                    <td colSpan={5} className="py-3 px-3 text-right">Total do Período:</td>
+                    <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.valorReserva, 0))}</td>
+                    <td></td>
+                    <td></td>
+                    <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.valorLojinha, 0))}</td>
+                    <td></td>
+                    <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.valorCheckout, 0))}</td>
+                    <td></td>
+                    <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.total, 0))}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-          </table>
-        </div>
-        <div className="px-5 py-3 border-t border-[#c1c9bf] bg-[#f8f9fa] text-xs text-[#717971]">
-          Mostrando {extratoLancamentos.filter(l => filtroTipo === 'TODOS' || l.tipo === filtroTipo).slice(0, 50).length} de {extratoLancamentos.filter(l => filtroTipo === 'TODOS' || l.tipo === filtroTipo).length} lançamentos
-        </div>
+            </table>
+          </div>
+        )}
       </div>
 
+      {/* Rodapé: Composição da Receita Total e Pendências */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-[#e6f4ea] border border-[#b8f0c2] rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-5 h-5 text-[#053d1e]" />
-            <h4 className="font-['Manrope'] text-sm font-bold text-[#053d1e]">Resumo do Período</h4>
+            <h4 className="font-['Manrope'] text-sm font-bold text-[#053d1e]">Composição da Receita Total</h4>
           </div>
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-[#414941]">Total em Diárias:</span>
-              <span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalDiarias)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#414941]">Total em Consumos:</span>
-              <span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalConsumos)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#414941]">Vendas Loja:</span>
-              <span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalVendasLoja)}</span>
-            </div>
+            <div className="flex justify-between"><span className="text-[#414941]">1. Valor de Reserva (Sinal):</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalSinalReserva)}</span></div>
+            <div className="flex justify-between"><span className="text-[#414941]">2. Valor do Check-out (Saldo):</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalSaldoReserva)}</span></div>
+            <div className="flex justify-between"><span className="text-[#414941]">3. Consumos Lojinha:</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalVendasLoja)}</span></div>
+            {/* <div className="flex justify-between"><span className="text-[#414941]">4. Consumos Frigobar/Serviços:</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalConsumosFrigobar)}</span></div> */}
             <div className="border-t border-[#b8f0c2] pt-2 mt-2 flex justify-between">
-              <span className="font-bold text-[#053d1e]">Receita Total:</span>
-              <span className="font-extrabold text-lg text-[#053d1e]">
-                {formatarMoeda(analytics.receitaTotalRealizada + analytics.totalVendasLoja)}
-              </span>
+              <span className="font-bold text-[#053d1e]">SOMA TOTAL:</span>
+              <span className="font-extrabold text-lg text-[#053d1e]">{formatarMoeda(analytics.receitaTotalRealizada)}</span>
             </div>
           </div>
         </div>
@@ -601,22 +674,24 @@ export const PaginaFinanceiro: React.FC = () => {
             <h4 className="font-['Manrope'] text-sm font-bold text-[#b58900]">Pendências e Atenção</h4>
           </div>
           <div className="space-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-[#414941]">Saldos Pendentes (Concluídas):</span>
-              <span className="font-bold text-[#ba1a1a]">{formatarMoeda(analytics.totalSaldosPendentes)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-[#414941]">Consumos não Pagos:</span>
-              <span className="font-bold text-[#ba1a1a]">{formatarMoeda(analytics.totalConsumosNaoPagos)}</span>
-            </div>
+            <div className="flex justify-between"><span className="text-[#414941]">Saldos Check-out Pendentes:</span><span className="font-bold text-[#ba1a1a]">{formatarMoeda(analytics.totalSaldosPendentes)}</span></div>
             <div className="border-t border-[#ffe088] pt-2 mt-2">
               <p className="text-[#717971]">
-                <strong>Atenção:</strong> Verifique reservas concluídas com saldo pendente ou consumos extras não liquidados.
+                <strong>Atenção:</strong> Falta check-outs a serem realizados. Existe hóspede que não fez o check-out ou saiu com saldo em aberto.
               </p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Overlay de Carregamento (Loading) */}
+      {carregando && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs" role="status" aria-live="polite">
+          <div className="bg-white rounded-xl px-5 py-4 shadow-xl flex items-center gap-3 text-sm font-semibold text-[#053d1e]">
+            <LoaderCircle className="w-5 h-5 animate-spin" /> Processando dados financeiros...
+          </div>
+        </div>
+      )}
     </div>
   );
 };

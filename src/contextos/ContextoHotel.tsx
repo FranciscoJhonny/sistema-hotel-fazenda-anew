@@ -3,7 +3,7 @@ import { calcularDisponibilidadeQuartos, StatusDisponibilidadeQuarto, verificarC
 import { AuthService } from '../servicos/supabase/AuthService';
 import { SupabaseService } from '../servicos/supabase/SupabaseService';
 import {
-  ConfiguracaoSistema, ConsumoExtra, Hospede, Pagamento, Pacote, PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario, Venda,
+  ConfiguracaoSistema, ConsumoExtra, Hospede, Pagamento, Pacote, PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario,
 } from '../tipos';
 
 const usuarioPadrao: Usuario = {
@@ -25,7 +25,6 @@ interface ContextoHotelType {
   hospedes: Hospede[];
   produtos: Produto[];
   consumosExtras: ConsumoExtra[];
-  vendas: Venda[];
   pacotes: Pacote[];
   configuracoes: ConfiguracaoSistema;
   pagamentos: Pagamento[]; // <-- ADICIONADO
@@ -56,7 +55,6 @@ interface ContextoHotelType {
   cadastrarHospede: (hospede: Omit<Hospede, 'hospedeid' | 'datainclusao' | 'dataoperacao' | 'ativo'>) => Promise<Hospede>;
   editarHospede: (id: number | string, dados: Partial<Hospede>) => Promise<void>;
   excluirHospede: (id: number | string) => Promise<boolean>;
-  registrarVenda: (venda: Omit<Venda, 'vendaid' | 'codigo' | 'datahora' | 'datainclusao' | 'dataoperacao' | 'ativo'>) => Promise<Venda>;
   atualizarEstoqueProduto: (produtoId: number | string, quantidadeDelta: number) => Promise<void>;
   criarProduto: (dados: Omit<Produto, 'produtoid' | 'datainclusao' | 'dataoperacao' | 'ativo'> & { ativo?: boolean }) => Promise<Produto>;
   editarProduto: (id: number | string, dados: Partial<Produto>) => Promise<{ sucesso: boolean; mensagem: string }>;
@@ -108,7 +106,6 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const [hospedes, setHospedes] = useState<Hospede[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [consumosExtras, setConsumosExtras] = useState<ConsumoExtra[]>([]);
-  const [vendas, setVendas] = useState<Venda[]>([]);
   const [pacotes, setPacotes] = useState<Pacote[]>([]);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]); // <-- ADICIONADO
   const [configuracoes, setConfiguracoes] = useState<ConfiguracaoSistema>(configuracaoPadrao);
@@ -168,14 +165,13 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           });
           setReservas(reservasComQuartos);
         }
-        
+
         if (!hospedesResult.error && hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
         if (!produtosResult.error && produtosResult.data) setProdutos(produtosResult.data as Produto[]);
         if (!consumosResult.error && consumosResult.data) setConsumosExtras(consumosResult.data as ConsumoExtra[]);
-        if (!vendasResult.error && vendasResult.data) setVendas(vendasResult.data as Venda[]);
         if (!pacotesResult.error && pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
         if (!usuariosResult.error && usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
-        
+
         // <-- ADICIONADO: Carregar pagamentos
         if (!pagamentosResult.error && pagamentosResult.data) {
           setPagamentos(pagamentosResult.data as Pagamento[]);
@@ -293,23 +289,51 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 0);
     const proximoCodigo = `#RES-${String(maiorNumeroCodigo + 1).padStart(3, '0')}`;
 
+    // Data da reserva (hoje)
+    const dataReserva = agora.slice(0, 10); // YYYY-MM-DD
+
     const novaReserva: Reserva = {
-      ...dados, reservaid: 0, codigo: proximoCodigo, quartonumero: quarto.numero, quartocodigo: quarto.codigoidentificador,
-      quartocategoria: quarto.categoria, statusreserva: statusInicial, ativo: true,
-      usuarioinclusao: usuarioAtual?.usuarioid, datainclusao: agora, usuariooperacao: usuarioAtual?.usuarioid,
-      dataoperacao: agora, naturezaoperacao: 'INSERT',
+      ...dados,
+      reservaid: 0,
+      codigo: proximoCodigo,
+      quartonumero: quarto.numero,
+      quartocodigo: quarto.codigoidentificador,
+      quartocategoria: quarto.categoria,
+      statusreserva: statusInicial,
+      ativo: true,
+      datareserva: dataReserva, // NOVO CAMPO
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT',
     };
 
     const dadosParaBanco = {
-      codigo: novaReserva.codigo, hospedeid: novaReserva.hospedeid, quartoid: novaReserva.quartoid,
-      adultos: novaReserva.adultos, criancas: novaReserva.criancas, dataentrada: novaReserva.dataentrada,
-      datasaida: novaReserva.datasaida, horarioprevistochegada: novaReserva.horarioprevistochegada,
-      tipoatendimento: novaReserva.tipoatendimento, pacoteid: novaReserva.pacoteid, statusreserva: novaReserva.statusreserva,
-      valortotal: novaReserva.valortotal, valorpago: novaReserva.valorpago, saldo: novaReserva.saldo,
-      statuspagamento: novaReserva.statuspagamento, formapagamento: novaReserva.formapagamento,
-      observacoes: novaReserva.observacoes, ativo: novaReserva.ativo, usuarioinclusao: novaReserva.usuarioinclusao,
-      datainclusao: novaReserva.datainclusao, usuariooperacao: novaReserva.usuariooperacao,
-      dataoperacao: novaReserva.dataoperacao, naturezaoperacao: novaReserva.naturezaoperacao,
+      codigo: novaReserva.codigo,
+      hospedeid: novaReserva.hospedeid,
+      quartoid: novaReserva.quartoid,
+      adultos: novaReserva.adultos,
+      criancas: novaReserva.criancas,
+      dataentrada: novaReserva.dataentrada,
+      datasaida: novaReserva.datasaida,
+      horarioprevistochegada: novaReserva.horarioprevistochegada,
+      tipoatendimento: novaReserva.tipoatendimento,
+      pacoteid: novaReserva.pacoteid,
+      statusreserva: novaReserva.statusreserva,
+      valortotal: novaReserva.valortotal,
+      valorpago: novaReserva.valorpago,
+      saldo: novaReserva.saldo,
+      statuspagamento: novaReserva.statuspagamento,
+      formapagamento: novaReserva.formapagamento,
+      observacoes: novaReserva.observacoes,
+      ativo: novaReserva.ativo,
+      usuarioinclusao: novaReserva.usuarioinclusao,
+      datainclusao: novaReserva.datainclusao,
+      usuariooperacao: novaReserva.usuariooperacao,
+      dataoperacao: novaReserva.dataoperacao,
+      naturezaoperacao: novaReserva.naturezaoperacao,
+      datareserva: dataReserva, // NOVO CAMPO NO BANCO
     };
 
     const { data, error } = await client.from('reserva').insert(dadosParaBanco).select().single();
@@ -317,16 +341,31 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (valorPago > 0) {
       await client.from('pagamento').insert({
-        reservaid: data.reservaid, valor: valorPago, formapagamento: novaReserva.formapagamento || 'PIX',
-        status: 'PAGO', datapagamento: agora, tipolancamento: 'SINAL_RESERVA', ativo: true,
-        usuarioinclusao: usuarioAtual?.usuarioid, datainclusao: agora, usuariooperacao: usuarioAtual?.usuarioid,
-        dataoperacao: agora, naturezaoperacao: 'INSERT',
+        reservaid: data.reservaid,
+        valor: valorPago,
+        formapagamento: novaReserva.formapagamento || 'PIX',
+        status: 'PAGO',
+        datapagamento: agora,
+        tipolancamento: 'SINAL_RESERVA',
+        ativo: true,
+        usuarioinclusao: usuarioAtual?.usuarioid,
+        datainclusao: agora,
+        usuariooperacao: usuarioAtual?.usuarioid,
+        dataoperacao: agora,
+        naturezaoperacao: 'INSERT',
       });
     }
 
-    const reservaSalva = { ...novaReserva, ...data, quartonumero: quarto.numero, quartocodigo: quarto.codigoidentificador, quartocategoria: quarto.categoria } as Reserva;
+    const reservaSalva = {
+      ...novaReserva,
+      ...data,
+      quartonumero: quarto.numero,
+      quartocodigo: quarto.codigoidentificador,
+      quartocategoria: quarto.categoria
+    } as Reserva;
+
     setReservas(prev => [reservaSalva, ...prev]);
-    
+
     if (String(dados.tipoatendimento || '').toUpperCase() !== 'DAY_USE') {
       await atualizarStatusQuarto(quarto.quartoid, statusInicial === 'HOSPEDADO' ? 'OCUPADO' : 'RESERVADO');
     }
@@ -392,7 +431,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const agora = new Date().toISOString();
     const pagamentosConfirmados = pagamentosInput.filter((pagamento) => Number(pagamento.valor) > 0);
-    
+
     if (client && pagamentosConfirmados.length > 0) {
       const registros = pagamentosConfirmados.map((pagamento) => ({
         ...pagamento, reservaid: reservaId, status: 'PAGO', datapagamento: agora, ativo: true,
@@ -405,7 +444,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const totalConsumos = consumosExtras.filter((consumo) => String(consumo.reservaid) === String(reservaId) && consumo.ativo).reduce((total, consumo) => total + Number(consumo.valortotal || 0), 0);
     const valorPagoFinal = reserva.valorpago + pagamentosConfirmados.reduce((total, pagamento) => total + Number(pagamento.valor), 0);
-    
+
     const dadosReserva = {
       statusreserva: 'CONCLUIDA' as StatusReserva, valorpago: valorPagoFinal,
       saldo: Math.max(0, reserva.valortotal + totalConsumos - valorPagoFinal), statuspagamento: 'PAGO' as const,
@@ -441,7 +480,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         categoria: consumo.categoria, descricao: consumo.descricao, ativo: consumo.ativo,
         usuarioinclusao: consumo.usuarioinclusao, datainclusao: consumo.datainclusao,
       }).select().single();
-      
+
       if (error) return { sucesso: false, mensagem: `Erro ao lançar consumo: ${error.message}` };
       if (data) consumo.consumoid = data.consumoid;
       await atualizarEstoqueProduto(produto.produtoid, -dados.quantidade);
@@ -492,22 +531,6 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  const registrarVenda = async (dados: any): Promise<Venda> => {
-    const client = supabaseService.getClient();
-    const agora = new Date().toISOString();
-    const novaVenda: Venda = { ...dados, vendaid: Date.now(), codigo: `VND-${Math.floor(100 + Math.random() * 900)}`, datahora: agora, usuarioresponsavel: usuarioAtual?.usuarioid, ativo: true, usuarioinclusao: usuarioAtual?.usuarioid, datainclusao: agora, usuariooperacao: usuarioAtual?.usuarioid, dataoperacao: agora, naturezaoperacao: 'INSERT' };
-    if (client) {
-      const { data } = await client.from('venda').insert(novaVenda).select().single();
-      if (data) {
-        dados.itens.forEach((item: any) => { if (item.produtoid) atualizarEstoqueProduto(item.produtoid, -item.quantidade); });
-        setVendas(prev => [data as Venda, ...prev]);
-        return data as Venda;
-      }
-    }
-    dados.itens.forEach((item: any) => { if (item.produtoid) atualizarEstoqueProduto(item.produtoid, -item.quantidade); });
-    setVendas(prev => [novaVenda, ...prev]);
-    return novaVenda;
-  };
 
   const atualizarEstoqueProduto = async (produtoId: number | string, delta: number): Promise<void> => {
     const client = supabaseService.getClient();
@@ -566,19 +589,19 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const restaurarDadosPadrao = () => {
     setQuartos([]); setReservas([]); setHospedes([]); setProdutos([]); setConsumosExtras([]);
-    setVendas([]); setPacotes([]); setPagamentos([]); setConfiguracoes(configuracaoPadrao);
+    setPacotes([]); setPagamentos([]); setConfiguracoes(configuracaoPadrao);
     setUsuarios([]); setUsuarioAtual(usuarioPadrao); setAutenticado(false); setPaginaAtual('login');
   };
 
   return (
     <ContextoHotel.Provider value={{
-      quartos, reservas, hospedes, produtos, consumosExtras, vendas, pacotes, configuracoes, pagamentos, // <-- ADICIONADO 'pagamentos'
+      quartos, reservas, hospedes, produtos, consumosExtras, pacotes, configuracoes, pagamentos,
       usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado,
       carregando, erro, login, logout, navegarPara, trocarUsuario,
       atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,
       verificarDisponibilidade, criarReserva, atualizarReserva, cancelarReserva,
       realizarCheckin, realizarCheckout, criarConsumoExtra, excluirConsumoExtra,
-      cadastrarHospede, editarHospede, excluirHospede, registrarVenda, atualizarEstoqueProduto,
+      cadastrarHospede, editarHospede, excluirHospede, atualizarEstoqueProduto,
       criarProduto, editarProduto, excluirProduto, salvarConfiguracoes, restaurarDadosPadrao,
     }}>
       {children}

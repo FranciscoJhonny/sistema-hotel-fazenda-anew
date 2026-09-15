@@ -35,9 +35,8 @@ export type StatusPagamento = 'PAGO' | 'PENDENTE' | 'PARCIAL';
 
 export type TipoLancamentoPagamento =
   | 'SINAL_RESERVA'
-  | 'SALDO_DIARIAS'
-  | 'CONSUMO_EXTRA'
-  | 'FECHAMENTO_GERAL';
+  | 'SALDO_RESERVA'
+  | 'CONSUMO_EXTRA';
 
 export type PerfilUsuario = 'ADMIN' | 'RECEPCAO' | 'VENDAS';
 
@@ -168,6 +167,7 @@ export interface Reserva extends EntidadeAuditavel {
   checkinusuario?: number | string;
   checkoutrealizadoem?: string;
   checkoutusuario?: number | string;
+  datareserva: string; 
 }
 
 // =============================================================================
