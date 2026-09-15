@@ -14,7 +14,14 @@ import { PaginaProdutos } from './paginas/PaginaProdutos';
 import { PaginaQuartos } from './paginas/PaginaQuartos';
 import { PaginaConfiguracoes } from './paginas/PaginaConfiguracoes';
 import { PaginaLogin } from './paginas/PaginaLogin';
+import { PaginaCadastroFnrh } from './paginas/PaginaCadastroFnrh';
 import { LoaderCircle } from 'lucide-react';
+
+const obterTokenFnrhDaUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const partes = window.location.pathname.split('/').filter(Boolean);
+  return partes[0]?.toLowerCase() === 'fnrh' && partes[1] ? decodeURIComponent(partes[1]) : null;
+};
 
 const ConteudoPrincipal: React.FC = () => {
   const { paginaAtual, autenticado, carregando } = useHotel();
@@ -81,6 +88,12 @@ const ConteudoPrincipal: React.FC = () => {
 };
 
 export default function App() {
+  const tokenFnrh = obterTokenFnrhDaUrl();
+
+  if (tokenFnrh) {
+    return <PaginaCadastroFnrh token={tokenFnrh} />;
+  }
+
   return (
     <ContextoHotelProvider>
       <ConteudoPrincipal />
