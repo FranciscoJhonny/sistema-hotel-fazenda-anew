@@ -297,7 +297,7 @@ export const PaginaDashboard: React.FC = () => {
               )}
             </div>
 
-            <button onClick={() => { setQuartoParaReserva(null); setModalNovaReservaAberto(true); }} className="flex items-center gap-1.5 bg-[#245437] hover:bg-[#1b432b] text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer ml-auto sm:ml-2">
+            <button onClick={() => navegarPara('mapa-reservas')} className="flex items-center gap-1.5 bg-[#245437] hover:bg-[#1b432b] text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer ml-auto sm:ml-2">
               <PlusCircle className="w-3.5 h-3.5" />
               <span>Nova Reserva</span>
             </button>

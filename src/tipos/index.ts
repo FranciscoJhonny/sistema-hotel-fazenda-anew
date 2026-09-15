@@ -167,7 +167,7 @@ export interface Reserva extends EntidadeAuditavel {
   checkinusuario?: number | string;
   checkoutrealizadoem?: string;
   checkoutusuario?: number | string;
-  datareserva: string; 
+  datareserva?: string;
 }
 
 // =============================================================================
@@ -279,15 +279,13 @@ export interface ConfiguracaoSistema {
 export type PaginaNavegacao = 
   | 'login'
   | 'dashboard'
+  | 'quartos'
   | 'status-quartos'
-  | 'reservas'
   | 'mapa-reservas'
-  | 'nova-reserva'
   | 'checkin'
   | 'checkout'
   | 'hospedes'
   | 'financeiro'
   | 'loja'
   | 'produtos'
-  | 'relatorios'
   | 'configuracoes';

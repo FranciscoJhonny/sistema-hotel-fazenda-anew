@@ -16,7 +16,8 @@ import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRap
 import { Quarto, Hospede } from '../tipos';
 import { formatarData } from '../utilitarios/formatadores';
 
-const periodoInicialPadrao = new Date('2026-08-27T00:00:00');
+const hoje = new Date();
+const periodoInicialPadrao = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
 
 const addDias = (data: Date, dias: number) => {
   const nova = new Date(data);

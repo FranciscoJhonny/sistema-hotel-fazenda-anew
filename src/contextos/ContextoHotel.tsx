@@ -3,7 +3,7 @@ import { calcularDisponibilidadeQuartos, StatusDisponibilidadeQuarto, verificarC
 import { AuthService } from '../servicos/supabase/AuthService';
 import { SupabaseService } from '../servicos/supabase/SupabaseService';
 import {
-  ConfiguracaoSistema, ConsumoExtra, Hospede, Pagamento, Pacote, PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario,
+  ConfiguracaoSistema, ConsumoExtra, Hospede, Pagamento, Pacote, PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario, Venda,
 } from '../tipos';
 
 const usuarioPadrao: Usuario = {
@@ -42,6 +42,9 @@ interface ContextoHotelType {
   navegarPara: (pagina: PaginaNavegacao) => void;
   trocarUsuario: (usuarioId: number | string) => void;
   atualizarStatusQuarto: (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => Promise<void>;
+  criarQuarto: (dados: Omit<Quarto, 'quartoid' | 'valordiariapadrao' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'> & { ativo?: boolean }) => Promise<{ sucesso: boolean; mensagem: string; quarto?: Quarto }>;
+  editarQuarto: (id: number | string, dados: Partial<Quarto>) => Promise<{ sucesso: boolean; mensagem: string }>;
+  excluirQuarto: (id: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
   obterQuartoPorId: (quartoId: number | string) => Quarto | undefined;
   obterQuartoPorNumero: (numero: string) => Quarto | undefined;
   verificarDisponibilidade: (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => StatusDisponibilidadeQuarto[];
@@ -59,6 +62,7 @@ interface ContextoHotelType {
   criarProduto: (dados: Omit<Produto, 'produtoid' | 'datainclusao' | 'dataoperacao' | 'ativo'> & { ativo?: boolean }) => Promise<Produto>;
   editarProduto: (id: number | string, dados: Partial<Produto>) => Promise<{ sucesso: boolean; mensagem: string }>;
   excluirProduto: (id: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
+  registrarVenda: (dados: Partial<Venda> & { itens: Venda['itens'] }) => Promise<Venda>;
   salvarConfiguracoes: (novasConfiguracoes: Partial<ConfiguracaoSistema>) => Promise<void>;
   restaurarDadosPadrao: () => void;
 }
@@ -258,6 +262,69 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (client) {
       await client.from('quarto').update({ status: novoStatus, descricao: motivoBloqueio, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' }).eq('quartoid', quartoId);
     }
+  };
+
+  const criarQuarto = async (dados: Omit<Quarto, 'quartoid' | 'valordiariapadrao' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'> & { ativo?: boolean }): Promise<{ sucesso: boolean; mensagem: string; quarto?: Quarto }> => {
+    const client = supabaseService.getClient();
+    const agora = new Date().toISOString();
+    const novoQuarto: Quarto = {
+      ...dados,
+      quartoid: 0,
+      valordiariapadrao: 0,
+      ativo: dados.ativo ?? true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT',
+    };
+
+    if (client) {
+      const { quartoid: _quartoid, ...dadosParaBanco } = novoQuarto;
+      const { data, error } = await client.from('quarto').insert(dadosParaBanco).select().single();
+      if (error) return { sucesso: false, mensagem: `Erro ao cadastrar quarto: ${error.message}` };
+      if (data) Object.assign(novoQuarto, normalizarQuartoDoBanco(data));
+    }
+
+    setQuartos((prev) => [...prev, novoQuarto].sort((a, b) => Number(a.quartoid) - Number(b.quartoid)));
+    return { sucesso: true, mensagem: 'Quarto cadastrado com sucesso.', quarto: novoQuarto };
+  };
+
+  const editarQuarto = async (id: number | string, dados: Partial<Quarto>): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const quarto = quartos.find((item) => String(item.quartoid) === String(id));
+    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
+
+    const dadosAtualizados = {
+      ...dados,
+      dataoperacao: new Date().toISOString(),
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
+    const client = supabaseService.getClient();
+    if (client) {
+      const { quartoid: _quartoid, datainclusao: _datainclusao, ...dadosParaBanco } = dadosAtualizados as Partial<Quarto>;
+      const { error } = await client.from('quarto').update(dadosParaBanco).eq('quartoid', id);
+      if (error) return { sucesso: false, mensagem: `Erro ao atualizar quarto: ${error.message}` };
+    }
+
+    setQuartos((prev) => prev.map((item) => String(item.quartoid) === String(id) ? { ...item, ...dadosAtualizados } as Quarto : item));
+    return { sucesso: true, mensagem: 'Quarto atualizado com sucesso.' };
+  };
+
+  const excluirQuarto = async (id: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const quarto = quartos.find((item) => String(item.quartoid) === String(id));
+    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
+    const possuiReservaAtiva = reservas.some((reserva) => String(reserva.quartoid) === String(id) && ['PRE_RESERVA', 'RESERVADO', 'HOSPEDADO'].includes(reserva.statusreserva));
+    if (possuiReservaAtiva) return { sucesso: false, mensagem: 'Não é possível excluir um quarto com reserva ativa.' };
+
+    const dadosAtualizados = { ativo: false, dataoperacao: new Date().toISOString(), usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'DELETE' };
+    const client = supabaseService.getClient();
+    if (client) {
+      const { error } = await client.from('quarto').update(dadosAtualizados).eq('quartoid', id);
+      if (error) return { sucesso: false, mensagem: `Erro ao excluir quarto: ${error.message}` };
+    }
+    setQuartos((prev) => prev.filter((item) => String(item.quartoid) !== String(id)));
+    return { sucesso: true, mensagem: 'Quarto excluído com sucesso.' };
   };
 
   const verificarDisponibilidade = (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => {
@@ -578,6 +645,37 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     return { sucesso: true, mensagem: 'Produto inativado com sucesso.' };
   };
 
+  const registrarVenda = async (dados: Partial<Venda> & { itens: Venda['itens'] }): Promise<Venda> => {
+    const agora = new Date().toISOString();
+    const codigo = `#VEN-${Date.now()}`;
+    const venda: Venda = {
+      vendaid: 0,
+      codigo,
+      tipo: dados.tipo || 'LOJA',
+      hospedenome: dados.hospedenome,
+      valortotal: Number(dados.valortotal || 0),
+      formapagamento: dados.formapagamento || 'PIX',
+      statuspagamento: dados.statuspagamento || 'PAGO',
+      datahora: agora,
+      itens: dados.itens,
+      ativo: true,
+      datainclusao: agora,
+      dataoperacao: agora,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'INSERT',
+    };
+    const client = supabaseService.getClient();
+    if (client) {
+      const { itens: _itens, vendaid: _vendaid, ...dadosVenda } = venda;
+      const { data, error } = await client.from('venda').insert(dadosVenda).select().single();
+      if (error) throw new Error(`Erro ao registrar venda: ${error.message}`);
+      if (data) Object.assign(venda, data);
+    }
+    await Promise.all(venda.itens.map((item) => atualizarEstoqueProduto(item.produtoid || 0, -item.quantidade)));
+    return venda;
+  };
+
   const salvarConfiguracoes = async (novas: Partial<ConfiguracaoSistema>): Promise<void> => {
     const client = supabaseService.getClient();
     setConfiguracoes(prev => {
@@ -599,10 +697,11 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado,
       carregando, erro, login, logout, navegarPara, trocarUsuario,
       atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,
+      criarQuarto, editarQuarto, excluirQuarto,
       verificarDisponibilidade, criarReserva, atualizarReserva, cancelarReserva,
       realizarCheckin, realizarCheckout, criarConsumoExtra, excluirConsumoExtra,
       cadastrarHospede, editarHospede, excluirHospede, atualizarEstoqueProduto,
-      criarProduto, editarProduto, excluirProduto, salvarConfiguracoes, restaurarDadosPadrao,
+      criarProduto, editarProduto, excluirProduto, registrarVenda, salvarConfiguracoes, restaurarDadosPadrao,
     }}>
       {children}
     </ContextoHotel.Provider>

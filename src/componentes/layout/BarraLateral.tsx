@@ -1,6 +1,5 @@
 import {
   BadgePercent,
-  BarChart3,
   Bed,
   CalendarDays,
   HelpCircle,
@@ -60,14 +59,14 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         icone: <LayoutDashboard className="w-5 h-5" />,
       },
       {
-        id: 'status-quartos',
-        label: 'Status dos Quartos',
+        id: 'quartos',
+        label: 'Quartos',
         icone: <Bed className="w-5 h-5" />,
       },
       {
-        id: 'reservas',
-        label: 'Reservas',
-        icone: <CalendarDays className="w-5 h-5" />,
+        id: 'status-quartos',
+        label: 'Status dos Quartos',
+        icone: <Bed className="w-5 h-5" />,
       },
       {
         id: 'mapa-reservas',
@@ -100,11 +99,6 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'produtos',
         label: 'Produtos',
         icone: <Package className="w-5 h-5" />,
-      },
-      {
-        id: 'relatorios',
-        label: 'Relatórios',
-        icone: <BarChart3 className="w-5 h-5" />,
       },
       {
         id: 'configuracoes',

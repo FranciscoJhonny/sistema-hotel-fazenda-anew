@@ -4,7 +4,6 @@ import { BarraLateral } from './componentes/layout/BarraLateral';
 import { BarraSuperior } from './componentes/layout/BarraSuperior';
 import { PaginaDashboard } from './paginas/PaginaDashboard';
 import { PaginaStatusQuartos } from './paginas/PaginaStatusQuartos';
-import { PaginaReservas } from './paginas/PaginaReservas';
 import { PaginaMapaReservas } from './paginas/PaginaMapaReservas';
 import { PaginaCheckin } from './paginas/PaginaCheckin';
 import { PaginaCheckout } from './paginas/PaginaCheckout';
@@ -12,12 +11,13 @@ import { PaginaHospedes } from './paginas/PaginaHospedes';
 import { PaginaFinanceiro } from './paginas/PaginaFinanceiro';
 import { PaginaLoja } from './paginas/PaginaLoja';
 import { PaginaProdutos } from './paginas/PaginaProdutos';
-import { PaginaRelatorios } from './paginas/PaginaRelatorios';
+import { PaginaQuartos } from './paginas/PaginaQuartos';
 import { PaginaConfiguracoes } from './paginas/PaginaConfiguracoes';
 import { PaginaLogin } from './paginas/PaginaLogin';
+import { LoaderCircle } from 'lucide-react';
 
 const ConteudoPrincipal: React.FC = () => {
-  const { paginaAtual, autenticado } = useHotel();
+  const { paginaAtual, autenticado, carregando } = useHotel();
   const [mobileMenuAberto, setMobileMenuAberto] = React.useState(false);
 
   if (!autenticado || paginaAtual === 'login') {
@@ -28,11 +28,10 @@ const ConteudoPrincipal: React.FC = () => {
     switch (paginaAtual) {
       case 'dashboard':
         return <PaginaDashboard />;
+      case 'quartos':
+        return <PaginaQuartos />;
       case 'status-quartos':
         return <PaginaStatusQuartos />;
-      case 'reservas':
-      case 'nova-reserva':
-        return <PaginaReservas abrirModalNova={paginaAtual === 'nova-reserva'} />;
       case 'mapa-reservas':
         return <PaginaMapaReservas />;
       case 'checkin':
@@ -47,8 +46,6 @@ const ConteudoPrincipal: React.FC = () => {
         return <PaginaLoja />;
       case 'produtos':
         return <PaginaProdutos />;
-      case 'relatorios':
-        return <PaginaRelatorios />;
       case 'configuracoes':
         return <PaginaConfiguracoes />;
       default:
@@ -71,6 +68,14 @@ const ConteudoPrincipal: React.FC = () => {
           {renderizarPagina()}
         </main>
       </div>
+      {carregando && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 backdrop-blur-xs" role="status" aria-live="polite">
+          <div className="flex items-center gap-3 rounded-xl bg-white px-5 py-4 text-sm font-semibold text-[#053d1e] shadow-xl">
+            <LoaderCircle className="h-5 w-5 animate-spin" />
+            Carregando dados...
+          </div>
+        </div>
+      )}
     </div>
   );
 };

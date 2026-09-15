@@ -25,16 +25,13 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
 
   const titulos: Record<string, string> = {
     dashboard: 'Dashboard',
-    quartos: 'Gerenciamento de Quartos',
-    reservas: 'Reservas',
-    'nova-reserva': 'Nova Reserva',
     checkin: 'Check-in',
     checkout: 'Check-out',
     hospedes: 'Hóspedes',
     financeiro: 'Financeiro',
     loja: 'Lojinha',
     produtos: 'Produtos',
-    relatorios: 'Relatórios',
+    quartos: 'Gerenciamento de Quartos',
     configuracoes: 'Configurações',
     'status-quartos': 'Status dos Quartos',
     'mapa-reservas': 'Mapa de Reservas',
