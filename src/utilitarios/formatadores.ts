@@ -64,13 +64,18 @@ export function formatarTelefone(telefone: string): string {
   return telefone;
 }
 
+export function aplicarMascaraCpf(valor: string): string {
+  if (!valor) return '';
+  const apenasDigitos = valor.replace(/\D/g, '').slice(0, 11);
+  if (apenasDigitos.length <= 3) return apenasDigitos;
+  if (apenasDigitos.length <= 6) return `${apenasDigitos.slice(0, 3)}.${apenasDigitos.slice(3)}`;
+  if (apenasDigitos.length <= 9) return `${apenasDigitos.slice(0, 3)}.${apenasDigitos.slice(3, 6)}.${apenasDigitos.slice(6)}`;
+  return `${apenasDigitos.slice(0, 3)}.${apenasDigitos.slice(3, 6)}.${apenasDigitos.slice(6, 9)}-${apenasDigitos.slice(9)}`;
+}
+
 export function formatarCpf(cpf: string): string {
   if (!cpf) return '';
-  const limpo = cpf.replace(/\D/g, '');
-  if (limpo.length === 11) {
-    return `${limpo.slice(0, 3)}.${limpo.slice(3, 6)}.${limpo.slice(6, 9)}-${limpo.slice(9)}`;
-  }
-  return cpf;
+  return aplicarMascaraCpf(cpf);
 }
 
 export function calcularDiarias(dataEntrada: string, dataSaida: string): number {

@@ -15,6 +15,7 @@ import { PaginaQuartos } from './paginas/PaginaQuartos';
 import { PaginaConfiguracoes } from './paginas/PaginaConfiguracoes';
 import { PaginaLogin } from './paginas/PaginaLogin';
 import { PaginaCadastroFnrh } from './paginas/PaginaCadastroFnrh';
+import { PaginaFnrhAdmin } from './paginas/PaginaFnrhAdmin';
 import { LoaderCircle } from 'lucide-react';
 
 const obterTokenFnrhDaUrl = (): string | null => {
@@ -47,6 +48,8 @@ const ConteudoPrincipal: React.FC = () => {
         return <PaginaCheckout />;
       case 'hospedes':
         return <PaginaHospedes />;
+      case 'fnrh':
+        return <PaginaFnrhAdmin />;
       case 'financeiro':
         return <PaginaFinanceiro />;
       case 'loja':

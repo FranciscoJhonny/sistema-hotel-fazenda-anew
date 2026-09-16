@@ -285,7 +285,96 @@ export type PaginaNavegacao =
   | 'checkin'
   | 'checkout'
   | 'hospedes'
+  | 'fnrh'
   | 'financeiro'
   | 'loja'
   | 'produtos'
   | 'configuracoes';
+
+// =============================================================================
+// 12. Cadastro FNRH (Ficha Nacional de Registro de Hóspedes)
+// =============================================================================
+export type StatusCadastroFnrh = 
+  | 'AGUARDANDO_PAGAMENTO'
+  | 'LIBERADA_PARA_RESERVA'
+  | 'RESERVA_CRIADA'
+  | 'CANCELADA';
+
+export interface CadastroFnrhAcompanhante {
+  acompanhanteid?: number;
+  cadastroid: number;
+  reservaid?: number | null;
+  nomecompleto: string;
+  documento?: string;
+  datanascimento?: string;
+  menoridade: boolean;
+  cpfresponsavel?: string;
+  autorizacao_url?: string;
+  autorizacao_validada?: boolean;
+  observacoes?: string;
+  datainclusao?: string;
+}
+
+export interface CadastroFnrh {
+  cadastroid: number;
+  status: StatusCadastroFnrh;
+  token_acesso: string;
+  token_expira_em: string;
+  hospedeid?: number | null;
+  reservaid?: number | null;
+
+  // Titular
+  nomecompleto?: string;
+  cpf?: string;
+  rg?: string;
+  passaporte?: string;
+  datanascimento?: string;
+  nacionalidade?: string;
+  sexo?: 'M' | 'F' | string;
+  telefone?: string;
+  email?: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  profissao?: string;
+  proximodestino?: string;
+  ultimaprocedencia?: string;
+  cpfresponsavelmenor?: string;
+
+  // Hospedagem
+  dataentrada?: string;
+  horarioprevistochegada?: string;
+  datasaida?: string;
+  horarioprevistasaida?: string;
+  motivoviagem?: string;
+  transporte?: string;
+  placa?: string;
+  modelocor?: string;
+  numerohospedes: number;
+  adultos: number;
+  criancas: number;
+
+  // Pagamento
+  forma_pagamento?: string;
+  valor_sinal: number;
+  comprovante_url?: string;
+  pagamento_confirmado_em?: string;
+  pagamento_confirmado_por?: number | null;
+
+  // Observações e FNRH
+  alergias_restricoes?: string;
+  solicitacoes_especiais?: string;
+  declaracao_aceita: boolean;
+  data_declaracao?: string;
+  assinatura_url?: string;
+
+  // Auditoria
+  datainclusao: string;
+  dataoperacao?: string;
+  usuariooperacao?: number | null;
+  naturezaoperacao?: string;
+
+  // Acompanhantes carregados em conjunto
+  acompanhantes?: CadastroFnrhAcompanhante[];
+}

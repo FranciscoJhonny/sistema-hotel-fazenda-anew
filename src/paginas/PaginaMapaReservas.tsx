@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CalendarDays,
@@ -8,6 +8,7 @@ import {
   CircleDashed,
   Clock3,
   LoaderCircle,
+  RefreshCw,
   Search,
   Wrench,
 } from 'lucide-react';
@@ -59,7 +60,7 @@ const nomesStatusReserva: Record<string, string> = {
 };
 
 export const PaginaMapaReservas: React.FC = () => {
-  const { quartos, reservas, hospedes } = useHotel();
+  const { quartos, reservas, hospedes, recarregarDados } = useHotel();
   const [periodoInicio, setPeriodoInicio] = useState<Date>(periodoInicialPadrao);
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE'>('TODOS');
   const [busca, setBusca] = useState('');
@@ -68,6 +69,36 @@ export const PaginaMapaReservas: React.FC = () => {
   const [dataSelecionada, setDataSelecionada] = useState<string | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [carregandoReserva, setCarregandoReserva] = useState(false);
+  const [carregandoAtualizacao, setCarregandoAtualizacao] = useState(false);
+  const [hospedeFnrhAviso, setHospedeFnrhAviso] = useState<{ nome: string; dataentrada?: string } | null>(null);
+
+  const handleRecarregar = async () => {
+    setCarregandoAtualizacao(true);
+    try {
+      await recarregarDados();
+    } finally {
+      setCarregandoAtualizacao(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const raw = sessionStorage.getItem('fnrh_reserva_preenchimento');
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.nomecompleto) {
+            setHospedeFnrhAviso({
+              nome: parsed.nomecompleto,
+              dataentrada: parsed.dataentrada,
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  }, []);
 
   const numeroDias = 12;
   const datasVisiveis = useMemo(
@@ -333,6 +364,31 @@ export const PaginaMapaReservas: React.FC = () => {
           <span>{mensagemSucesso}</span>
         </div>
       )}
+
+      {/* Banner de Aviso de Hóspede Confirmado pelo FNRH */}
+      {hospedeFnrhAviso && (
+        <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs font-semibold text-[#053d1e] shadow-xs flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+            <div>
+              <p className="font-bold text-sm text-[#053d1e]">
+                Pré-cadastro de {hospedeFnrhAviso.nome} pronto para alocação de quarto!
+              </p>
+              <p className="text-[#205235] font-normal mt-0.5">
+                Clique sobre o quarto e data desejados no mapa abaixo para concluir a reserva. Os dados do hóspede serão selecionados automaticamente.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setHospedeFnrhAviso(null)}
+            className="text-emerald-800 hover:text-emerald-950 font-bold px-3 py-1.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-100 transition-colors shrink-0"
+          >
+            Dispensar
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-3">
@@ -343,6 +399,16 @@ export const PaginaMapaReservas: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleRecarregar}
+              disabled={carregandoAtualizacao}
+              title="Recarregar dados do banco"
+              className="flex items-center gap-1.5 rounded-full border border-[#c1c9bf] bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${carregandoAtualizacao ? 'animate-spin' : ''}`} />
+              <span>{carregandoAtualizacao ? 'Atualizando...' : 'Atualizar'}</span>
+            </button>
             <div className="rounded-full border border-[#c1c9bf] bg-[#e6f4ea] px-3 py-1.5 text-sm font-bold text-[#053d1e]">
               Ocupação do período: {ocupacao}%
             </div>
@@ -566,13 +632,19 @@ export const PaginaMapaReservas: React.FC = () => {
         onSucesso={(mensagem) => {
           // 1. Exibe a mensagem de sucesso
           setMensagemSucesso(mensagem);
+
+          // 2. Limpa o aviso superior de hóspede FNRH
+          setHospedeFnrhAviso(null);
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('fnrh_reserva_preenchimento');
+          }
           
-          // 2. Fecha a modal e limpa os dados selecionados para a próxima reserva
+          // 3. Fecha a modal e limpa os dados selecionados para a próxima reserva
           setModalAberto(false);
           setQuartoSelecionado(null);
           setDataSelecionada(null);
           
-          // 3. Remove a mensagem de sucesso após 4 segundos
+          // 4. Remove a mensagem de sucesso após 4 segundos
           window.setTimeout(() => setMensagemSucesso(null), 4000);
         }}
         onCarregandoChange={setCarregandoReserva}

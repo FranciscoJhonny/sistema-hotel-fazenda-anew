@@ -3,6 +3,7 @@ import { CalendarDays, CreditCard, X, Users, Bed, LoaderCircle } from 'lucide-re
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, Pacote, FormaPagamento } from '../../tipos';
 import { formatarData, formatarMoeda, sanitizarValorMonetario } from '../../utilitarios/formatadores';
+import { FnrhService } from '../../servicos/supabase/FnrhService';
 
 interface ModalReservaRapidaProps {
   aberto: boolean;
@@ -121,6 +122,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [dataEntrada, setDataEntrada] = useState<string>(dataSelecionada || hoje);
   const [dataSaida, setDataSaida] = useState<string>(somarDias(dataSelecionada || hoje, 2));
   const [hospedeId, setHospedeId] = useState<string>('');
+  const [cadastroidFnrh, setCadastroidFnrh] = useState<number | null>(null);
   
   const [adultos, setAdultos] = useState<number>(0);
   const [criancas, setCriancas] = useState<number>(0);
@@ -143,6 +145,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     [pacoteId, pacotes]
   );
 
+  const hospedesOrdenados = useMemo(() => {
+    return [...hospedes].sort((a, b) => (a.nomecompleto || '').localeCompare(b.nomecompleto || ''));
+  }, [hospedes]);
+
   const hospedeSelecionado = hospedes.find((h) => String(h.hospedeid) === hospedeId) || null;
   const pacotesAtivos = pacotes.filter((p) => p.ativo !== false);
 
@@ -151,19 +157,48 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
   useEffect(() => {
     if (aberto && dataSelecionada) {
-      setHospedeId('');
-      setAdultos(0);
-      setCriancas(0);
+      let hospedePre = '';
+      let cadastroidPre: number | null = null;
+      let adultosPre = 0;
+      let criancasPre = 0;
+      let entradaPre = dataSelecionada;
+      let valorPagoPre = 0;
+      let valorPagoTextoPre = '';
+
+      if (typeof window !== 'undefined') {
+        const raw = sessionStorage.getItem('fnrh_reserva_preenchimento');
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.cadastroid) cadastroidPre = Number(parsed.cadastroid);
+            if (parsed.hospedeid) hospedePre = String(parsed.hospedeid);
+            if (parsed.adultos) adultosPre = Number(parsed.adultos);
+            if (parsed.criancas) criancasPre = Number(parsed.criancas);
+            if (parsed.dataentrada) entradaPre = parsed.dataentrada;
+            if (parsed.valor_sinal && Number(parsed.valor_sinal) > 0) {
+              valorPagoPre = Number(parsed.valor_sinal);
+              valorPagoTextoPre = Number(parsed.valor_sinal).toFixed(2).replace('.', ',');
+            }
+          } catch (e) {
+            console.warn('Erro ao ler fnrh_reserva_preenchimento:', e);
+          }
+        }
+      }
+
+      setCadastroidFnrh(cadastroidPre);
+      setHospedeId(hospedePre);
+      setAdultos(adultosPre);
+      setCriancas(criancasPre);
       setIdadesCriancas([]);
       setObservacoes('');
       setPreReserva(false);
-      setValorPago(0);
-      setValorPagoTexto('');
+      setValorPago(valorPagoPre);
+      setValorPagoTexto(valorPagoTextoPre);
       setErro(null);
       setFormaPagamento(configuracoes?.formapagamentopadrao || 'PIX');
       valorMinimoAnteriorRef.current = 0;
 
-      setDataEntrada(dataSelecionada);
+      setDataEntrada(entradaPre);
 
       const pacoteInicial = pacoteId
         ? pacotesAtivos.find(p => String(p.pacoteid) === pacoteId)
@@ -171,7 +206,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
       if (pacoteInicial) {
         const qtdDias = Number(pacoteInicial.quantidadedias ?? 2);
-        const novaSaida = calcularDataSaida(dataSelecionada, qtdDias);
+        const novaSaida = calcularDataSaida(entradaPre, qtdDias);
         setDataSaida(novaSaida);
 
         if (!pacoteId) {
@@ -319,6 +354,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
     try {
       const resultado = await criarReserva({
+        cadastroid: cadastroidFnrh || undefined,
         hospedeid: Number(hospedeId),
         hospedenome: hospedeSelecionado?.nomecompleto || '',
         hospedetelefone: hospedeSelecionado?.telefone || '',
@@ -347,6 +383,21 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         setErro(resultado.mensagem || 'Não foi possível salvar a reserva.');
         return;
       }
+
+      // Garante a vinculação da FNRH caso haja reservaId gerado
+      if (resultado.reserva?.reservaid) {
+        await FnrhService.vincularReservaAoCadastroFnrh({
+          cadastroid: cadastroidFnrh || undefined,
+          hospedeid: Number(hospedeId),
+          reservaid: resultado.reserva.reservaid,
+        });
+      }
+
+      // Limpa os dados temporários de pré-preenchimento FNRH
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('fnrh_reserva_preenchimento');
+      }
+      setCadastroidFnrh(null);
 
       onSucesso?.(resultado.mensagem || 'Reserva gravada com sucesso!');
       onFechar();
@@ -383,8 +434,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             <div className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-xs">
               <Bed className="h-5 w-5 text-[#053d1e]" />
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#717971]">Quarto selecionado</p>
-                <p className="font-bold text-[#191c1d]">{quarto.numero} • {quarto.categoria}</p>
+                {/* <p className="text-[11px] font-semibold uppercase tracking-wide text-[#717971]">Quarto selecionado </p> */}
+                <p className="font-bold text-[#191c1d]">Quarto selecionado - {quarto.codigoidentificador}</p>
               </div>
             </div>
 
@@ -499,10 +550,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
             {/* Idades das Crianças */}
             {criancas > 0 && (
-              <div className="space-y-2 rounded-xl border border-[#c1c9bf] bg-white p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#717971]">
-                  Idade das crianças (0-5: Grátis | 6-11: Meia | 12+: Integral)
-                </p>
+              <div className="space-y-2 rounded-xl border border-[#c1c9bf] bg-white p-3">               
                 {Array.from({ length: criancas }).map((_, index) => (
                   <label key={index} className="flex items-center justify-between gap-3 text-xs text-[#191c1d]">
                     <span>Criança {index + 1}</span>
@@ -612,7 +660,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
                 <option value="">Selecione um hóspede</option>
-                {hospedes.map((hospede) => (
+                {hospedesOrdenados.map((hospede) => (
                   <option key={String(hospede.hospedeid)} value={String(hospede.hospedeid)}>
                     {hospede.nomecompleto} • {hospede.telefone}
                   </option>

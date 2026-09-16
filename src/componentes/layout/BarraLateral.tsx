@@ -8,7 +8,8 @@ import {
   LogOut,
   Settings,
   Package,
-  Users
+  Users,
+  FileText
 } from 'lucide-react';
 import React from 'react';
 import { useHotel } from '../../contextos/ContextoHotel';
@@ -89,6 +90,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'hospedes',
         label: 'Hóspedes',
         icone: <Users className="w-5 h-5" />,
+      },
+      {
+        id: 'fnrh',
+        label: 'Links FNRH',
+        icone: <FileText className="w-5 h-5" />,
       },
       {
         id: 'financeiro',

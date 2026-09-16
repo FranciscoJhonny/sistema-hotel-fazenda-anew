@@ -48,7 +48,7 @@ interface ContextoHotelType {
   obterQuartoPorId: (quartoId: number | string) => Quarto | undefined;
   obterQuartoPorNumero: (numero: string) => Quarto | undefined;
   verificarDisponibilidade: (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => StatusDisponibilidadeQuarto[];
-  criarReserva: (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva }) => Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }>;
+  criarReserva: (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number }) => Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }>;
   atualizarReserva: (id: number | string, dados: Partial<Reserva>) => Promise<{ sucesso: boolean; mensagem: string }>;
   cancelarReserva: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckin: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
@@ -65,6 +65,7 @@ interface ContextoHotelType {
   registrarVenda: (dados: Partial<Venda> & { itens: Venda['itens'] }) => Promise<Venda>;
   salvarConfiguracoes: (novasConfiguracoes: Partial<ConfiguracaoSistema>) => Promise<void>;
   restaurarDadosPadrao: () => void;
+  recarregarDados: () => Promise<void>;
 }
 
 const ContextoHotel = createContext<ContextoHotelType | undefined>(undefined);
@@ -123,87 +124,86 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => {
-    const carregarDadosDoBanco = async () => {
-      const client = supabaseService.getClient();
-      if (!client) {
-        setCarregando(false);
-        setErro('Cliente Supabase não inicializado.');
-        return;
+  const recarregarDados = async () => {
+    const client = supabaseService.getClient();
+    if (!client) {
+      setCarregando(false);
+      setErro('Cliente Supabase não inicializado.');
+      return;
+    }
+
+    try {
+      setCarregando(true);
+      setErro(null);
+
+      const [quartosResult, reservasResult, hospedesResult, produtosResult, vendasResult, pacotesResult, usuariosResult, configuracaoResult, consumosResult, pagamentosResult] = await Promise.all([
+        client.from('quarto').select('*').eq('ativo', true),
+        client.from('reserva').select('*'),
+        client.from('hospede').select('*').eq('ativo', true).order('nomecompleto', { ascending: true }),
+        client.from('produto').select('*').eq('ativo', true),
+        client.from('venda').select('*'),
+        client.from('pacote').select('*').eq('ativo', true),
+        client.from('usuario').select('*').eq('ativo', true),
+        client.from('configuracao').select('*').eq('ativo', true),
+        client.from('consumo_extra').select('*').eq('ativo', true),
+        client.from('pagamento').select('*').eq('ativo', true),
+      ]);
+
+      if (quartosResult.error) setErro(`Erro ao buscar quartos: ${quartosResult.error.message}`);
+      else if (quartosResult.data) setQuartos(quartosResult.data.map(normalizarQuartoDoBanco));
+
+      if (!reservasResult.error && reservasResult.data) {
+        const reservasComQuartos = reservasResult.data.map((reserva: any) => {
+          const quarto = quartosResult.data?.find((q: any) => q.quartoid === reserva.quartoid);
+          const hospede = hospedesResult.data?.find((h: any) => Number(h.hospedeid) === Number(reserva.hospedeid));
+          return {
+            ...reserva,
+            statusreserva: normalizarStatusReserva(reserva.statusreserva ?? reserva.status),
+            quartonumero: quarto?.numero || 'N/A',
+            quartocodigo: quarto?.codigoidentificador || quarto?.numero || 'N/A',
+            quartocategoria: quarto?.categoria || 'N/A',
+            hospedenome: hospede?.nomecompleto || 'Hóspede não encontrado',
+            hospedetelefone: hospede?.telefone || '',
+            hospedeemail: hospede?.email || '',
+          };
+        });
+        setReservas(reservasComQuartos);
       }
 
-      try {
-        setCarregando(true);
-        setErro(null);
+      if (!hospedesResult.error && hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
+      if (!produtosResult.error && produtosResult.data) setProdutos(produtosResult.data as Produto[]);
+      if (!consumosResult.error && consumosResult.data) setConsumosExtras(consumosResult.data as ConsumoExtra[]);
+      if (!pacotesResult.error && pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
+      if (!usuariosResult.error && usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
+      if (!pagamentosResult.error && pagamentosResult.data) setPagamentos(pagamentosResult.data as Pagamento[]);
 
-        const [quartosResult, reservasResult, hospedesResult, produtosResult, vendasResult, pacotesResult, usuariosResult, configuracaoResult, consumosResult, pagamentosResult] = await Promise.all([
-          client.from('quarto').select('*').eq('ativo', true),
-          client.from('reserva').select('*'),
-          client.from('hospede').select('*').eq('ativo', true),
-          client.from('produto').select('*').eq('ativo', true),
-          client.from('venda').select('*'),
-          client.from('pacote').select('*').eq('ativo', true),
-          client.from('usuario').select('*').eq('ativo', true),
-          client.from('configuracao').select('*').eq('ativo', true),
-          client.from('consumo_extra').select('*').eq('ativo', true),
-          client.from('pagamento').select('*').eq('ativo', true), // <-- ADICIONADO
-        ]);
+      if (!configuracaoResult.error && configuracaoResult.data) {
+        const configBanco = configuracaoResult.data.reduce((resultado: any, item: any) => {
+          const chave = String(item.chave ?? item.Chave ?? '').toLowerCase();
+          if (chave === 'checkintime') resultado.checkintime = item.valor ?? item.Valor;
+          if (chave === 'checkouttime') resultado.checkouttime = item.valor ?? item.Valor;
+          return resultado;
+        }, {});
+        setConfiguracoes({ ...configuracaoPadrao, ...configBanco });
+      }
+    } catch (error: any) {
+      setErro(error?.message || 'Erro inesperado ao carregar dados.');
+    } finally {
+      setCarregando(false);
+    }
+  };
 
-        if (quartosResult.error) setErro(`Erro ao buscar quartos: ${quartosResult.error.message}`);
-        else if (quartosResult.data) setQuartos(quartosResult.data.map(normalizarQuartoDoBanco));
-
-        if (!reservasResult.error && reservasResult.data) {
-          const reservasComQuartos = reservasResult.data.map((reserva: any) => {
-            const quarto = quartosResult.data?.find((q: any) => q.quartoid === reserva.quartoid);
-            const hospede = hospedesResult.data?.find((h: any) => Number(h.hospedeid) === Number(reserva.hospedeid));
-            return {
-              ...reserva,
-              statusreserva: normalizarStatusReserva(reserva.statusreserva ?? reserva.status),
-              quartonumero: quarto?.numero || 'N/A',
-              quartocodigo: quarto?.codigoidentificador || quarto?.numero || 'N/A',
-              quartocategoria: quarto?.categoria || 'N/A',
-              hospedenome: hospede?.nomecompleto || 'Hóspede não encontrado',
-              hospedetelefone: hospede?.telefone || '',
-              hospedeemail: hospede?.email || '',
-            };
-          });
-          setReservas(reservasComQuartos);
-        }
-
-        if (!hospedesResult.error && hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
-        if (!produtosResult.error && produtosResult.data) setProdutos(produtosResult.data as Produto[]);
-        if (!consumosResult.error && consumosResult.data) setConsumosExtras(consumosResult.data as ConsumoExtra[]);
-        if (!pacotesResult.error && pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
-        if (!usuariosResult.error && usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
-
-        // <-- ADICIONADO: Carregar pagamentos
-        if (!pagamentosResult.error && pagamentosResult.data) {
-          setPagamentos(pagamentosResult.data as Pagamento[]);
-        }
-
-        if (!configuracaoResult.error && configuracaoResult.data) {
-          const configBanco = configuracaoResult.data.reduce((resultado: any, item: any) => {
-            const chave = String(item.chave ?? item.Chave ?? '').toLowerCase();
-            if (chave === 'checkintime') resultado.checkintime = item.valor ?? item.Valor;
-            if (chave === 'checkouttime') resultado.checkouttime = item.valor ?? item.Valor;
-            return resultado;
-          }, {});
-          setConfiguracoes({ ...configuracaoPadrao, ...configBanco });
-        }
-
-        const usuarioSalvo = authService.getUsuarioLogado();
-        if (usuarioSalvo) {
-          setUsuarioAtual(usuarioSalvo);
-          setAutenticado(true);
-          setPaginaAtual('dashboard');
-        }
-      } catch (error: any) {
-        setErro(error?.message || 'Erro inesperado ao carregar dados.');
-      } finally {
-        setCarregando(false);
+  useEffect(() => {
+    const inicializar = async () => {
+      await recarregarDados();
+      const usuarioSalvo = authService.getUsuarioLogado();
+      if (usuarioSalvo) {
+        setUsuarioAtual(usuarioSalvo);
+        setAutenticado(true);
+        setPaginaAtual('dashboard');
       }
     };
-    carregarDadosDoBanco();
+    inicializar();
   }, []);
 
   useEffect(() => {
@@ -421,6 +421,82 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         dataoperacao: agora,
         naturezaoperacao: 'INSERT',
       });
+    }
+
+    // Vincula a reserva ao cadastro FNRH se houver pré-cadastro
+    const idCadastroFnrh = dados.cadastroid ? Number(dados.cadastroid) : null;
+    try {
+      if (idCadastroFnrh) {
+        await client
+          .from('cadastro_fnrh')
+          .update({
+            status: 'RESERVA_CRIADA',
+            reservaid: data.reservaid,
+            dataoperacao: agora,
+            usuariooperacao: usuarioAtual?.usuarioid,
+            naturezaoperacao: 'UPDATE',
+          })
+          .eq('cadastroid', idCadastroFnrh);
+
+        await client
+          .from('acompanhante')
+          .update({
+            reservaid: data.reservaid,
+            dataoperacao: agora,
+            usuariooperacao: usuarioAtual?.usuarioid,
+            naturezaoperacao: 'UPDATE',
+          })
+          .eq('cadastroid', idCadastroFnrh)
+          .is('reservaid', null);
+
+        await client
+          .from('cadastro_fnrh_acompanhante')
+          .update({ reservaid: data.reservaid })
+          .eq('cadastroid', idCadastroFnrh)
+          .is('reservaid', null);
+      } else if (dados.hospedeid) {
+        // Se não foi passado o ID direto, busca se esse hóspede tem FNRH liberada aguardando reserva
+        const { data: cFnrh } = await client
+          .from('cadastro_fnrh')
+          .select('cadastroid')
+          .eq('hospedeid', dados.hospedeid)
+          .in('status', ['LIBERADA_PARA_RESERVA', 'AGUARDANDO_PAGAMENTO'])
+          .order('cadastroid', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (cFnrh?.cadastroid) {
+          await client
+            .from('cadastro_fnrh')
+            .update({
+              status: 'RESERVA_CRIADA',
+              reservaid: data.reservaid,
+              dataoperacao: agora,
+              usuariooperacao: usuarioAtual?.usuarioid,
+              naturezaoperacao: 'UPDATE',
+            })
+            .eq('cadastroid', cFnrh.cadastroid);
+
+          await client
+            .from('acompanhante')
+            .update({
+              reservaid: data.reservaid,
+              dataoperacao: agora,
+              usuariooperacao: usuarioAtual?.usuarioid,
+              naturezaoperacao: 'UPDATE',
+            })
+            .eq('cadastroid', cFnrh.cadastroid)
+            .is('reservaid', null);
+
+          await client
+            .from('cadastro_fnrh_acompanhante')
+            .update({ reservaid: data.reservaid })
+            .eq('cadastroid', cFnrh.cadastroid)
+            .is('reservaid', null);
+        }
+      }
+    } catch (eFnrh) {
+      console.warn('[ContextoHotel] Aviso ao vincular reserva ao cadastro FNRH:', eFnrh);
     }
 
     const reservaSalva = {
@@ -702,6 +778,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       realizarCheckin, realizarCheckout, criarConsumoExtra, excluirConsumoExtra,
       cadastrarHospede, editarHospede, excluirHospede, atualizarEstoqueProduto,
       criarProduto, editarProduto, excluirProduto, registrarVenda, salvarConfiguracoes, restaurarDadosPadrao,
+      recarregarDados,
     }}>
       {children}
     </ContextoHotel.Provider>
