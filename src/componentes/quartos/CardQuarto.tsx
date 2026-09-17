@@ -28,7 +28,9 @@ export const CardQuarto: React.FC<CardQuartoProps> = ({
   motivoDesabilitado,
 }) => {
   // 1. Define o status para exibição (calculado ou estático)
-  const statusParaExibicao = quarto.statusCalculado || quarto.status;
+  const statusParaExibicao = (String(quarto.status || '').toUpperCase() === 'MANUTENCAO' || String(quarto.statusCalculado || '').toUpperCase() === 'MANUTENCAO')
+    ? 'MANUTENCAO'
+    : (quarto.statusCalculado || quarto.status);
 
   // 2. Tenta extrair dados da reserva (prioridade) ou dos campos do quarto
   const reservaExibicao = quarto.reservaAtiva || quarto.proximaReserva;
@@ -90,9 +92,9 @@ export const CardQuarto: React.FC<CardQuartoProps> = ({
       case 'MANUTENCAO':
         return {
           label: 'Manutenção',
-          classePill: 'bg-[#f3f4f6] text-[#4b5563] border border-[#e5e7eb]',
-          corIcone: 'text-[#6b7280]',
-          icone: <Wrench className="w-3.5 h-3.5" />,
+          classePill: 'bg-[#e5e7eb] text-[#374151] border border-[#d1d5db]',
+          corIcone: 'text-[#4b5563]',
+          icone: <Wrench className="w-3.5 h-3.5 text-[#4b5563]" />,
         };
       default:
         return {
@@ -141,6 +143,8 @@ export const CardQuarto: React.FC<CardQuartoProps> = ({
       } ${
         selecionado
           ? 'border-2 border-[#245437] bg-[#f0fdf4] ring-2 ring-[#245437]/20 shadow-md scale-[1.01]'
+          : statusParaExibicao === 'MANUTENCAO'
+          ? 'border-[#cbd5e1] bg-gray-50/50'
           : 'border-[#e5e7eb]'
       }`}
     >

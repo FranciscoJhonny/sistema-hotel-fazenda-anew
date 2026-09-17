@@ -270,15 +270,29 @@ export const PaginaMapaReservas: React.FC = () => {
     const quartoBloqueado = quarto.status === 'MANUTENCAO';
 
     return (
-      <div key={quarto.quartoid} className="relative col-span-full h-12 border-b border-[#e5e7eb]">
+      <div key={quarto.quartoid} className={`relative col-span-full h-12 border-b ${quartoBloqueado ? 'border-[#d1d5db] bg-[#f3f4f6]' : 'border-[#e5e7eb] bg-white'}`}>
         <div className="grid h-full" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
-          <div className="sticky left-0 z-10 flex items-center justify-between gap-2 border-r border-[#e5e7eb] bg-white px-3">
+          <div className={`sticky left-0 z-10 flex items-center justify-between gap-2 border-r px-3 ${
+            quartoBloqueado 
+              ? 'border-[#d1d5db] bg-[#f3f4f6] text-[#1f2937] shadow-[2px_0_4px_rgba(0,0,0,0.05)]' 
+              : 'border-[#e5e7eb] bg-white'
+          }`}>
             <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#ff69b4]" />
-              <span className="text-sm font-bold text-[#191c1d]">{quarto.codigoidentificador || quarto.numero}</span>
+              {quartoBloqueado ? (
+                <Wrench className="h-3.5 w-3.5 text-[#4b5563] shrink-0" />
+              ) : (
+                <span className="h-2.5 w-2.5 rounded-full bg-[#ff69b4]" />
+              )}
+              <span className={`text-sm font-bold ${quartoBloqueado ? 'text-[#374151]' : 'text-[#191c1d]'}`}>
+                {quarto.codigoidentificador || quarto.numero}
+              </span>
             </div>
-            <span className={`text-[10px] font-semibold ${quartoBloqueado ? 'text-[#424242]' : 'text-[#717971]'}`}>
-              {quartoBloqueado ? 'Bloqueado' : `${quarto.capacidadeadultos} ad + ${quarto.capacidadecriancas} cri`}
+            <span className={`text-[10px] font-semibold ${
+              quartoBloqueado 
+                ? 'rounded bg-[#e5e7eb] px-1.5 py-0.5 font-bold uppercase tracking-wider text-[#374151] border border-[#d1d5db]' 
+                : 'text-[#717971]'
+            }`}>
+              {quartoBloqueado ? 'Manutenção' : `${quarto.capacidadeadultos} ad + ${quarto.capacidadecriancas} cri`}
             </span>
           </div>
 
@@ -300,10 +314,16 @@ export const PaginaMapaReservas: React.FC = () => {
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
                 }}
-                className={`border-r border-[#e5e7eb] bg-[#f8f9fa] transition-colors 
-                            ${quartoBloqueado ? 'bg-[#424242]' : reservaAtiva?.statusreserva === 'HOSPEDADO' ? 'bg-[#4CAF50]' : ''}
-                            ${isDataPassada(dataIso) ? 'opacity-30 cursor-not-allowed hover:bg-[#f8f9fa]' : 'hover:bg-[#e6f4ea]'}
-                            `}
+                title={quartoBloqueado ? `Quarto ${quarto.numero || quarto.codigoidentificador} em manutenção (bloqueado)` : undefined}
+                className={`transition-colors ${
+                  quartoBloqueado
+                    ? 'border-r border-[#d1d5db] bg-[#e5e7eb]/80 text-[#6b7280] cursor-not-allowed'
+                    : reservaAtiva?.statusreserva === 'HOSPEDADO'
+                    ? 'border-r border-[#e5e7eb] bg-[#4CAF50]'
+                    : isDataPassada(dataIso)
+                    ? 'border-r border-[#e5e7eb] bg-[#f8f9fa] opacity-30 cursor-not-allowed hover:bg-[#f8f9fa]'
+                    : 'border-r border-[#e5e7eb] bg-[#f8f9fa] hover:bg-[#e6f4ea]'
+                }`}
               />
             );
           })}
@@ -524,7 +544,8 @@ export const PaginaMapaReservas: React.FC = () => {
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#4CAF50]" /> Hospedado</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#BDBDBD]" /> Concluída</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#E53935]" /> Cancelada</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#424242]" /> Bloqueado</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#191c1d] border border-neutral-700" /> Manutenção (Bloqueado)</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#e5e7eb] border border-[#9ca3af]" /> Manutenção (Bloqueado)</span>
         </div>
       </div>
 

@@ -54,6 +54,16 @@ export const PaginaDashboard: React.FC = () => {
     if (!quartos || !reservas) return [];
 
     return quartos.map((quarto: Quarto) => {
+      const qStatus = (quarto.status || '').toUpperCase();
+      if (qStatus === 'MANUTENCAO') {
+        return {
+          ...quarto,
+          statusCalculado: 'MANUTENCAO' as StatusQuarto,
+          reservaAtiva: null,
+          proximaReserva: null,
+        };
+      }
+
       const reservasDoQuarto = reservas.filter(r =>
         String(r.quartoid) === String(quarto.quartoid) &&
         r.statusreserva !== 'CANCELADA' &&
@@ -63,7 +73,8 @@ export const PaginaDashboard: React.FC = () => {
       // ✅ AQUI USA A DATA CONSULTA PARA CALCULAR O STATUS
       const { status, reservaAtiva, proximaReserva } = calcularStatusQuarto(
         reservasDoQuarto,
-        new Date(dataConsulta) // ← Data selecionada pelo usuário
+        new Date(dataConsulta),
+        quarto.status
       );
 
       return { ...quarto, statusCalculado: status, reservaAtiva, proximaReserva };
@@ -293,6 +304,11 @@ export const PaginaDashboard: React.FC = () => {
               {quartosReservados > 0 && (
                 <button onClick={() => setFiltroStatus('RESERVADO')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'RESERVADO' ? 'bg-[#2563eb] text-white shadow-xs' : 'bg-[#dbeafe] text-[#1e40af] hover:bg-[#bfdbfe]'}`}>
                   Reservados ({quartosReservados})
+                </button>
+              )}
+              {quartosManutencao > 0 && (
+                <button onClick={() => setFiltroStatus('MANUTENCAO')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'MANUTENCAO' ? 'bg-[#4b5563] text-white shadow-xs' : 'bg-[#e5e7eb] text-[#374151] hover:bg-[#d1d5db]'}`}>
+                  Manutenção ({quartosManutencao})
                 </button>
               )}
             </div>

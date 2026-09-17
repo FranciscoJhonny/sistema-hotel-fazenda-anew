@@ -1,5 +1,6 @@
 import React from 'react';
 import { ContextoHotelProvider, useHotel } from './contextos/ContextoHotel';
+import { PaginaNavegacao } from './tipos';
 import { BarraLateral } from './componentes/layout/BarraLateral';
 import { BarraSuperior } from './componentes/layout/BarraSuperior';
 import { PaginaDashboard } from './paginas/PaginaDashboard';
@@ -25,11 +26,18 @@ const obterTokenFnrhDaUrl = (): string | null => {
 };
 
 const ConteudoPrincipal: React.FC = () => {
-  const { paginaAtual, autenticado, carregando } = useHotel();
+  const { paginaAtual, autenticado, carregando, usuarioAtual, navegarPara } = useHotel();
   const [mobileMenuAberto, setMobileMenuAberto] = React.useState(false);
 
   if (!autenticado || paginaAtual === 'login') {
     return <PaginaLogin />;
+  }
+
+  // Trava de permissão: Perfil RECEPCAO pode acessar exclusivamente Check-in, Check-out, Produto e Quartos
+  const paginasPermitidasRecepcao: PaginaNavegacao[] = ['checkin', 'checkout', 'produtos', 'quartos'];
+  if (usuarioAtual?.perfil === 'RECEPCAO' && !paginasPermitidasRecepcao.includes(paginaAtual)) {
+    navegarPara('checkin');
+    return null;
   }
 
   const renderizarPagina = () => {

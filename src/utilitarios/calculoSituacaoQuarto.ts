@@ -2,12 +2,18 @@ import { Reserva, StatusQuarto } from '../tipos';
 
 export const calcularStatusQuarto = (
   reservas: Reserva[],
-  dataReferencia: Date = new Date()
+  dataReferencia: Date = new Date(),
+  statusBaseQuarto?: StatusQuarto | string
 ): {
   status: StatusQuarto;
   reservaAtiva: Reserva | null;
   proximaReserva: Reserva | null;
 } => {
+  // Se o quarto estiver em manutenção no cadastro, seu status é MANUTENCAO
+  if (String(statusBaseQuarto || '').toUpperCase() === 'MANUTENCAO') {
+    return { status: 'MANUTENCAO', reservaAtiva: null, proximaReserva: null };
+  }
+
   const hoje = new Date(dataReferencia);
   hoje.setHours(0, 0, 0, 0);
 

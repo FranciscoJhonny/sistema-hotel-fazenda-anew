@@ -1,7 +1,7 @@
-// src/servicos/supabase/AuthService.ts
 import { SupabaseService } from '../supabase/SupabaseService';
 import { Usuario } from '../../tipos';
 import { ResultadoSupabase } from '../supabase/types';
+import { verificarSenha } from '../../utilitarios/criptografia';
 
 export interface IAuthService {
   login(email: string, senha: string): Promise<ResultadoSupabase<Usuario>>;
@@ -13,10 +13,10 @@ export interface IAuthService {
 
 export class AuthService implements IAuthService {
   private supabaseService: SupabaseService;
-  private static readonly STORAGE_KEY = 'anew_usuario_atual_v1';
-  private static readonly AUTH_KEY = 'anew_autenticado_v1';
+  private static readonly STORAGE_KEY = 'anew_usuario_atual_v2';
+  private static readonly AUTH_KEY = 'anew_autenticado_v2';
 
-  private readonly TABELA_USUARIO_OPCOES = ['usuario', 'Usuario', 'usuarios', 'Usuarios', 'user', 'User'];
+  private readonly TABELA_USUARIO_OPCOES = ['usuario', 'Usuario', 'usuarios', 'Usuarios'];
 
   constructor() {
     this.supabaseService = SupabaseService.getInstance();
@@ -25,9 +25,9 @@ export class AuthService implements IAuthService {
   private async encontrarTabelaUsuario(client: any): Promise<string | null> {
     for (const nomeTabela of this.TABELA_USUARIO_OPCOES) {
       try {
-        const { data, error } = await client
+        const { error } = await client
           .from(nomeTabela)
-          .select('count', { count: 'exact', head: true })
+          .select('usuarioid', { count: 'exact', head: true })
           .limit(1);
 
         if (!error) {
@@ -37,61 +37,62 @@ export class AuthService implements IAuthService {
         // Ignorar nome de tabela incompatível e tentar o próximo.
       }
     }
-    return null;
+    return 'usuario';
   }
 
   public async login(email: string, senha: string): Promise<ResultadoSupabase<Usuario>> {
     const emailNormalizado = email.trim().toLowerCase();
 
+    if (!emailNormalizado || !senha) {
+      return { sucesso: false, erro: 'Informe o e-mail e a senha para acessar.' };
+    }
+
     try {
       const client = this.supabaseService.getClient();
-      if (!client) return { sucesso: false, erro: 'Sistema offline.' };
+      if (!client) return { sucesso: false, erro: '🚫 Sistema offline. Conecte-se ao Supabase.' };
 
-      let tabelaNome = await this.encontrarTabelaUsuario(client);
-      if (!tabelaNome) return { sucesso: false, erro: 'Tabela não encontrada.' };
+      const tabelaNome = await this.encontrarTabelaUsuario(client);
 
-      // Buscar o usuário com JOIN na tabela de perfil
+      // Buscar o usuário no banco de dados com JOIN em perfil
       const { data, error } = await client
         .from(tabelaNome)
-        .select(`*,perfil:perfilid (*)`)
-        .eq('email', emailNormalizado)
+        .select(`*, perfil:perfilid (*)`)
+        .ilike('email', emailNormalizado)
         .maybeSingle();
 
-      // Se não encontrar com eq, tenta com ilike
-      if (!data) {
-        const { data: data2, error: error2 } = await client
-          .from(tabelaNome)
-          .select(`*,perfil:perfilid (*)`)
-          .ilike('email', emailNormalizado)
-          .maybeSingle();
-        
-        if (data2) {
-          const usuarioMapeado = this.mapearUsuario(data2);
-          this.salvarSessaoLocal(usuarioMapeado);
-          return { sucesso: true, dados: usuarioMapeado };
-        }
-        
-        return { sucesso: false, erro: 'Usuário não encontrado. Verifique seu e-mail.' };
+      if (error) {
+        console.error('[AuthService] ❌ Erro ao consultar banco:', error);
+        return { sucesso: false, erro: 'Erro ao consultar banco de dados. Tente novamente.' };
       }
 
       if (!data) {
         return { sucesso: false, erro: 'Usuário não encontrado. Verifique seu e-mail.' };
       }
-      
-      const senhaBanco = data.senha || data.Senha || data.senha_hash || '';    
-      
-      if (senhaBanco !== senha) {
-        return { sucesso: false, erro: 'Senha incorreta.' };
+
+      // Verificar se o usuário está ativo
+      const estaAtivo = data.ativo !== undefined ? Boolean(data.ativo) : (data.Ativo !== undefined ? Boolean(data.Ativo) : true);
+      if (!estaAtivo) {
+        return { sucesso: false, erro: 'Este usuário está inativo no sistema. Contate a administração.' };
       }
+
+      // Obter a senha armazenada no banco
+      const senhaBanco = (data.senha || data.Senha || data.senha_hash || '').toString().trim();
+
+      // Validar senha (suporta SHA-256 criptografado e texto plano)
+      const senhaValida = await verificarSenha(senha, senhaBanco);
+
+      if (!senhaValida) {
+        return { sucesso: false, erro: 'Senha incorreta. Tente novamente.' };
+      }
+
       // Mapear o usuário com perfil
       const usuarioMapeado = this.mapearUsuario(data);
-      
       this.salvarSessaoLocal(usuarioMapeado);
       return { sucesso: true, dados: usuarioMapeado };
 
     } catch (err: any) {
       console.error('[AuthService] ❌ Erro no login:', err);
-      return { sucesso: false, erro: err?.message || 'Erro ao conectar.' };
+      return { sucesso: false, erro: err?.message || 'Erro inesperado ao conectar.' };
     }
   }
 
@@ -127,7 +128,7 @@ export class AuthService implements IAuthService {
       perfilid: data.perfilid || data.PerfilId || data.perfil_id || 2,
       nome: data.nome || data.Nome || data.nome_completo || 'Usuário',
       email: data.email || data.Email || '',
-      senha: data.senha || data.Senha || data.senha_hash || '',
+      senha: '',
       ativo: data.ativo !== undefined ? data.ativo : (data.Ativo !== undefined ? data.Ativo : true),
       perfil: perfil,
       datainclusao: data.datainclusao || new Date().toISOString(),
@@ -167,6 +168,8 @@ export class AuthService implements IAuthService {
 
   public limparSessaoLocal(): void {
     localStorage.removeItem(AuthService.STORAGE_KEY);
+    localStorage.removeItem('anew_usuario_atual_v1');
     localStorage.setItem(AuthService.AUTH_KEY, 'false');
+    localStorage.setItem('anew_autenticado_v1', 'false');
   }
 }

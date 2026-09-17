@@ -1,7 +1,7 @@
-// src/servicos/supabase/UsuarioService.ts
 import { BaseService } from './BaseService';
 import { Usuario } from '../../tipos';
 import { ResultadoSupabase } from './types';
+import { verificarSenha } from '../../utilitarios/criptografia';
 
 export interface IUsuarioService {
   listar(filtros?: any): Promise<ResultadoSupabase<Usuario[]>>;
@@ -80,15 +80,30 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
         return { sucesso: false, erro: 'Usuário não encontrado. Verifique seu e-mail.' };
       }
 
-      // 🔥 Verificar senha
-      if (data.Senha !== senha) {
+      // Verificar se o usuário está ativo
+      const estaAtivo = data.ativo !== undefined ? Boolean(data.ativo) : true;
+      if (!estaAtivo) {
+        return { sucesso: false, erro: 'Este usuário está inativo no sistema. Contate o administrador.' };
+      }
+
+      // Validar senha (compatível com SHA-256 e texto plano)
+      const senhaBanco = (data.senha || data.Senha || data.senha_hash || '').toString().trim();
+      const senhaValida = await verificarSenha(senha, senhaBanco);
+
+      if (!senhaValida) {
         return { sucesso: false, erro: 'Senha incorreta. Tente novamente.' };
       }
 
       // Mapear usuário com perfil
+      const perfilDesc = (data.perfil?.descricao || data.Perfil?.descricao || (data.perfilid === 1 ? 'ADMIN' : 'RECEPCAO')).toString().toUpperCase();
+      const perfilFormatado = perfilDesc.includes('ADMIN') ? 'ADMIN' : (perfilDesc.includes('VENDAS') ? 'VENDAS' : 'RECEPCAO');
+
       const usuarioMapeado: Usuario = {
         ...data,
-        perfil: (data.perfil?.descricao as any) || (data.perfilid === 1 ? 'ADMIN' : 'RECEPCAO'),
+        usuarioid: Number(data.usuarioid || data.UsuarioId || 0),
+        perfilid: Number(data.perfilid || data.PerfilId || 2),
+        perfil: perfilFormatado,
+        senha: '',
       };
 
       return { sucesso: true, dados: usuarioMapeado };

@@ -25,12 +25,6 @@ export const PaginaLogin: React.FC = () => {
   const [mostrarSenha, setMostrarSenha] = useState<boolean>(false);
   const [feedbackSucesso, setFeedbackSucesso] = useState<boolean>(false);
 
-  // 🔥 Contas demo APENAS PARA PREENCHIMENTO (não para login)
-  const contasDemo = [
-    { nome: 'Administrador', email: 'francisco.jhonny@hotmail.com', senha: '123456' },
-    { nome: 'Recepção', email: 'joao@email.com', senha: '123456' },
-  ];
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
@@ -46,13 +40,14 @@ export const PaginaLogin: React.FC = () => {
     }
 
     try {
-      // 🔥 CHAMAR LOGIN - APENAS SUPABASE
+      // Autenticação direta no banco de dados via Supabase
       const resultado = await login(emailLimpo, senha);
 
       if (resultado.sucesso) {
         setFeedbackSucesso(true);
         setTimeout(() => {
-          navegarPara('dashboard');
+          const paginaDestino = resultado.usuario?.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+          navegarPara(paginaDestino);
         }, 600);
       } else {
         setErro(resultado.erro || 'E-mail ou senha inválidos.');
@@ -63,12 +58,6 @@ export const PaginaLogin: React.FC = () => {
     } finally {
       setCarregando(false);
     }
-  };
-
-  const preencherCredenciais = (emailDemo: string, senhaDemo: string) => {
-    setEmail(emailDemo);
-    setSenha(senhaDemo);
-    setErro(null);
   };
 
   return (
@@ -191,37 +180,10 @@ export const PaginaLogin: React.FC = () => {
             </button>
           </form>
 
-          {/* Contas Demo - APENAS PARA PREENCHIMENTO */}
-          <div className="pt-4 border-t border-[#e1e3e4] space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-px bg-[#e1e3e4]" />
-              <span className="text-[10px] font-bold text-[#717971] uppercase tracking-wider">
-                Credenciais de Teste
-              </span>
-              <div className="flex-1 h-px bg-[#e1e3e4]" />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {contasDemo.map((conta) => (
-                <button
-                  key={conta.email}
-                  type="button"
-                  onClick={() => preencherCredenciais(conta.email, conta.senha)}
-                  className="p-3 bg-[#f8f9fa] border border-[#c1c9bf] rounded-xl text-left hover:border-[#053d1e] hover:bg-[#e6f4ea] transition-all cursor-pointer group"
-                >
-                  <p className="text-xs font-bold text-[#191c1d]">{conta.nome}</p>
-                  <p className="text-[10px] text-[#717971] font-mono truncate mt-0.5">{conta.email}</p>
-                  <div className="mt-1.5 pt-1.5 border-t border-[#e1e3e4]/60 flex items-center justify-between text-[10px] text-[#717971]">
-                    <span>Senha:</span>
-                    <span className="font-mono font-bold text-[#053d1e]">{conta.senha}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <p className="text-[10px] text-[#717971] text-center italic">
-              ⚡ Clique em uma conta para preencher os campos. O login é validado no Supabase.
-            </p>
+          {/* Rodapé de Segurança */}
+          <div className="pt-3 border-t border-[#e1e3e4] flex items-center justify-center gap-1.5 text-[11px] text-[#717971]">
+            <Lock className="w-3.5 h-3.5 text-[#053d1e]" />
+            <span>Acesso restrito à equipe e administração • Criptografia ativa</span>
           </div>
         </div>
 

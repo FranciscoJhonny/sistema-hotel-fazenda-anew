@@ -145,7 +145,19 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
           <div className="flex items-center justify-between p-4 rounded-xl bg-[#f8f9fa] border border-[#e1e3e4]">
             <div>
               <p className="text-xs text-[#717971] uppercase font-semibold">Status Operacional</p>
-              <p className="text-base font-bold text-[#191c1d] mt-0.5">{quartoStatus}</p>
+              <div className="mt-1">
+                {quartoStatus === 'MANUTENCAO' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-xs font-bold text-[#374151] border border-[#d1d5db] shadow-xs">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#4b5563]" />
+                    Manutenção
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e6f4ea] px-2.5 py-1 text-xs font-semibold text-[#137333] border border-[#b8f0c2]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#137333]" />
+                    Disponível
+                  </span>
+                )}
+              </div>
             </div>
             <div className="text-right">
               <p className="text-xs text-[#717971] uppercase font-semibold">Capacidade</p>
@@ -268,10 +280,14 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
         <div className="px-6 py-4 bg-[#f8f9fa] border-t border-[#e1e3e4] flex flex-wrap items-center justify-between gap-2">
           <button
             onClick={handleAlternarBloqueio}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-[#c1c9bf] hover:bg-[#e1e3e4] text-[#414941] transition-colors cursor-pointer"
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+              quartoStatus === 'MANUTENCAO'
+                ? 'bg-[#4b5563] text-white border-[#4b5563] hover:bg-[#374151]'
+                : 'border-[#c1c9bf] hover:bg-[#e1e3e4] text-[#414941]'
+            }`}
           >
             <Wrench className="w-4 h-4" />
-            {quartoStatus === 'MANUTENCAO' ? 'Liberar Quarto' : 'Bloquear Manutenção'}
+            {quartoStatus === 'MANUTENCAO' ? 'Liberar Quarto (Disponível)' : 'Bloquear em Manutenção'}
           </button>
 
           <div className="flex items-center gap-2">

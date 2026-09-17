@@ -90,13 +90,24 @@ export const PaginaStatusQuartos: React.FC = () => {
     if (!quartos || !reservas) return [];
 
     return quartos.map((quarto: Quarto) => {
+      const qStatus = (quarto.status || '').toUpperCase();
+      if (qStatus === 'MANUTENCAO') {
+        return {
+          ...quarto,
+          statusCalculado: 'MANUTENCAO' as StatusQuarto,
+          reservaAtiva: null,
+          proximaReserva: null,
+        };
+      }
+
       const idQuarto = String(obterIdQuarto(quarto));
       const reservasDoQuarto = reservas.filter(r => String(r.quartoid) === idQuarto);
       
       // ✅ AQUI USA A DATA CONSULTA (igual ao Dashboard)
       const { status, reservaAtiva, proximaReserva } = calcularStatusQuarto(
         reservasDoQuarto,
-        new Date(dataConsulta)
+        new Date(dataConsulta),
+        quarto.status
       );
 
       return {
@@ -219,7 +230,7 @@ export const PaginaStatusQuartos: React.FC = () => {
               </button>
               <button 
                 onClick={() => setFiltroStatus('MANUTENCAO')} 
-                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'MANUTENCAO' ? 'bg-[#6b7280] text-white shadow-xs' : 'bg-[#e5e7eb] text-[#374151] hover:bg-[#d1d5db]'}`}
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'MANUTENCAO' ? 'bg-[#4b5563] text-white shadow-xs' : 'bg-[#e5e7eb] text-[#374151] hover:bg-[#d1d5db]'}`}
               >
                 Manutenção ({manutencao})
               </button>

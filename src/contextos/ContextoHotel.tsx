@@ -37,7 +37,7 @@ interface ContextoHotelType {
   carregando: boolean;
   erro: string | null;
 
-  login: (email: string, senha: string) => Promise<{ sucesso: boolean; erro?: string }>;
+  login: (email: string, senha: string) => Promise<{ sucesso: boolean; erro?: string; usuario?: Usuario }>;
   logout: () => Promise<void>;
   navegarPara: (pagina: PaginaNavegacao) => void;
   trocarUsuario: (usuarioId: number | string) => void;
@@ -197,11 +197,30 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const inicializar = async () => {
       await recarregarDados();
       const usuarioSalvo = authService.getUsuarioLogado();
-      if (usuarioSalvo) {
-        setUsuarioAtual(usuarioSalvo);
-        setAutenticado(true);
-        setPaginaAtual('dashboard');
+      if (usuarioSalvo && usuarioSalvo.email) {
+        // Validação no Supabase para garantir que o usuário ainda existe e está ativo
+        const client = supabaseService.getClient();
+        if (client) {
+          const { data: usuarioDb } = await client
+            .from('usuario')
+            .select('usuarioid, email, ativo')
+            .ilike('email', usuarioSalvo.email.trim().toLowerCase())
+            .eq('ativo', true)
+            .maybeSingle();
+
+          if (usuarioDb) {
+            setUsuarioAtual(usuarioSalvo);
+            setAutenticado(true);
+            const paginaPadrao: PaginaNavegacao = usuarioSalvo.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+            setPaginaAtual(paginaPadrao);
+            return;
+          }
+        }
+        // Se o usuário não existe no banco ou está inativo, limpa a sessão e força tela de login
+        await authService.logout();
       }
+      setAutenticado(false);
+      setPaginaAtual('login');
     };
     inicializar();
   }, []);
@@ -219,15 +238,17 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  const login = async (email: string, senha: string): Promise<{ sucesso: boolean; erro?: string }> => {
+  const login = async (email: string, senha: string): Promise<{ sucesso: boolean; erro?: string; usuario?: Usuario }> => {
     if (!online) return { sucesso: false, erro: '🚫 Sistema offline.' };
     try {
       const resultado = await authService.login(email, senha);
       if (resultado.sucesso && resultado.dados) {
-        setUsuarioAtual(resultado.dados as Usuario);
+        const usuario = resultado.dados as Usuario;
+        setUsuarioAtual(usuario);
         setAutenticado(true);
-        setPaginaAtual('dashboard');
-        return { sucesso: true };
+        const paginaInicial: PaginaNavegacao = usuario.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+        setPaginaAtual(paginaInicial);
+        return { sucesso: true, usuario };
       }
       return { sucesso: false, erro: resultado.erro || 'E-mail ou senha inválidos.' };
     } catch (error: any) {

@@ -2,6 +2,7 @@ import {
   BadgePercent,
   Bed,
   CalendarDays,
+  DoorOpen,
   HelpCircle,
   LayoutDashboard,
   LogIn,
@@ -48,7 +49,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
   const quartosOcupados = quartos.filter((q) => q.status === 'OCUPADO').length;
 
-  const itensMenu: {
+  const itensMenuAdmin: {
     id: PaginaNavegacao;
     label: string;
     icone: React.ReactNode;
@@ -73,6 +74,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'status-quartos',
         label: 'Status dos Quartos',
         icone: <Bed className="w-5 h-5" />,
+      },
+      {
+        id: 'quartos',
+        label: 'Quartos',
+        icone: <DoorOpen className="w-5 h-5" />,
       },
       {
         id: 'checkin',
@@ -108,6 +114,39 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
       },
     ];
 
+  const itensMenuRecepcao: {
+    id: PaginaNavegacao;
+    label: string;
+    icone: React.ReactNode;
+    contador?: number;
+  }[] = [
+      {
+        id: 'checkin',
+        label: 'Check-in',
+        icone: <LogIn className="w-5 h-5" />,
+        contador: checkinsHoje,
+      },
+      {
+        id: 'checkout',
+        label: 'Check-out',
+        icone: <LogOut className="w-5 h-5" />,
+        contador: checkoutsHoje,
+      },
+      {
+        id: 'produtos',
+        label: 'Produto',
+        icone: <Package className="w-5 h-5" />,
+      },
+      {
+        id: 'quartos',
+        label: 'Quartos',
+        icone: <DoorOpen className="w-5 h-5" />,
+      },
+    ];
+
+  // Perfil RECEPCAO visualiza exclusivamente Check-in, Check-out, Produto e Quartos
+  const itensMenu = usuarioAtual?.perfil === 'RECEPCAO' ? itensMenuRecepcao : itensMenuAdmin;
+
   const handleNavegar = (pagina: PaginaNavegacao) => {
     navegarPara(pagina);
     if (onFecharMobile) onFecharMobile();
@@ -137,7 +176,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
             Hotel Fazenda Anew
           </h1>
           <p className="font-['Inter'] text-[11px] text-[#717971] uppercase tracking-wider font-semibold mt-0.5">
-            Administração
+            {usuarioAtual?.perfil === 'RECEPCAO' ? 'Recepção' : 'Administração'}
           </p>
         </div>
 
@@ -175,13 +214,15 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
         {/* Rodapé do Sidebar */}
         <div className="px-4 mt-auto pt-4 border-t border-[#f3f4f6] space-y-1">
-          <button
-            onClick={() => handleNavegar('configuracoes')}
-            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#4b5563] hover:text-[#111827] hover:bg-[#f3f4f6] rounded-xl transition-colors cursor-pointer"
-          >
-            <HelpCircle className="w-5 h-5 text-[#6b7280]" />
-            <span>Suporte</span>
-          </button>
+          {usuarioAtual?.perfil !== 'RECEPCAO' && (
+            <button
+              onClick={() => handleNavegar('configuracoes')}
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#4b5563] hover:text-[#111827] hover:bg-[#f3f4f6] rounded-xl transition-colors cursor-pointer"
+            >
+              <HelpCircle className="w-5 h-5 text-[#6b7280]" />
+              <span>Suporte</span>
+            </button>
+          )}
           <button
             onClick={() => logout()}
             className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#ba1a1a] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/40 rounded-xl transition-colors cursor-pointer"

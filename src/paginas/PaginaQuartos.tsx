@@ -14,11 +14,8 @@ const categorias: CategoriaQuarto[] = [
     "Chalé Família",
     "Vila Premium",
 ];
-const status: StatusQuarto[] = [
+const statusSelecionaveis: StatusQuarto[] = [
     "DISPONIVEL",
-    "RESERVADO",
-    "OCUPADO",
-    "AGUARDANDO_CHECKIN",
     "MANUTENCAO",
 ];
 const blocos: BlocoQuarto[] = ["B", "C", "D"];
@@ -214,7 +211,7 @@ export const PaginaQuartos: React.FC = () => {
                     className="rounded-lg border border-[#c1c9bf] bg-[#f8f9fa] px-3 py-1.5 text-xs font-semibold outline-none"
                 >
                     <option value="TODOS">Todos os status</option>
-                    {status.map((item) => (
+                    {statusSelecionaveis.map((item) => (
                         <option key={item} value={item}>
                             {rotuloStatus[item]}
                         </option>
@@ -269,9 +266,17 @@ export const PaginaQuartos: React.FC = () => {
                                             {quarto.capacidadecriancas} crianças
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="rounded-full bg-[#e6f4ea] px-2 py-1 text-[11px] font-semibold text-[#137333]">
-                                                {rotuloStatus[quarto.status]}
-                                            </span>
+                                            {quarto.status === "MANUTENCAO" ? (
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-[11px] font-bold text-[#374151] border border-[#d1d5db] shadow-xs">
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-[#4b5563]" />
+                                                    Manutenção
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e6f4ea] px-2.5 py-1 text-[11px] font-semibold text-[#137333] border border-[#b8f0c2]">
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-[#137333]" />
+                                                    Disponível
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex justify-end gap-1">
@@ -429,7 +434,7 @@ export const PaginaQuartos: React.FC = () => {
                                     }
                                     className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
                                 >
-                                    {status.map((item) => (
+                                    {statusSelecionaveis.map((item) => (
                                         <option key={item} value={item}>
                                             {rotuloStatus[item]}
                                         </option>

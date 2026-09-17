@@ -34,7 +34,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
     financeiro: 'Financeiro',
     loja: 'Lojinha',
     produtos: 'Produto',
-    quartos: 'Gerenciamento de Quartos',
+    quartos: 'Quartos',
     configuracoes: 'Configurações',
   };
 
@@ -220,16 +220,18 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
               </div>
 
               <div className="pt-2 space-y-1">
-                <button
-                  onClick={() => {
-                    navegarPara('configuracoes');
-                    setMostrarMenuUsuario(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-[#4b5563] hover:text-[#111827] hover:bg-[#f9fafb] rounded-lg transition-colors cursor-pointer"
-                >
-                  <User className="w-4 h-4 text-[#6b7280]" />
-                  <span>Configurações do Sistema</span>
-                </button>
+                {usuarioAtual?.perfil !== 'RECEPCAO' && (
+                  <button
+                    onClick={() => {
+                      navegarPara('configuracoes');
+                      setMostrarMenuUsuario(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-[#4b5563] hover:text-[#111827] hover:bg-[#f9fafb] rounded-lg transition-colors cursor-pointer"
+                  >
+                    <User className="w-4 h-4 text-[#6b7280]" />
+                    <span>Configurações do Sistema</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setMostrarMenuUsuario(false);
