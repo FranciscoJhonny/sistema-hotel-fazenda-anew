@@ -38,7 +38,7 @@ export type TipoLancamentoPagamento =
   | 'SALDO_RESERVA'
   | 'CONSUMO_EXTRA';
 
-export type PerfilUsuario = 'ADMIN' | 'RECEPCAO' | 'VENDAS';
+export type PerfilUsuario = 'MASTER' | 'ADMIN' | 'RECEPCAO' | 'VENDAS';
 
 export type TipoVenda = 'LOJA' | 'ALMOCO' | 'DAY_USE' | 'CONSUMO_QUARTO';
 
@@ -304,6 +304,7 @@ export type PaginaNavegacao =
   | 'financeiro'
   | 'loja'
   | 'produtos'
+  | 'usuarios'
   | 'configuracoes';
 
 // =============================================================================

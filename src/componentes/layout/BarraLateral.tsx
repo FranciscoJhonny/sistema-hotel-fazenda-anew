@@ -10,7 +10,8 @@ import {
   Settings,
   Package,
   Users,
-  FileText
+  FileText,
+  UserCog
 } from 'lucide-react';
 import React from 'react';
 import { useHotel } from '../../contextos/ContextoHotel';
@@ -108,6 +109,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         icone: <Package className="w-5 h-5" />,
       },
       {
+        id: 'usuarios',
+        label: 'Usuários',
+        icone: <UserCog className="w-5 h-5" />,
+      },
+      {
         id: 'configuracoes',
         label: 'Configurações',
         icone: <Settings className="w-5 h-5" />,
@@ -144,8 +150,15 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
       },
     ];
 
-  // Perfil RECEPCAO visualiza exclusivamente Check-in, Check-out, Produto e Quartos
-  const itensMenu = usuarioAtual?.perfil === 'RECEPCAO' ? itensMenuRecepcao : itensMenuAdmin;
+  // Perfil RECEPCAO visualiza exclusivamente Check-in, Check-out, Produto e Quartos.
+  // O item 'usuarios' (Gestão de Usuários) é visível EXCLUSIVAMENTE para o perfil MASTER (Dono do Sistema).
+  const itensMenuBase = usuarioAtual?.perfil === 'RECEPCAO' ? itensMenuRecepcao : itensMenuAdmin;
+  const itensMenu = itensMenuBase.filter((item) => {
+    if (item.id === 'usuarios') {
+      return usuarioAtual?.perfil === 'MASTER';
+    }
+    return true;
+  });
 
   const handleNavegar = (pagina: PaginaNavegacao) => {
     navegarPara(pagina);
@@ -176,7 +189,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
             Hotel Fazenda Anew
           </h1>
           <p className="font-['Inter'] text-[11px] text-[#717971] uppercase tracking-wider font-semibold mt-0.5">
-            {usuarioAtual?.perfil === 'RECEPCAO' ? 'Recepção' : 'Administração'}
+            {usuarioAtual?.perfil === 'MASTER'
+              ? 'Dono do Sistema'
+              : usuarioAtual?.perfil === 'RECEPCAO'
+              ? 'Recepção'
+              : 'Administração'}
           </p>
         </div>
 

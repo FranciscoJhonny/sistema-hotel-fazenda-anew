@@ -1,5 +1,5 @@
 import { SupabaseService } from '../supabase/SupabaseService';
-import { Usuario } from '../../tipos';
+import { Usuario, PerfilUsuario } from '../../tipos';
 import { ResultadoSupabase } from '../supabase/types';
 import { verificarSenha } from '../../utilitarios/criptografia';
 
@@ -99,37 +99,29 @@ export class AuthService implements IAuthService {
   // 🔥 NOVO MÉTODO PARA MAPEAR USUÁRIO COM PERFIL
   private mapearUsuario(data: any): Usuario {
     // Mapear o perfil
-    let perfil = 'RECEPCAO' as 'ADMIN' | 'RECEPCAO' | 'VENDAS';
-    
-    // Verificar se veio o perfil do JOIN
-    if (data.perfil) {
-      const descricaoPerfil = (data.perfil.descricao || '').toUpperCase();
-      if (descricaoPerfil.includes('ADMIN') || descricaoPerfil.includes('ADMINISTRADOR')) {
-        perfil = 'ADMIN';
-      } else if (descricaoPerfil.includes('VENDAS') || descricaoPerfil.includes('VENDEDOR')) {
-        perfil = 'VENDAS';
-      } else {
-        perfil = 'RECEPCAO';
-      }
-    } else {
-      // Fallback: verificar campos diretos
-      const perfilCampo = (data.perfil_descricao || data.perfil || data.Perfil || '').toString().toUpperCase();
-      if (perfilCampo.includes('ADMIN') || perfilCampo.includes('ADMINISTRADOR')) {
-        perfil = 'ADMIN';
-      } else if (perfilCampo.includes('VENDAS') || perfilCampo.includes('VENDEDOR')) {
-        perfil = 'VENDAS';
-      } else {
-        perfil = 'RECEPCAO';
-      }
+    let perfil: PerfilUsuario = 'RECEPCAO';
+    const idPerfil = Number(data.perfilid || data.PerfilId || data.perfil_id || 0);
+
+    // 1. Verificar pelo nome da descrição do perfil do JOIN
+    const descricaoPerfil = (data.perfil?.descricao || data.Perfil?.descricao || '').toString().toUpperCase();
+
+    if (descricaoPerfil.includes('MASTER') || idPerfil === 1) {
+      perfil = 'MASTER';
+    } else if (descricaoPerfil.includes('ADMIN') || descricaoPerfil.includes('ADMINISTRADOR') || idPerfil === 2) {
+      perfil = 'ADMIN';
+    } else if (descricaoPerfil.includes('VENDAS') || descricaoPerfil.includes('VENDEDOR') || idPerfil === 5) {
+      perfil = 'VENDAS';
+    } else if (descricaoPerfil.includes('RECEPCAO') || descricaoPerfil.includes('RECEPÇÃO') || idPerfil === 3) {
+      perfil = 'RECEPCAO';
     }
 
     return {
-      usuarioid: data.usuarioid || data.UsuarioId || data.id || Date.now(),
-      perfilid: data.perfilid || data.PerfilId || data.perfil_id || 2,
+      usuarioid: Number(data.usuarioid || data.UsuarioId || data.id || 0),
+      perfilid: idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : 3),
       nome: data.nome || data.Nome || data.nome_completo || 'Usuário',
       email: data.email || data.Email || '',
       senha: '',
-      ativo: data.ativo !== undefined ? data.ativo : (data.Ativo !== undefined ? data.Ativo : true),
+      ativo: data.ativo !== undefined ? Boolean(data.ativo) : (data.Ativo !== undefined ? Boolean(data.Ativo) : true),
       perfil: perfil,
       datainclusao: data.datainclusao || new Date().toISOString(),
       dataoperacao: new Date().toISOString(),

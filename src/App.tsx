@@ -13,6 +13,7 @@ import { PaginaFinanceiro } from './paginas/PaginaFinanceiro';
 import { PaginaLoja } from './paginas/PaginaLoja';
 import { PaginaProdutos } from './paginas/PaginaProdutos';
 import { PaginaQuartos } from './paginas/PaginaQuartos';
+import { PaginaUsuarios } from './paginas/PaginaUsuarios';
 import { PaginaConfiguracoes } from './paginas/PaginaConfiguracoes';
 import { PaginaLogin } from './paginas/PaginaLogin';
 import { PaginaCadastroFnrh } from './paginas/PaginaCadastroFnrh';
@@ -40,6 +41,13 @@ const ConteudoPrincipal: React.FC = () => {
     return null;
   }
 
+  // Trava de permissão: Perfil diferente de MASTER (Dono) tentando acessar a Gestão de Usuários
+  if (paginaAtual === 'usuarios' && usuarioAtual?.perfil !== 'MASTER') {
+    const destino = usuarioAtual?.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+    navegarPara(destino);
+    return null;
+  }
+
   const renderizarPagina = () => {
     switch (paginaAtual) {
       case 'dashboard':
@@ -64,6 +72,8 @@ const ConteudoPrincipal: React.FC = () => {
         return <PaginaLoja />;
       case 'produtos':
         return <PaginaProdutos />;
+      case 'usuarios':
+        return <PaginaUsuarios />;
       case 'configuracoes':
         return <PaginaConfiguracoes />;
       default:

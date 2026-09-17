@@ -10,8 +10,10 @@ import {
   LogOut,
   User,
   Shield,
+  KeyRound,
 } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
+import { ModalAlterarSenha } from '../usuario/ModalAlterarSenha';
 
 interface BarraSuperiorProps {
   onAbrirMobile: () => void;
@@ -21,6 +23,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
   const { paginaAtual, dataSistema, usuarioAtual, reservas, navegarPara, logout } = useHotel();
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
   const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
+  const [modalAlterarSenhaAberta, setModalAlterarSenhaAberta] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState<'visao-geral' | 'metricas'>('visao-geral');
 
   const titulos: Record<string, string> = {
@@ -35,6 +38,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
     loja: 'Lojinha',
     produtos: 'Produto',
     quartos: 'Quartos',
+    usuarios: 'Gestão de Usuários',
     configuracoes: 'Configurações',
   };
 
@@ -213,8 +217,12 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
                   <p className="text-[11px] text-[#6b7280] font-mono truncate">
                     {usuarioAtual?.email || 'admin@fazendaanew.com.br'}
                   </p>
-                  <span className="inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.2 bg-[#e6f4ea] text-[#053d1e] rounded">
-                    {usuarioAtual?.perfil || 'ADMIN'}
+                  <span className={`inline-block mt-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${
+                    usuarioAtual?.perfil === 'MASTER'
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-[#e6f4ea] text-[#053d1e] border-[#b8f0c2]'
+                  }`}>
+                    {usuarioAtual?.perfil === 'MASTER' ? '👑 MASTER (Dono)' : usuarioAtual?.perfil || 'ADMIN'}
                   </span>
                 </div>
               </div>
@@ -232,6 +240,18 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
                     <span>Configurações do Sistema</span>
                   </button>
                 )}
+
+                <button
+                  onClick={() => {
+                    setMostrarMenuUsuario(false);
+                    setModalAlterarSenhaAberta(true);
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-medium text-[#4b5563] hover:text-[#111827] hover:bg-[#f9fafb] rounded-lg transition-colors cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4 text-[#6b7280]" />
+                  <span>Alterar Minha Senha</span>
+                </button>
+
                 <button
                   onClick={() => {
                     setMostrarMenuUsuario(false);
@@ -247,6 +267,12 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
           )}
         </div>
       </div>
+
+      {/* Modal para o Usuário Logado Alterar sua Própria Senha */}
+      <ModalAlterarSenha
+        aberto={modalAlterarSenhaAberta}
+        onFechar={() => setModalAlterarSenhaAberta(false)}
+      />
     </header>
   );
 };
