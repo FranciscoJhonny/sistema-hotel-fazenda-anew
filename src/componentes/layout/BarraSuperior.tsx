@@ -25,16 +25,17 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
 
   const titulos: Record<string, string> = {
     dashboard: 'Dashboard',
+    fnrh: 'Links FNRH & Pré-Cadastros',
+    'mapa-reservas': 'Mapa de Reservas',
+    'status-quartos': 'Status dos Quartos',
     checkin: 'Check-in',
     checkout: 'Check-out',
     hospedes: 'Hóspedes',
     financeiro: 'Financeiro',
     loja: 'Lojinha',
-    produtos: 'Produtos',
+    produtos: 'Produto',
     quartos: 'Gerenciamento de Quartos',
     configuracoes: 'Configurações',
-    'status-quartos': 'Status dos Quartos',
-    'mapa-reservas': 'Mapa de Reservas',
   };
 
   // Função para formatar a data atual

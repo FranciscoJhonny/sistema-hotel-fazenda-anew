@@ -108,13 +108,28 @@ export interface Hospede extends EntidadeAuditavel {
   hospedeid: number | string;
   nomecompleto: string;
   cpf: string;
-  datanascimento?: string;
+  rg?: string | null;
+  passaporte?: string | null;
+  datanascimento?: string | null;
+  nacionalidade?: string | null;
+  sexo?: 'M' | 'F' | string | null;
   telefone: string;
-  whatsapp?: string;
-  email?: string;
-  cidade?: string;
-  estado?: string;
-  observacoes?: string;
+  whatsapp?: string | null;
+  email?: string | null;
+  endereco?: string | null;
+  cidade?: string | null;
+  estado?: string | null;
+  cep?: string | null;
+  profissao?: string | null;
+  proximodestino?: string | null;
+  ultimaprocedencia?: string | null;
+  cpfresponsavelmenor?: string | null;
+  alergias_restricoes?: string | null;
+  solicitacoes_especiais?: string | null;
+  observacoes?: string | null;
+  declaracao_aceita?: boolean;
+  data_declaracao?: string | null;
+  assinatura_url?: string | null;
 }
 
 // =============================================================================

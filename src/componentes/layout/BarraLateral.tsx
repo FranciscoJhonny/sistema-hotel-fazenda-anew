@@ -60,19 +60,19 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         icone: <LayoutDashboard className="w-5 h-5" />,
       },
       {
-        id: 'quartos',
-        label: 'Quartos',
-        icone: <Bed className="w-5 h-5" />,
-      },
-      {
-        id: 'status-quartos',
-        label: 'Status dos Quartos',
-        icone: <Bed className="w-5 h-5" />,
+        id: 'fnrh',
+        label: 'Links FNRH',
+        icone: <FileText className="w-5 h-5" />,
       },
       {
         id: 'mapa-reservas',
         label: 'Mapa de Reservas',
         icone: <CalendarDays className="w-5 h-5" />,
+      },
+      {
+        id: 'status-quartos',
+        label: 'Status dos Quartos',
+        icone: <Bed className="w-5 h-5" />,
       },
       {
         id: 'checkin',
@@ -92,18 +92,13 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         icone: <Users className="w-5 h-5" />,
       },
       {
-        id: 'fnrh',
-        label: 'Links FNRH',
-        icone: <FileText className="w-5 h-5" />,
-      },
-      {
         id: 'financeiro',
         label: 'Financeiro',
         icone: <BadgePercent className="w-5 h-5" />,
       },
       {
         id: 'produtos',
-        label: 'Produtos',
+        label: 'Produto',
         icone: <Package className="w-5 h-5" />,
       },
       {

@@ -639,11 +639,13 @@ export const PaginaMapaReservas: React.FC = () => {
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
           
+          // 2. Fecha a modal e limpa os dados selecionados para a próxima reserva
           // 3. Fecha a modal e limpa os dados selecionados para a próxima reserva
           setModalAberto(false);
           setQuartoSelecionado(null);
           setDataSelecionada(null);
           
+          // 3. Remove a mensagem de sucesso após 4 segundos
           // 4. Remove a mensagem de sucesso após 4 segundos
           window.setTimeout(() => setMensagemSucesso(null), 4000);
         }}

@@ -427,7 +427,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const idCadastroFnrh = dados.cadastroid ? Number(dados.cadastroid) : null;
     try {
       if (idCadastroFnrh) {
-        await client
+        const { error: errFnrh } = await client
           .from('cadastro_fnrh')
           .update({
             status: 'RESERVA_CRIADA',
@@ -437,6 +437,19 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
             naturezaoperacao: 'UPDATE',
           })
           .eq('cadastroid', idCadastroFnrh);
+
+        if (errFnrh) {
+          console.warn('[ContextoHotel] Falha ao atualizar status RESERVA_CRIADA, atualizando apenas reservaid:', errFnrh);
+          await client
+            .from('cadastro_fnrh')
+            .update({
+              reservaid: data.reservaid,
+              dataoperacao: agora,
+              usuariooperacao: usuarioAtual?.usuarioid,
+              naturezaoperacao: 'UPDATE',
+            })
+            .eq('cadastroid', idCadastroFnrh);
+        }
 
         await client
           .from('acompanhante')
@@ -466,7 +479,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           .maybeSingle();
 
         if (cFnrh?.cadastroid) {
-          await client
+          const { error: errFnrh2 } = await client
             .from('cadastro_fnrh')
             .update({
               status: 'RESERVA_CRIADA',
@@ -476,6 +489,19 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
               naturezaoperacao: 'UPDATE',
             })
             .eq('cadastroid', cFnrh.cadastroid);
+
+          if (errFnrh2) {
+            console.warn('[ContextoHotel] Falha ao atualizar status RESERVA_CRIADA no cFnrh, atualizando apenas reservaid:', errFnrh2);
+            await client
+              .from('cadastro_fnrh')
+              .update({
+                reservaid: data.reservaid,
+                dataoperacao: agora,
+                usuariooperacao: usuarioAtual?.usuarioid,
+                naturezaoperacao: 'UPDATE',
+              })
+              .eq('cadastroid', cFnrh.cadastroid);
+          }
 
           await client
             .from('acompanhante')
@@ -650,7 +676,11 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const agora = new Date().toISOString();
     const novo: Hospede = { ...dados, hospedeid: Date.now(), ativo: true, usuarioinclusao: usuarioAtual?.usuarioid, datainclusao: agora, usuariooperacao: usuarioAtual?.usuarioid, dataoperacao: agora, naturezaoperacao: 'INSERT' };
     if (client) {
-      const { data } = await client.from('hospede').insert(novo).select().single();
+      const { hospedeid: _discardId, ...dadosParaBanco } = novo;
+      const { data, error } = await client.from('hospede').insert(dadosParaBanco).select().single();
+      if (error) {
+        console.error('Erro ao cadastrar hóspede no Supabase:', error);
+      }
       if (data) { setHospedes(prev => [data as Hospede, ...prev]); return data as Hospede; }
     }
     setHospedes(prev => [novo, ...prev]);
@@ -661,7 +691,13 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const client = supabaseService.getClient();
     const agora = new Date().toISOString();
     const dadosAtualizados = { ...dados, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
-    if (client) await client.from('hospede').update(dadosAtualizados).eq('hospedeid', id);
+    if (client) {
+      const { hospedeid: _discardId, ...dadosParaBanco } = dadosAtualizados;
+      const { error } = await client.from('hospede').update(dadosParaBanco).eq('hospedeid', id);
+      if (error) {
+        console.error('Erro ao editar hóspede no Supabase:', error);
+      }
+    }
     setHospedes(prev => prev.map(h => String(h.hospedeid) === String(id) ? { ...h, ...dadosAtualizados } : h) as Hospede[]);
   };
 

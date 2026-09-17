@@ -16,12 +16,13 @@ import {
   Users,
   FileText,
   Trash2,
+  Edit2,
   XCircle,
   ExternalLink,
   ChevronRight,
   LoaderCircle
 } from 'lucide-react';
-import { CadastroFnrh } from '../tipos';
+import { CadastroFnrh, Reserva } from '../tipos';
 import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/supabase/FnrhService';
 import { ModalGerarLinkFnrh } from '../componentes/fnrh/ModalGerarLinkFnrh';
 import { ModalDetalhesFnrh } from '../componentes/fnrh/ModalDetalhesFnrh';
@@ -31,7 +32,7 @@ import { useHotel } from '../contextos/ContextoHotel';
 import { formatarCpf, formatarData, formatarMoeda, formatarTelefone } from '../utilitarios/formatadores';
 
 export const PaginaFnrhAdmin: React.FC = () => {
-  const { usuarioAtual, navegarPara, recarregarDados } = useHotel();
+  const { usuarioAtual, navegarPara, recarregarDados, reservas, hospedes } = useHotel();
 
   // Estados de dados
   const [cadastros, setCadastros] = useState<CadastroFnrh[]>([]);
@@ -160,30 +161,84 @@ Qualquer dúvida, estamos à disposição!`;
     }
   };
 
+  // Localiza a reserva vinculada por reservaid, hospedeid ou CPF do titular
+  const obterReservaDoCadastro = (item: CadastroFnrh): Reserva | null => {
+    // 1. Pelo reservaid registrado diretamente no cadastro
+    if (item.reservaid) {
+      const r = reservas.find((res) => Number(res.reservaid) === Number(item.reservaid));
+      if (r) return r;
+    }
+    // 2. Pelo hospedeid vinculado na tabela public.hospede
+    if (item.hospedeid) {
+      const r = reservas.find(
+        (res) => Number(res.hospedeid) === Number(item.hospedeid) && res.statusreserva !== 'CANCELADA'
+      );
+      if (r) return r;
+    }
+    // 3. Pelo CPF do titular cadastrado
+    if (item.cpf) {
+      const cpfLimpo = item.cpf.replace(/\D/g, '');
+      if (cpfLimpo.length === 11) {
+        const hEncontrado = hospedes.find(
+          (h) => h.cpf && h.cpf.replace(/\D/g, '') === cpfLimpo
+        );
+        if (hEncontrado) {
+          const r = reservas.find(
+            (res) => Number(res.hospedeid) === Number(hEncontrado.hospedeid) && res.statusreserva !== 'CANCELADA'
+          );
+          if (r) return r;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Sincroniza em background o status no banco caso a reserva já exista no sistema
+  useEffect(() => {
+    if (!cadastros.length || !reservas.length) return;
+
+    cadastros.forEach(async (c) => {
+      const r = obterReservaDoCadastro(c);
+      if (r && (c.status !== 'RESERVA_CRIADA' || !c.reservaid)) {
+        await FnrhService.vincularReservaAoCadastroFnrh({
+          cadastroid: c.cadastroid,
+          hospedeid: Number(c.hospedeid || r.hospedeid),
+          reservaid: Number(r.reservaid),
+          usuarioId: usuarioAtual?.usuarioid,
+        });
+      }
+    });
+  }, [cadastros, reservas]);
+
   // Contadores para os Cards de Métricas
   const contadores = useMemo(() => {
     let total = cadastros.length;
     let aguardandoPreenchimento = 0;
     let preenchidoAguardandoSinal = 0;
     let liberadas = 0;
+    let reservasCriadas = 0;
 
     cadastros.forEach((c) => {
+      const r = obterReservaDoCadastro(c);
+      const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
       const expirado = new Date(c.token_expira_em) < new Date();
       const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
 
-      if (c.status === 'AGUARDANDO_PAGAMENTO') {
+      if (jaReserva) {
+        reservasCriadas++;
+      } else if (c.status === 'LIBERADA_PARA_RESERVA') {
+        liberadas++;
+      } else if (c.status === 'AGUARDANDO_PAGAMENTO') {
         if (temDados) {
           preenchidoAguardandoSinal++;
         } else if (!expirado) {
           aguardandoPreenchimento++;
         }
-      } else if (c.status === 'LIBERADA_PARA_RESERVA' || c.status === 'RESERVA_CRIADA') {
-        liberadas++;
       }
     });
 
-    return { total, aguardandoPreenchimento, preenchidoAguardandoSinal, liberadas };
-  }, [cadastros]);
+    return { total, aguardandoPreenchimento, preenchidoAguardandoSinal, liberadas, reservasCriadas };
+  }, [cadastros, reservas, hospedes]);
 
   // Lista Filtrada
   const cadastrosFiltrados = useMemo(() => {
@@ -210,32 +265,37 @@ Qualquer dúvida, estamos à disposição!`;
 
       const expirado = new Date(c.token_expira_em) < new Date();
       const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
+      const r = obterReservaDoCadastro(c);
+      const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
 
       // Filtro de status
       if (filtroStatus === 'AGUARDANDO_PREENCHIMENTO') {
-        return c.status === 'AGUARDANDO_PAGAMENTO' && !temDados && !expirado;
+        return c.status === 'AGUARDANDO_PAGAMENTO' && !temDados && !expirado && !jaReserva;
       }
       if (filtroStatus === 'PREENCHIDO_AGUARDANDO_SINAL') {
-        return c.status === 'AGUARDANDO_PAGAMENTO' && temDados;
+        return c.status === 'AGUARDANDO_PAGAMENTO' && temDados && !jaReserva;
       }
       if (filtroStatus === 'LIBERADA_PARA_RESERVA') {
-        return c.status === 'LIBERADA_PARA_RESERVA';
+        return c.status === 'LIBERADA_PARA_RESERVA' && !jaReserva;
       }
       if (filtroStatus === 'RESERVA_CRIADA') {
-        return c.status === 'RESERVA_CRIADA';
+        return jaReserva;
       }
       if (filtroStatus === 'CANCELADA_EXPIRADA') {
-        return c.status === 'CANCELADA' || (expirado && c.status === 'AGUARDANDO_PAGAMENTO');
+        return (c.status === 'CANCELADA' || (expirado && c.status === 'AGUARDANDO_PAGAMENTO')) && !jaReserva;
       }
 
       return true;
     });
-  }, [cadastros, busca, filtroStatus]);
+  }, [cadastros, busca, filtroStatus, reservas, hospedes]);
 
   // Renderiza a tag de status visual
   const renderizarStatusBadge = (c: CadastroFnrh) => {
     const expirado = new Date(c.token_expira_em) < new Date() && c.status === 'AGUARDANDO_PAGAMENTO';
     const preenchido = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
+    const r = obterReservaDoCadastro(c);
+    const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
+    const numReserva = r?.codigo || (c.reservaid ? `#${c.reservaid}` : (r?.reservaid ? `#${r.reservaid}` : ''));
 
     if (c.status === 'CANCELADA') {
       return (
@@ -245,11 +305,11 @@ Qualquer dúvida, estamos à disposição!`;
         </span>
       );
     }
-    if (c.status === 'RESERVA_CRIADA') {
+    if (jaReserva) {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
           <CheckCircle2 className="w-3 h-3" />
-          Reserva Criada {c.reservaid ? `#${c.reservaid}` : ''}
+          Reserva Criada {numReserva ? `${numReserva}` : ''}
         </span>
       );
     }
@@ -359,9 +419,9 @@ Qualquer dúvida, estamos à disposição!`;
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-2xs">
-          <span className="text-xs font-semibold text-emerald-800 block">Sinal Confirmado / Reservas</span>
+          <span className="text-xs font-semibold text-emerald-800 block">Reservas Concluídas</span>
           <span className="text-2xl font-bold font-['Manrope'] text-[#053d1e] mt-1 block">
-            {contadores.liberadas}
+            {contadores.reservasCriadas}
           </span>
         </div>
       </div>
@@ -399,7 +459,7 @@ Qualquer dúvida, estamos à disposição!`;
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Aguardando Preenchimento
+              Aguardando Preenchimento ({contadores.aguardandoPreenchimento})
             </button>
             <button
               onClick={() => setFiltroStatus('PREENCHIDO_AGUARDANDO_SINAL')}
@@ -409,7 +469,7 @@ Qualquer dúvida, estamos à disposição!`;
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Aguardando Sinal (50%)
+              Aguardando Sinal ({contadores.preenchidoAguardandoSinal})
             </button>
             <button
               onClick={() => setFiltroStatus('LIBERADA_PARA_RESERVA')}
@@ -419,7 +479,7 @@ Qualquer dúvida, estamos à disposição!`;
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Liberadas
+              Liberadas ({contadores.liberadas})
             </button>
             <button
               onClick={() => setFiltroStatus('RESERVA_CRIADA')}
@@ -429,7 +489,7 @@ Qualquer dúvida, estamos à disposição!`;
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
-              Reserva Criada
+              Reserva Criada ({contadores.reservasCriadas})
             </button>
           </div>
         </div>
@@ -478,6 +538,15 @@ Qualquer dúvida, estamos à disposição!`;
                   const diasRestantes = Math.ceil(
                     (new Date(item.token_expira_em).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
                   );
+                  const reservaVinculada = obterReservaDoCadastro(item);
+                  const jaPossuiReserva = Boolean(
+                    item.status === 'RESERVA_CRIADA' ||
+                    item.reservaid ||
+                    reservaVinculada
+                  );
+                  const codigoOuIdReserva =
+                    reservaVinculada?.codigo ||
+                    (item.reservaid ? `#${item.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
 
                   return (
                     <tr
@@ -594,15 +663,16 @@ Qualquer dúvida, estamos à disposição!`;
 
                       {/* Ações */}
                       <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {/* Ver Detalhes */}
+                        <div className="flex items-center justify-end gap-1">
+                          {/* Editar / Ver Ficha */}
                           <button
                             type="button"
                             onClick={() => setCadastroDetalhes(item)}
-                            title="Ver Ficha Completa"
-                            className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 transition-colors"
+                            title="Visualizar / Editar Ficha Completa"
+                            className="p-1.5 text-[#414941] hover:text-[#053d1e] hover:bg-[#e1e3e4] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            <Edit2 className="w-3.5 h-3.5" />
+                            <span>Editar</span>
                           </button>
 
                           {/* Confirmar Sinal */}
@@ -611,60 +681,56 @@ Qualquer dúvida, estamos à disposição!`;
                               type="button"
                               onClick={() => setCadastroSinal(item)}
                               title="Confirmar Recebimento do Sinal (50%)"
-                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition-all shadow-2xs"
+                              className="p-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-pointer"
                             >
                               <CreditCard className="w-3.5 h-3.5" />
-                              <span className="hidden xl:inline">Sinal 50%</span>
+                              <span>Sinal 50%</span>
                             </button>
                           )}
 
-                          {/* Ir para Reserva */}
-                          {item.status === 'LIBERADA_PARA_RESERVA' && (
+                          {/* Botão Criar Reserva: Desabilitado se a reserva já foi realizada ou hóspede já importado */}
+                          {jaPossuiReserva ? (
+                            <button
+                              type="button"
+                              disabled
+                              title={`Reserva já realizada (${codigoOuIdReserva}). Hóspede já importado.`}
+                              className="p-1.5 text-slate-400 bg-slate-100/90 rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-not-allowed border border-slate-200"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Reserva Criada {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}</span>
+                            </button>
+                          ) : item.status === 'LIBERADA_PARA_RESERVA' ? (
                             <button
                               type="button"
                               onClick={() => handleIrParaReserva(item)}
                               disabled={redirecionandoReservaId === item.cadastroid}
                               title="Efetivar Reserva no Mapa de Reservas"
-                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white font-bold transition-all shadow-2xs ${
-                                redirecionandoReservaId === item.cadastroid
-                                  ? 'bg-[#053d1e]/60 cursor-not-allowed'
-                                  : 'bg-[#053d1e] hover:bg-[#043017] active:scale-98 cursor-pointer'
-                              }`}
+                              className="p-1.5 text-[#053d1e] hover:bg-[#e6f4ea] rounded transition-colors text-xs flex items-center gap-1 font-bold cursor-pointer disabled:opacity-50"
                             >
                               {redirecionandoReservaId === item.cadastroid ? (
                                 <>
                                   <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
-                                  <span className="hidden xl:inline">Carregando...</span>
+                                  <span>Carregando...</span>
                                 </>
                               ) : (
                                 <>
                                   <Calendar className="w-3.5 h-3.5" />
-                                  <span className="hidden xl:inline">Criar Reserva</span>
+                                  <span>Criar Reserva</span>
                                 </>
                               )}
                             </button>
-                          )}
+                          ) : null}
 
-                          {/* Reserva Já Criada (botão Criar Reserva sumiu) */}
-                          {item.status === 'RESERVA_CRIADA' && (
-                            <span
-                              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold"
-                              title={`Reserva #${item.reservaid} vinculada com sucesso`}
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="hidden xl:inline">Reserva Criada {item.reservaid ? `#${item.reservaid}` : ''}</span>
-                            </span>
-                          )}
-
-                          {/* Cancelar Link */}
-                          {item.status !== 'CANCELADA' && item.status !== 'RESERVA_CRIADA' && (
+                          {/* Excluir / Cancelar Link */}
+                          {item.status !== 'CANCELADA' && !jaPossuiReserva && (
                             <button
                               type="button"
                               onClick={() => setCadastroCancelar(item)}
                               title="Cancelar este link"
-                              className="p-1.5 rounded-lg border border-slate-200 text-red-500 hover:bg-red-50 transition-colors"
+                              className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
                             >
-                              <XCircle className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir</span>
                             </button>
                           )}
                         </div>
@@ -678,7 +744,7 @@ Qualquer dúvida, estamos à disposição!`;
         )}
       </div>
 
-      {/* Modal de Geração de Link */}
+      {/* Modal de Geração de Novo Link */}
       <ModalGerarLinkFnrh
         aberto={modalGerarAberto}
         onFechar={() => setModalGerarAberto(false)}
@@ -692,6 +758,7 @@ Qualquer dúvida, estamos à disposição!`;
       <ModalDetalhesFnrh
         aberto={Boolean(cadastroDetalhes)}
         cadastro={cadastroDetalhes}
+        reservaVinculada={cadastroDetalhes ? obterReservaDoCadastro(cadastroDetalhes) : null}
         onFechar={() => setCadastroDetalhes(null)}
         onConfirmarSinal={(c) => {
           setCadastroDetalhes(null);

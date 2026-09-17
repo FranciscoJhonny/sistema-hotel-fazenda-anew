@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone } from 'lucide-react';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
 import { LogoHotel } from '../componentes/comuns/LogoHotel';
 import { aplicarMascaraCpf } from '../utilitarios/formatadores';
@@ -65,6 +65,8 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
+  const [jaEnviado, setJaEnviado] = useState(false);
+  const [nomeHospedeEnviado, setNomeHospedeEnviado] = useState('');
 
   useEffect(() => {
     const carregar = async () => {
@@ -79,6 +81,21 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
         setErro(error?.message || 'Link inválido ou expirado.');
       } else {
         const cadastro = data.cadastro || {};
+        
+        // Trava LGPD / Link de Uso Único:
+        // Se a ficha já foi preenchida/enviada ou o sinal já foi confirmado / reserva criada
+        if (
+          data.ja_enviado === true ||
+          Boolean(cadastro.declaracao_aceita) ||
+          cadastro.status === 'LIBERADA_PARA_RESERVA' ||
+          cadastro.status === 'RESERVA_CRIADA'
+        ) {
+          setJaEnviado(true);
+          setNomeHospedeEnviado(cadastro.nomecompleto || data.nomecompleto || '');
+          setCarregando(false);
+          return;
+        }
+
         if (cadastro.cpf) cadastro.cpf = aplicarMascaraCpf(String(cadastro.cpf));
         if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
 
@@ -189,15 +206,82 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     );
   }
 
+  if (jaEnviado) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa] p-4">
+        <div className="w-full max-w-lg rounded-2xl border border-[#c1c9bf] bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-[#053d1e] border border-emerald-200 shadow-2xs">
+            <ShieldCheck className="h-9 w-9 text-emerald-700" />
+          </div>
+          
+          <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-300">
+            Ficha Cadastral Já Enviada
+          </span>
+
+          <h1 className="mt-3 font-['Manrope'] text-2xl font-bold text-[#191c1d]">
+            Link Já Utilizado
+          </h1>
+
+          <p className="mt-3 text-sm text-[#414941] leading-relaxed">
+            {nomeHospedeEnviado ? (
+              <>
+                A ficha de registro FNRH do titular <strong>{nomeHospedeEnviado}</strong> já foi preenchida e recebida com sucesso pela equipe do <strong>Hotel Fazenda Anew</strong>.
+              </>
+            ) : (
+              <>
+                Os dados desta ficha FNRH já foram preenchidos e enviados com sucesso ao <strong>Hotel Fazenda Anew</strong>.
+              </>
+            )}
+          </p>
+
+          <div className="mt-5 rounded-xl border border-[#e5e7eb] bg-slate-50 p-4 text-left text-xs text-[#555]">
+            <p className="font-semibold text-slate-800 flex items-center gap-1.5 mb-1.5">
+              <Lock className="w-3.5 h-3.5 text-slate-600" /> Proteção de Dados (LGPD):
+            </p>
+            <p className="leading-relaxed">
+              Por motivos de segurança e privacidade dos hóspedes, as informações pessoais não são mais exibidas publicamente neste link e o formulário não aceita novas alterações.
+            </p>
+          </div>
+
+          <div className="mt-6 border-t border-[#e5e7eb] pt-5">
+            <p className="text-xs text-[#717971] mb-3">
+              Precisa alterar alguma informação ou tirar dúvidas sobre sua estadia?
+            </p>
+            <a
+              href="https://wa.me/5567992914359?text=Ol%C3%A1!%20J%C3%A1%20preenchi%20minha%20ficha%20FNRH%20e%20gostaria%20de%20falar%20com%20a%20recep%C3%A7%C3%A3o%20do%20Hotel%20Fazenda%20Anew."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#053d1e] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#043017] transition-all shadow-xs"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              Falar com a Recepção no WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (enviado) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8f9fa] p-4">
-        <div className="max-w-md rounded-2xl border border-[#92c89d] bg-white p-8 text-center shadow-xl">
-          <CheckCircle2 className="mx-auto mb-3 h-12 w-12 text-[#137333]" />
-          <h1 className="font-['Manrope'] text-xl font-bold text-[#053d1e]">Cadastro enviado</h1>
-          <p className="mt-2 text-sm text-[#414941]">
-            Seus dados foram registrados. A confirmação do pagamento será analisada pelo Hotel Fazenda Anew.
+        <div className="w-full max-w-lg rounded-2xl border border-[#92c89d] bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-[#137333] border border-emerald-200 shadow-2xs">
+            <CheckCircle2 className="h-10 w-10 text-[#137333]" />
+          </div>
+          <h1 className="font-['Manrope'] text-2xl font-bold text-[#053d1e]">Cadastro Enviado com Sucesso!</h1>
+          <p className="mt-3 text-sm text-[#414941] leading-relaxed">
+            Seus dados foram registrados com segurança no sistema do Hotel Fazenda Anew. A confirmação do pagamento do sinal será acompanhada pela nossa equipe.
           </p>
+
+          <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-xs text-emerald-950 text-left">
+            <p className="font-semibold flex items-center gap-1.5 mb-1 text-emerald-900">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" /> Link de Uso Único Finalizado:
+            </p>
+            <p className="leading-relaxed text-emerald-800">
+              Em conformidade com a LGPD, o preenchimento deste link foi finalizado e seus dados pessoais foram protegidos contra reaberturas.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -316,9 +400,9 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
               <button
                 type="button"
                 onClick={() => setAcompanhantes((lista) => [...lista, acompanhanteInicial()])}
-                className="flex items-center gap-1 rounded-lg bg-[#e6f4ea] px-3 py-2 text-xs font-bold text-[#053d1e]"
+                className="p-1.5 text-[#053d1e] hover:bg-[#e6f4ea] rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-pointer"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="w-3.5 h-3.5" />
                 Adicionar
               </button>
             </div>
@@ -366,10 +450,10 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
                 <button
                   type="button"
                   onClick={() => setAcompanhantes((lista) => lista.filter((_, posicao) => posicao !== indice))}
-                  className="flex items-center gap-1 text-xs font-semibold text-[#ba1a1a]"
+                  className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer w-fit"
                 >
-                  <Trash2 className="h-4 w-4" />
-                  Remover acompanhante
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Excluir
                 </button>
               </div>
             ))}
@@ -410,13 +494,15 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
             </label>
           </section>
 
-          <button
-            disabled={salvando}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#053d1e] px-5 py-3 text-sm font-bold text-white shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {salvando && <LoaderCircle className="h-4 w-4 animate-spin" />}
-            {salvando ? 'Enviando cadastro...' : 'Enviar cadastro'}
-          </button>
+          <div className="flex justify-end pt-2">
+            <button
+              disabled={salvando}
+              className="flex items-center justify-center gap-2 rounded-xl bg-[#053d1e] px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#043017] transition-all disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+            >
+              {salvando && <LoaderCircle className="h-4 w-4 animate-spin" />}
+              {salvando ? 'Enviando cadastro...' : 'Enviar Cadastro'}
+            </button>
+          </div>
         </form>
 
         <p className="mt-5 text-center text-xs text-[#717971]">CNPJ 47.680.087/0001-59 • Hotel Fazenda Anew</p>

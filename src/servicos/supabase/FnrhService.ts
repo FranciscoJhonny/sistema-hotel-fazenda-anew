@@ -498,7 +498,7 @@ export class FnrhService {
       }
 
       // 1. Atualiza cadastro_fnrh com status RESERVA_CRIADA e reservaid
-      const { error: erroFnrh } = await cliente
+      let { error: erroFnrh } = await cliente
         .from('cadastro_fnrh')
         .update({
           status: 'RESERVA_CRIADA',
@@ -510,8 +510,21 @@ export class FnrhService {
         .eq('cadastroid', idFinalCadastro);
 
       if (erroFnrh) {
-        console.error('[FnrhService] Erro ao atualizar cadastro_fnrh com reservaid:', erroFnrh);
-        return { sucesso: false, mensagem: erroFnrh.message };
+        console.warn('[FnrhService] Tentando atualizar reservaid sem alterar status (fallback):', erroFnrh);
+        const { error: erroFallback } = await cliente
+          .from('cadastro_fnrh')
+          .update({
+            reservaid: parametros.reservaid,
+            dataoperacao: agora,
+            usuariooperacao: usuarioIdNum,
+            naturezaoperacao: 'UPDATE',
+          })
+          .eq('cadastroid', idFinalCadastro);
+
+        if (erroFallback) {
+          console.error('[FnrhService] Erro ao atualizar cadastro_fnrh com reservaid:', erroFallback);
+          return { sucesso: false, mensagem: erroFallback.message };
+        }
       }
 
       // 2. Atualiza acompanhantes definitivos

@@ -78,6 +78,13 @@ export function formatarCpf(cpf: string): string {
   return aplicarMascaraCpf(cpf);
 }
 
+export function formatarCep(cep: string): string {
+  if (!cep) return '';
+  const apenasDigitos = cep.replace(/\D/g, '').slice(0, 8);
+  if (apenasDigitos.length <= 5) return apenasDigitos;
+  return `${apenasDigitos.slice(0, 5)}-${apenasDigitos.slice(5)}`;
+}
+
 export function calcularDiarias(dataEntrada: string, dataSaida: string): number {
   if (!dataEntrada || !dataSaida) return 1;
   const d1 = new Date(dataEntrada + 'T00:00:00');

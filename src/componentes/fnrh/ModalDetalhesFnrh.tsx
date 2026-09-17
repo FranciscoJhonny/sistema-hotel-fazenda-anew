@@ -17,13 +17,14 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
-import { CadastroFnrh } from '../../tipos';
+import { CadastroFnrh, Reserva } from '../../tipos';
 import { gerarLinkPublicoFnrh } from '../../servicos/supabase/FnrhService';
 import { formatarCpf, formatarData, formatarMoeda, formatarTelefone } from '../../utilitarios/formatadores';
 
 interface ModalDetalhesFnrhProps {
   aberto: boolean;
   cadastro: CadastroFnrh | null;
+  reservaVinculada?: Reserva | null;
   onFechar: () => void;
   onConfirmarSinal?: (cadastro: CadastroFnrh) => void;
   onCriarReserva?: (cadastro: CadastroFnrh) => void;
@@ -32,6 +33,7 @@ interface ModalDetalhesFnrhProps {
 export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   aberto,
   cadastro,
+  reservaVinculada,
   onFechar,
   onConfirmarSinal,
   onCriarReserva,
@@ -39,6 +41,16 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   const [copiado, setCopiado] = React.useState(false);
 
   if (!aberto || !cadastro) return null;
+
+  const jaPossuiReserva = Boolean(
+    cadastro.status === 'RESERVA_CRIADA' ||
+    cadastro.reservaid ||
+    reservaVinculada
+  );
+
+  const codigoOuIdReserva =
+    reservaVinculada?.codigo ||
+    (cadastro.reservaid ? `#${cadastro.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
 
   const link = gerarLinkPublicoFnrh(cadastro.token_acesso);
   const estaExpirado = new Date(cadastro.token_expira_em) < new Date() && cadastro.status === 'AGUARDANDO_PAGAMENTO';
@@ -77,8 +89,12 @@ Qualquer dúvida estamos à disposição!`;
     if (cadastro.status === 'CANCELADA') {
       return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700 border border-red-200">Cancelado</span>;
     }
-    if (cadastro.status === 'RESERVA_CRIADA') {
-      return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">Reserva Concluída</span>;
+    if (jaPossuiReserva) {
+      return (
+        <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+          Reserva Concluída {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}
+        </span>
+      );
     }
     if (cadastro.status === 'LIBERADA_PARA_RESERVA') {
       return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800 border border-blue-300">Sinal Confirmado (Liberada)</span>;
@@ -404,7 +420,17 @@ Qualquer dúvida estamos à disposição!`;
               </button>
             )}
 
-            {cadastro.status === 'LIBERADA_PARA_RESERVA' && onCriarReserva && (
+            {jaPossuiReserva ? (
+              <button
+                type="button"
+                disabled
+                title={`Reserva já realizada (${codigoOuIdReserva}). Hóspede já importado.`}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-800 cursor-not-allowed shadow-2xs"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                <span>Reserva Criada {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}</span>
+              </button>
+            ) : cadastro.status === 'LIBERADA_PARA_RESERVA' && onCriarReserva ? (
               <button
                 type="button"
                 onClick={() => {
@@ -416,14 +442,7 @@ Qualquer dúvida estamos à disposição!`;
                 <Calendar className="w-4 h-4" />
                 Ir para Mapa de Reservas
               </button>
-            )}
-
-            {cadastro.status === 'RESERVA_CRIADA' && (
-              <div className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-800 shadow-2xs">
-                <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                <span>Reserva Criada {cadastro.reservaid ? `#${cadastro.reservaid}` : ''}</span>
-              </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
