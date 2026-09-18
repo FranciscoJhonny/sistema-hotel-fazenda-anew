@@ -132,9 +132,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [tipoAtendimento, setTipoAtendimento] = useState<'HOSPEDAGEM' | 'DAY_USE'>('HOSPEDAGEM');
   const [observacoes, setObservacoes] = useState('');
   const [formaPagamento, setFormaPagamento] = useState<string>(configuracoes?.formapagamentopadrao || 'PIX');
-  const [preReserva, setPreReserva] = useState(false);
-  const [valorPago, setValorPago] = useState(0);
-  const [valorPagoTexto, setValorPagoTexto] = useState('');
+  const [preReserva, setPreReserva] = useState<boolean>(false);
+  const [valorPago, setValorPago] = useState<number>(0);
+  const [valorPagoTexto, setValorPagoTexto] = useState<string>('');
+  const [autorizarExcecaoSinal, setAutorizarExcecaoSinal] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -194,6 +195,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setPreReserva(false);
       setValorPago(valorPagoPre);
       setValorPagoTexto(valorPagoTextoPre);
+      setAutorizarExcecaoSinal(false);
       setErro(null);
       setFormaPagamento(configuracoes?.formapagamentopadrao || 'PIX');
       valorMinimoAnteriorRef.current = 0;
@@ -344,8 +346,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       return;
     }
 
-    if (!preReserva && valorPagamento < valorMinimoEntrada) {
-      setErro(`O pagamento mínimo para confirmar a reserva é de ${formatarMoeda(valorMinimoEntrada)} (50% do total).`);
+    if (!preReserva && valorPagamento < valorMinimoEntrada && !autorizarExcecaoSinal) {
+      setErro(`O sinal informado (${formatarMoeda(valorPagamento)}) é menor que 50% (${formatarMoeda(valorMinimoEntrada)}). Marque a caixa 'Autorizar exceção (sinal menor que 50%)' para confirmar.`);
       return;
     }
 
@@ -616,30 +618,50 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               </label>
 
               {!preReserva && (
-                <label className="block space-y-1 text-xs font-semibold text-[#191c1d]">
-                  <span>Valor da entrada/pagamento</span>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#717971]">R$</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      min={valorMinimoEntrada}
-                      max={valorCalculado.total}
-                      value={valorPagoTexto}
-                      placeholder="0,00"
-                      onChange={(e) => {
-                        const texto = e.target.value;
-                        setValorPagoTexto(sanitizarValorMonetario(texto));
-                        setValorPago(converterValorMonetario(texto));
-                      }}
-                      disabled={enviando}
-                      className="w-full rounded-lg border border-[#c1c9bf] bg-white py-2 pl-9 pr-3 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    />
-                  </div>
-                  <span className="text-[10px] text-[#717971]">
-                    Mínimo: {formatarMoeda(valorMinimoEntrada)} • Saldo no hotel: {formatarMoeda(saldoHotel)}
-                  </span>
-                </label>
+                <div className="space-y-2">
+                  <label className="block space-y-1 text-xs font-semibold text-[#191c1d]">
+                    <span>Valor da entrada/pagamento</span>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#717971]">R$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        max={valorCalculado.total}
+                        value={valorPagoTexto}
+                        placeholder="0,00"
+                        onChange={(e) => {
+                          const texto = e.target.value;
+                          setValorPagoTexto(sanitizarValorMonetario(texto));
+                          setValorPago(converterValorMonetario(texto));
+                        }}
+                        disabled={enviando}
+                        className="w-full rounded-lg border border-[#c1c9bf] bg-white py-2 pl-9 pr-3 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed font-semibold text-[#053d1e]"
+                      />
+                    </div>
+                    <span className="text-[10px] text-[#717971] block">
+                      Padrão (50%): {formatarMoeda(valorMinimoEntrada)} • Saldo no hotel: {formatarMoeda(saldoHotel)}
+                    </span>
+                  </label>
+
+                  {valorPagamento < valorMinimoEntrada && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2.5 animate-in fade-in">
+                      <input
+                        type="checkbox"
+                        id="chkExcecaoSinalRapida"
+                        checked={autorizarExcecaoSinal}
+                        onChange={(e) => setAutorizarExcecaoSinal(e.target.checked)}
+                        disabled={enviando}
+                        className="mt-0.5 h-4 w-4 rounded accent-[#053d1e] cursor-pointer"
+                      />
+                      <label htmlFor="chkExcecaoSinalRapida" className="cursor-pointer font-semibold leading-tight">
+                        <span className="text-amber-950 font-bold block">⚠️ Autorizar exceção (Sinal menor que 50%)</span>
+                        <span className="text-[11px] font-normal text-amber-800 block mt-0.5">
+                          O valor pago ({formatarMoeda(valorPagamento)}) é menor que 50% ({formatarMoeda(valorMinimoEntrada)}). Marque esta opção para permitir a criação da reserva.
+                        </span>
+                      </label>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>

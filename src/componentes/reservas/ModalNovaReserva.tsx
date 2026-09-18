@@ -76,6 +76,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   const [valorDiaria, setValorDiaria] = useState<number>(450);
   const [valorDesconto, setValorDesconto] = useState<string>('');
   const [valorPago, setValorPago] = useState<string>('');
+  const [autorizarExcecaoSinal, setAutorizarExcecaoSinal] = useState<boolean>(false);
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('PIX');
   const [observacoes, setObservacoes] = useState<string>('');
 
@@ -166,6 +167,15 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
       setErroValidacao(
         quartoAtualStatus.motivoIndisponibilidade ||
           'O quarto selecionado está indisponível para estas datas. Escolha outro quarto.'
+      );
+      return;
+    }
+
+    // Validação de Sinal Mínimo (50%) com opção de exceção
+    const valorMinimoSinal = valorTotalFinal * 0.5;
+    if (valorPagoNumerico < valorMinimoSinal && !autorizarExcecaoSinal) {
+      setErroValidacao(
+        `O sinal informado (${formatarMoeda(valorPagoNumerico)}) é menor que 50% (${formatarMoeda(valorMinimoSinal)}). Marque a caixa 'Autorizar exceção (sinal menor que 50%)' para confirmar.`
       );
       return;
     }
@@ -645,6 +655,24 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                     />
                   </div>
                 </div>
+
+                {valorPagoNumerico < valorTotalFinal * 0.5 && (
+                  <div className="mt-2.5 mb-3 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2.5 animate-in fade-in">
+                    <input
+                      type="checkbox"
+                      id="chkExcecaoSinalNova"
+                      checked={autorizarExcecaoSinal}
+                      onChange={(e) => setAutorizarExcecaoSinal(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded accent-[#053d1e] cursor-pointer"
+                    />
+                    <label htmlFor="chkExcecaoSinalNova" className="cursor-pointer font-semibold leading-tight">
+                      <span className="text-amber-950 font-bold block">⚠️ Autorizar exceção (Sinal menor que 50%)</span>
+                      <span className="text-[11px] font-normal text-amber-800 block mt-0.5">
+                        O valor pago ({formatarMoeda(valorPagoNumerico)}) é menor que 50% do total ({formatarMoeda(valorTotalFinal * 0.5)}). Marque esta opção para permitir o cadastro desta exceção.
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>

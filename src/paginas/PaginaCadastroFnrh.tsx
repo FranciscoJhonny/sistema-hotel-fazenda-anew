@@ -252,7 +252,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
               Precisa alterar alguma informação ou tirar dúvidas sobre sua estadia?
             </p>
             <a
-              href="https://wa.me/5567992914359?text=Ol%C3%A1!%20J%C3%A1%20preenchi%20minha%20ficha%20FNRH%20e%20gostaria%20de%20falar%20com%20a%20recep%C3%A7%C3%A3o%20do%20Hotel%20Fazenda%20Anew."
+              href="https://wa.me/5567999257222?text=Ol%C3%A1!%20J%C3%A1%20preenchi%20minha%20ficha%20FNRH%20e%20gostaria%20de%20falar%20com%20a%20recep%C3%A7%C3%A3o%20do%20Hotel%20Fazenda%20Anew."
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#053d1e] px-5 py-2.5 text-xs font-bold text-white hover:bg-[#043017] transition-all shadow-xs"
