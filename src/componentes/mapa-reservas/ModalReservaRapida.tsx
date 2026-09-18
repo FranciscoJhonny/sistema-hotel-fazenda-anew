@@ -379,6 +379,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         statuspagamento: statusPagamento,
         formapagamento: formaPagamento as FormaPagamento,
         observacoes,
+        statusreserva: preReserva ? 'PRE_RESERVA' : 'RESERVADO',
       });
 
       if (!resultado.sucesso) {

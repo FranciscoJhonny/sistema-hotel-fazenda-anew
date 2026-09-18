@@ -49,7 +49,7 @@ export const PaginaHospedes: React.FC = () => {
   const handleAbrirWhatsApp = (h: Hospede) => {
     const numLimpo = (h.whatsapp || h.telefone || '').replace(/\D/g, '');
     if (!numLimpo) return;
-    const saudacao = `Olá ${h.nomecompleto}! 🌿 Tudo bem? Entramos em contato a respeito do seu cadastro no Hotel Fazenda Anew.`;
+    const saudacao = `Olá ${h.nomecompleto}! Tudo bem? Entramos em contato a respeito do seu cadastro no Hotel Fazenda Anew.`;
     const url = `https://wa.me/55${numLimpo}?text=${encodeURIComponent(saudacao)}`;
     window.open(url, '_blank');
   };

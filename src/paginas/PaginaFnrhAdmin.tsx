@@ -132,14 +132,14 @@ export const PaginaFnrhAdmin: React.FC = () => {
   const handleEnviarWhatsApp = (cadastro: CadastroFnrh) => {
     const link = gerarLinkPublicoFnrh(cadastro.token_acesso);
     const numLimpo = (cadastro.telefone || '').replace(/\D/g, '');
-    const saudacao = cadastro.nomecompleto ? `Olá ${cadastro.nomecompleto}! 🌿` : 'Olá! 🌿';
+    const saudacao = cadastro.nomecompleto ? `Olá ${cadastro.nomecompleto}!` : 'Olá!';
     const texto = `${saudacao} Tudo bem?
 
 Para agilizarmos seu atendimento e a confirmação da sua reserva no *Hotel Fazenda Anew*, por favor preencha sua *Ficha Nacional de Registro de Hóspedes (FNRH)* através deste link seguro:
 
-🔗 ${link}
+${link}
 
-⏳ *Atenção:* Este link é válido por *7 dias*.
+*Atenção:* Este link é válido por *7 dias*.
 
 Qualquer dúvida, estamos à disposição!`;
 

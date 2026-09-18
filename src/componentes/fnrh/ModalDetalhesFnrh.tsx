@@ -69,13 +69,13 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   const handleWhatsApp = () => {
     const telefone = cadastro.telefone || '';
     const numLimpo = telefone.replace(/\D/g, '');
-    const saudacao = cadastro.nomecompleto ? `Olá ${cadastro.nomecompleto}! 🌿` : 'Olá! 🌿';
+    const saudacao = cadastro.nomecompleto ? `Olá ${cadastro.nomecompleto}!` : 'Olá!';
     const texto = `${saudacao} Tudo bem?
 
 Entramos em contato a respeito da sua reserva no *Hotel Fazenda Anew*.
 Para acessar ou revisar sua ficha cadastral (FNRH), segue o link:
 
-🔗 ${link}
+${link}
 
 Qualquer dúvida estamos à disposição!`;
 

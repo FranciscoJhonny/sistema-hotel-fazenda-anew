@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone } from 'lucide-react';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
 import { LogoHotel } from '../componentes/comuns/LogoHotel';
-import { aplicarMascaraCpf, aplicarMascaraTelefone } from '../utilitarios/formatadores';
+import { aplicarMascaraCpf, aplicarMascaraTelefone, formatarCep } from '../utilitarios/formatadores';
 
 type Acompanhante = {
   nomecompleto: string;
@@ -116,11 +116,29 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
   const alterar = (campo: string, valor: string | number | boolean) => {
     let novoValor = valor;
-    // Aplica máscara automática de CPF e Telefone enquanto digita
+    // Aplica máscara automática de CPF, Telefone e CEP enquanto digita
     if (campo === 'cpf' || campo === 'cpfresponsavelmenor') {
       novoValor = aplicarMascaraCpf(String(valor));
     } else if (campo === 'telefone') {
       novoValor = aplicarMascaraTelefone(String(valor));
+    } else if (campo === 'cep') {
+      novoValor = formatarCep(String(valor));
+      const digitos = String(novoValor).replace(/\D/g, '');
+      if (digitos.length === 8) {
+        fetch(`https://viacep.com.br/ws/${digitos}/json/`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (!data.erro) {
+              setDados((atual) => ({
+                ...atual,
+                endereco: atual.endereco || data.logradouro || '',
+                cidade: atual.cidade || data.localidade || '',
+                estado: atual.estado || data.uf || '',
+              }));
+            }
+          })
+          .catch(() => {});
+      }
     }
     setDados((atual) => ({ ...atual, [campo]: novoValor }));
   };
@@ -169,6 +187,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       ...dados,
       cpf: cpfFormatado,
       telefone: dados.telefone ? aplicarMascaraTelefone(String(dados.telefone)) : '',
+      cep: dados.cep ? formatarCep(String(dados.cep)) : '',
       cpfresponsavelmenor: dados.cpfresponsavelmenor ? aplicarMascaraCpf(String(dados.cpfresponsavelmenor)) : '',
     };
 

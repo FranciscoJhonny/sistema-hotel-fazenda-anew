@@ -76,6 +76,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   const [valorDiaria, setValorDiaria] = useState<number>(450);
   const [valorDesconto, setValorDesconto] = useState<string>('');
   const [valorPago, setValorPago] = useState<string>('');
+  const [isPreReserva, setIsPreReserva] = useState<boolean>(false);
   const [autorizarExcecaoSinal, setAutorizarExcecaoSinal] = useState<boolean>(false);
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('PIX');
   const [observacoes, setObservacoes] = useState<string>('');
@@ -173,7 +174,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
 
     // Validação de Sinal Mínimo (50%) com opção de exceção
     const valorMinimoSinal = valorTotalFinal * 0.5;
-    if (valorPagoNumerico < valorMinimoSinal && !autorizarExcecaoSinal) {
+    if (!isPreReserva && valorPagoNumerico < valorMinimoSinal && !autorizarExcecaoSinal) {
       setErroValidacao(
         `O sinal informado (${formatarMoeda(valorPagoNumerico)}) é menor que 50% (${formatarMoeda(valorMinimoSinal)}). Marque a caixa 'Autorizar exceção (sinal menor que 50%)' para confirmar.`
       );
@@ -230,6 +231,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
         statuspagamento: statusPag,
         formapagamento: formaPagamento,
         observacoes,
+        statusreserva: isPreReserva ? 'PRE_RESERVA' : 'RESERVADO',
       });
 
       if (!resultado.sucesso) {
@@ -611,52 +613,71 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   </h3>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
-                  <div>
-                    <label className="block font-semibold text-[#414941] mb-1">
-                      Pacote Promocional
-                    </label>
-                    <select
-                      value={pacoteId ? String(pacoteId) : ''}
-                      onChange={(e) => setPacoteId(e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
-                    >
-                      <option value="">Nenhum (Diária Normal)</option>
-                      {pacotes.map((p) => (
-                        <option key={p.pacoteid} value={String(p.pacoteid)}>
-                          {p.nome} ({formatarMoeda(p.valor)})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-[#414941] mb-1">
-                      Desconto / Cortesia (R$)
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={valorDesconto}
-                      onChange={(e) => setValorDesconto(sanitizarValorMonetario(e.target.value))}
-                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-semibold text-[#414941] mb-1">
-                      Valor de Entrada / Sinal (R$)
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0,00"
-                      value={valorPago}
-                      onChange={(e) => setValorPago(sanitizarValorMonetario(e.target.value))}
-                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
-                    />
-                  </div>
-                </div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-[#191c1d] bg-[#f8f9fa] p-2.5 rounded-lg border border-[#c1c9bf] cursor-pointer mb-3">
+                  <input
+                    type="checkbox"
+                    checked={isPreReserva}
+                    onChange={(e) => {
+                      const marcado = e.target.checked;
+                      setIsPreReserva(marcado);
+                      if (marcado) {
+                        setValorPago('');
+                      }
+                    }}
+                    disabled={enviando}
+                    className="h-4 w-4 accent-[#053d1e] disabled:cursor-not-allowed"
+                  />
+                  Salvar como pré-reserva (sem pagamento)
+                </label>
 
-                {valorPagoNumerico < valorTotalFinal * 0.5 && (
+                {!isPreReserva && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
+                    <div>
+                      <label className="block font-semibold text-[#414941] mb-1">
+                        Pacote Promocional
+                      </label>
+                      <select
+                        value={pacoteId ? String(pacoteId) : ''}
+                        onChange={(e) => setPacoteId(e.target.value ? Number(e.target.value) : undefined)}
+                        className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
+                      >
+                        <option value="">Nenhum (Diária Normal)</option>
+                        {pacotes.map((p) => (
+                          <option key={p.pacoteid} value={String(p.pacoteid)}>
+                            {p.nome} ({formatarMoeda(p.valor)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#414941] mb-1">
+                        Desconto / Cortesia (R$)
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={valorDesconto}
+                        onChange={(e) => setValorDesconto(sanitizarValorMonetario(e.target.value))}
+                        className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-[#414941] mb-1">
+                        Valor de Entrada / Sinal (R$)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        value={valorPago}
+                        onChange={(e) => setValorPago(sanitizarValorMonetario(e.target.value))}
+                        className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {!isPreReserva && valorPagoNumerico < valorTotalFinal * 0.5 && (
                   <div className="mt-2.5 mb-3 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2.5 animate-in fade-in">
                     <input
                       type="checkbox"

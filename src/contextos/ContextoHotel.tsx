@@ -366,9 +366,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const agora = new Date().toISOString();
     const valorTotal = Number(dados.valortotal || 0);
     const valorPago = Number(dados.valorpago || 0);
-    const percentualPago = valorTotal > 0 ? (valorPago / valorTotal) * 100 : 0;
-    let statusInicial: StatusReserva = percentualPago >= 50 ? 'RESERVADO' : 'PRE_RESERVA';
-    if (dados.statusreserva === 'HOSPEDADO' || dados.statusreserva === 'CANCELADA') statusInicial = dados.statusreserva;
+    let statusInicial: StatusReserva = dados.statusreserva || 'RESERVADO';
 
     const maiorNumeroCodigo = reservas.reduce((maior, reserva) => {
       const correspondencia = String(reserva.codigo || '').match(/^#RES-(\d+)$/i);
