@@ -53,15 +53,18 @@ export function formatarDataHora(dataString: string): string {
   }).format(data);
 }
 
+export function aplicarMascaraTelefone(valor: string): string {
+  if (!valor) return '';
+  const apenasDigitos = valor.replace(/\D/g, '').slice(0, 11);
+  if (apenasDigitos.length === 0) return '';
+  if (apenasDigitos.length <= 2) return `(${apenasDigitos}`;
+  if (apenasDigitos.length <= 6) return `(${apenasDigitos.slice(0, 2)}) ${apenasDigitos.slice(2)}`;
+  if (apenasDigitos.length <= 10) return `(${apenasDigitos.slice(0, 2)}) ${apenasDigitos.slice(2, 6)}-${apenasDigitos.slice(6)}`;
+  return `(${apenasDigitos.slice(0, 2)}) ${apenasDigitos.slice(2, 7)}-${apenasDigitos.slice(7)}`;
+}
+
 export function formatarTelefone(telefone: string): string {
-  if (!telefone) return '';
-  const limpo = telefone.replace(/\D/g, '');
-  if (limpo.length === 11) {
-    return `(${limpo.slice(0, 2)}) ${limpo.slice(2, 7)}-${limpo.slice(7)}`;
-  } else if (limpo.length === 10) {
-    return `(${limpo.slice(0, 2)}) ${limpo.slice(2, 6)}-${limpo.slice(6)}`;
-  }
-  return telefone;
+  return aplicarMascaraTelefone(telefone);
 }
 
 export function aplicarMascaraCpf(valor: string): string {

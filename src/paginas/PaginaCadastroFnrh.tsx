@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone } from 'lucide-react';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
 import { LogoHotel } from '../componentes/comuns/LogoHotel';
-import { aplicarMascaraCpf } from '../utilitarios/formatadores';
+import { aplicarMascaraCpf, aplicarMascaraTelefone } from '../utilitarios/formatadores';
 
 type Acompanhante = {
   nomecompleto: string;
@@ -98,6 +98,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
         if (cadastro.cpf) cadastro.cpf = aplicarMascaraCpf(String(cadastro.cpf));
         if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
+        if (cadastro.telefone) cadastro.telefone = aplicarMascaraTelefone(String(cadastro.telefone));
 
         setDados((atual) => ({ ...atual, ...cadastro }));
         setAcompanhantes(
@@ -115,9 +116,11 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
   const alterar = (campo: string, valor: string | number | boolean) => {
     let novoValor = valor;
-    // Aplica máscara automática de CPF enquanto digita
+    // Aplica máscara automática de CPF e Telefone enquanto digita
     if (campo === 'cpf' || campo === 'cpfresponsavelmenor') {
       novoValor = aplicarMascaraCpf(String(valor));
+    } else if (campo === 'telefone') {
+      novoValor = aplicarMascaraTelefone(String(valor));
     }
     setDados((atual) => ({ ...atual, [campo]: novoValor }));
   };
@@ -161,10 +164,11 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
 
-    // Garante que o CPF seja salvo com os pontos e traço no banco de dados
+    // Garante que o CPF e o Telefone sejam salvos formatados com máscara no banco de dados
     const dadosParaSalvar = {
       ...dados,
       cpf: cpfFormatado,
+      telefone: dados.telefone ? aplicarMascaraTelefone(String(dados.telefone)) : '',
       cpfresponsavelmenor: dados.cpfresponsavelmenor ? aplicarMascaraCpf(String(dados.cpfresponsavelmenor)) : '',
     };
 
@@ -350,7 +354,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
                   <option value="F">Feminino</option>
                 </select>
               </label>
-              {campo('telefone', 'Telefone', 'tel', true, '(00) 00000-0000')}
+              {campo('telefone', 'Telefone', 'tel', true, '(00) 00000-0000', 15)}
               {campo('email', 'E-mail', 'email', false, 'seuemail@exemplo.com')}
               {campo('endereco', 'Endereço')}
               {campo('cidade', 'Cidade')}
