@@ -10,7 +10,9 @@ import {
   Calendar,
   LoaderCircle,
   CheckCircle2,
-  Clock
+  Clock,
+  RefreshCw,
+  Users
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
@@ -31,8 +33,9 @@ const formatarNomePagamento = (forma: string) => {
 };
 
 export const PaginaFinanceiro: React.FC = () => {
-  const { reservas, consumosExtras, pagamentos, quartos } = useHotel();
+  const { reservas, consumosExtras, pagamentos, quartos, recarregarDados } = useHotel();
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [carregandoAtualizacao, setCarregandoAtualizacao] = useState<boolean>(false);
 
   const [dataInicioInput, setDataInicioInput] = useState<string>('');
   const [dataFimInput, setDataFimInput] = useState<string>('');
@@ -45,40 +48,49 @@ export const PaginaFinanceiro: React.FC = () => {
 
   // 1. FILTRAR RESERVAS
   const reservasDoPeriodo = useMemo(() => {
-    if (!usarFiltroData || !dataInicioFiltro || !dataFimFiltro) return [];
-
-    const inicio = new Date(dataInicioFiltro + 'T00:00:00');
-    const fim = new Date(dataFimFiltro + 'T23:59:59');
-
     return (reservas || []).filter((r: Reserva) => {
       if (!statusPermitidos.includes(r.statusreserva)) return false;
-      const dataReferencia = r.dataentrada;
-      if (!dataReferencia) return false;
 
-      const dataLimpa = String(dataReferencia).split('T')[0].split(' ')[0];
-      const dataReserva = new Date(dataLimpa + 'T12:00:00');
+      if (usarFiltroData && dataInicioFiltro && dataFimFiltro) {
+        const inicio = new Date(dataInicioFiltro + 'T00:00:00');
+        const fim = new Date(dataFimFiltro + 'T23:59:59');
 
-      return dataReserva >= inicio && dataReserva <= fim;
+        const dataReferencia = r.dataentrada || r.datareserva || r.datainclusao;
+        if (!dataReferencia) return false;
+
+        const dataLimpa = String(dataReferencia).split('T')[0].split(' ')[0];
+        const dataReserva = new Date(dataLimpa + 'T12:00:00');
+
+        return dataReserva >= inicio && dataReserva <= fim;
+      }
+
+      return true;
     });
   }, [reservas, dataInicioFiltro, dataFimFiltro, usarFiltroData]);
 
   // 2. PAGAMENTOS E CONSUMOS VINCULADOS
   const pagamentosDoPeriodo = useMemo(() => {
-    if (!pagamentos || reservasDoPeriodo.length === 0) return [];
+    if (!pagamentos || pagamentos.length === 0) return [];
+    if (!usarFiltroData || !dataInicioFiltro || !dataFimFiltro) {
+      return pagamentos.filter((p: Pagamento) => p.status === 'CONFIRMADO' || p.status === 'PAGO');
+    }
     const idsReservasPeriodo = new Set(reservasDoPeriodo.map(r => String(r.reservaid)));
     return pagamentos.filter((p: Pagamento) => {
       if (p.status !== 'CONFIRMADO' && p.status !== 'PAGO') return false;
       return idsReservasPeriodo.has(String(p.reservaid));
     });
-  }, [pagamentos, reservasDoPeriodo]);
+  }, [pagamentos, reservasDoPeriodo, usarFiltroData, dataInicioFiltro, dataFimFiltro]);
 
   const consumosDessasReservas = useMemo(() => {
-    if (!consumosExtras || reservasDoPeriodo.length === 0) return [];
+    if (!consumosExtras || consumosExtras.length === 0) return [];
+    if (!usarFiltroData || !dataInicioFiltro || !dataFimFiltro) {
+      return consumosExtras.filter((c: ConsumoExtra) => c.ativo);
+    }
     const idsReservasPeriodo = new Set(reservasDoPeriodo.map(r => String(r.reservaid)));
     return consumosExtras.filter((c: ConsumoExtra) => {
       return idsReservasPeriodo.has(String(c.reservaid)) && c.ativo;
     });
-  }, [consumosExtras, reservasDoPeriodo]);
+  }, [consumosExtras, reservasDoPeriodo, usarFiltroData, dataInicioFiltro, dataFimFiltro]);
 
   // 3. NOVA GRID VIEW: RESUMO POR RESERVA (CORRIGIDO)
   const resumoReservas = useMemo(() => {
@@ -98,15 +110,20 @@ export const PaginaFinanceiro: React.FC = () => {
       // Pagamentos desta reserva
       const pagamentosDaReserva = pagamentosDoPeriodo.filter(p => String(p.reservaid) === String(reserva.reservaid));
 
-      // CORREÇÃO: Valor da Reserva = Soma dos pagamentos com tipolancamento === 'SINAL_RESERVA'
-      const pagamentosSinal = pagamentosDaReserva.filter(p => p.tipolancamento === 'SINAL_RESERVA');
-      const valorReservaPago = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-      const metodosSinal = [...new Set(pagamentosSinal.map(p => formatarNomePagamento(p.formapagamento)))].join('/') || '';
+      // CORREÇÃO: Valor da Reserva = Soma dos pagamentos com tipolancamento === 'SINAL_RESERVA' ou fallback para reserva.valorpago
+      const pagamentosSinal = pagamentosDaReserva.filter(p => p.tipolancamento === 'SINAL_RESERVA' || !p.tipolancamento);
+      const somaPagosSinal = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
+      const valorReservaPago = somaPagosSinal > 0 ? somaPagosSinal : Number(reserva.valorpago || 0);
+
+      const metodosSinalUnicos = [...new Set(pagamentosSinal.map(p => formatarNomePagamento(p.formapagamento)))].filter(Boolean);
+      const metodosSinal = metodosSinalUnicos.length > 0
+        ? metodosSinalUnicos.join('/')
+        : formatarNomePagamento(reserva.formapagamento || 'PIX');
 
       // CORREÇÃO: Valor do Checkout = Soma dos pagamentos com tipolancamento === 'SALDO_RESERVA'
       const pagamentosCheckout = pagamentosDaReserva.filter(p => p.tipolancamento === 'SALDO_RESERVA');
       const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-      const metodosCheckout = [...new Set(pagamentosCheckout.map(p => formatarNomePagamento(p.formapagamento)))].join('/') || '';
+      const metodosCheckout = [...new Set(pagamentosCheckout.map(p => formatarNomePagamento(p.formapagamento)))].filter(Boolean).join('/') || '';
 
       // Pagamento específico da lojinha (se houver)
       const pagtoLojinhaEspecifico = pagamentosDaReserva.find(p =>
@@ -129,6 +146,10 @@ export const PaginaFinanceiro: React.FC = () => {
         status = 'PARCIAL';
       }
 
+      const somaAdultosCriancas = Number(reserva.adultos || 0) + Number(reserva.criancas || 0);
+      const qtdDeclarada = Number(reserva.numerohospedes || 0);
+      const totalHospedesReserva = Math.max(somaAdultosCriancas, qtdDeclarada, 1);
+
       return {
         quarto: quarto?.codigoidentificador || reserva.quartonumero || '',
         codigo: reserva.codigo,
@@ -136,14 +157,15 @@ export const PaginaFinanceiro: React.FC = () => {
         dataReserva: reserva.datareserva,
         dataEntrada: reserva.dataentrada,
         dataSaida: reserva.datasaida,
-        valorReserva: valorReservaPago, // <-- AGORA USA O SINAL_RESERVA
+        valorReserva: valorReservaPago,
         produtosLojinha: produtosLojinhaConcat,
         valorLojinha: valorLojinha,
         pagtoLojinha: metodoPagamentoLojinha,
-        pagtoReserva: metodosSinal, // <-- ADICIONADO: Pagamento do Sinal/Reserva
-        valorCheckout: valorCheckoutPago, // <-- AGORA USA O SALDO_RESERVA
+        pagtoReserva: metodosSinal,
+        valorCheckout: valorCheckoutPago,
         pagtoCheckout: metodosCheckout,
-        total: totalGeral, // <-- AGORA É A SOMA CORRETA
+        total: totalGeral,
+        totalHospedes: totalHospedesReserva,
         status: status
       };
     }).sort((a, b) => new Date(b.dataEntrada).getTime() - new Date(a.dataEntrada).getTime());
@@ -155,17 +177,10 @@ export const PaginaFinanceiro: React.FC = () => {
       .filter(c => c.categoria?.toUpperCase() === 'FRIGOBAR' || c.categoria?.toUpperCase() === 'SERVICOS')
       .reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
 
-    const totalVendasLoja = consumosDessasReservas
-      .filter(c => c.categoria?.toUpperCase() === 'LOJINHA')
-      .reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
-
-    const totalSinalReserva = pagamentosDoPeriodo
-      .filter(p => p.tipolancamento === 'SINAL_RESERVA')
-      .reduce((acc, p) => acc + Number(p.valor || 0), 0);
-
-    const totalSaldoReserva = pagamentosDoPeriodo
-      .filter(p => p.tipolancamento === 'SALDO_RESERVA')
-      .reduce((acc, p) => acc + Number(p.valor || 0), 0);
+    const totalVendasLoja = resumoReservas.reduce((acc, r) => acc + Number(r.valorLojinha || 0), 0);
+    const totalSinalReserva = resumoReservas.reduce((acc, r) => acc + Number(r.valorReserva || 0), 0);
+    const totalSaldoReserva = resumoReservas.reduce((acc, r) => acc + Number(r.valorCheckout || 0), 0);
+    const totalHospedes = resumoReservas.reduce((acc, r) => acc + Number(r.totalHospedes || 0), 0);
 
     const receitaTotalRealizada = totalSinalReserva + totalSaldoReserva + totalVendasLoja + totalConsumosFrigobar;
 
@@ -180,8 +195,9 @@ export const PaginaFinanceiro: React.FC = () => {
       totalVendasLoja,
       totalConsumosFrigobar,
       totalSaldosPendentes,
+      totalHospedes,
     };
-  }, [pagamentosDoPeriodo, consumosDessasReservas, reservasDoPeriodo]);
+  }, [pagamentosDoPeriodo, consumosDessasReservas, reservasDoPeriodo, resumoReservas]);
 
   // FUNÇÃO DE EXPORTAÇÃO PARA EXCEL (Mantida exatamente como você ajustou)
   const exportarParaExcel = () => {
@@ -464,10 +480,27 @@ export const PaginaFinanceiro: React.FC = () => {
             Selecione o período de <strong>Data Inicio e Data Final</strong> e clique em "Pesquisar" para processar os dados.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              setCarregandoAtualizacao(true);
+              try {
+                await recarregarDados();
+              } finally {
+                setCarregandoAtualizacao(false);
+              }
+            }}
+            disabled={carregandoAtualizacao}
+            title="Recarregar dados do banco de dados"
+            className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 text-slate-600 ${carregandoAtualizacao ? 'animate-spin' : ''}`} />
+            <span>{carregandoAtualizacao ? 'Atualizando...' : 'Atualizar'}</span>
+          </button>
+
           <button
             onClick={exportarParaExcel}
-            disabled={!usarFiltroData || resumoReservas.length === 0}
+            disabled={resumoReservas.length === 0}
             className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" /><span>Exportar Relatório</span>
@@ -523,7 +556,7 @@ export const PaginaFinanceiro: React.FC = () => {
       </div>
 
       {/* Cards de Resumo Financeiro */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
           <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Receita Total Realizada</p>
           <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">
@@ -545,6 +578,13 @@ export const PaginaFinanceiro: React.FC = () => {
           <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Consumos Lojinha</p>
           <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">{formatarMoeda(analytics.totalVendasLoja)}</h3>
         </div>
+        <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
+          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Total de Hóspedes</p>
+          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">{analytics.totalHospedes}</h3>
+          <p className="text-[11px] text-[#717971] font-semibold mt-1 flex items-center gap-1">
+            <Users className="w-3.5 h-3.5 text-[#053d1e]" /> Titulares + Acompanhantes
+          </p>
+        </div>
       </div>
 
       {/* GRID VIEW: RESUMO DETALHADO POR RESERVA */}
@@ -553,11 +593,11 @@ export const PaginaFinanceiro: React.FC = () => {
           <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d]">Resumo Financeiro por Reserva</h3>
         </div>
 
-        {!usarFiltroData ? (
+        {resumoReservas.length === 0 ? (
           <div className="p-12 text-center text-[#717971]">
             <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-semibold text-sm text-[#191c1d]">Nenhum período selecionado</p>
-            <p className="text-xs mt-1">Defina a Data Inicial e Final acima e clique em "Filtrar".</p>
+            <p className="font-semibold text-sm text-[#191c1d]">Nenhuma reserva encontrada</p>
+            <p className="text-xs mt-1">Nenhuma reserva confirmada para os critérios informados.</p>
           </div>
         ) : (
           <div className="overflow-x-auto">

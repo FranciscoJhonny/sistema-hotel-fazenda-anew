@@ -99,6 +99,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
         if (cadastro.cpf) cadastro.cpf = aplicarMascaraCpf(String(cadastro.cpf));
         if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
         if (cadastro.telefone) cadastro.telefone = aplicarMascaraTelefone(String(cadastro.telefone));
+        if (cadastro.cep) cadastro.cep = formatarCep(String(cadastro.cep));
 
         setDados((atual) => ({ ...atual, ...cadastro }));
         setAcompanhantes(
@@ -375,10 +376,10 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
               </label>
               {campo('telefone', 'Telefone', 'tel', true, '(00) 00000-0000', 15)}
               {campo('email', 'E-mail', 'email', false, 'seuemail@exemplo.com')}
+              {campo('cep', 'CEP', 'text', false, '00000-000', 9)}
               {campo('endereco', 'Endereço')}
               {campo('cidade', 'Cidade')}
               {campo('estado', 'UF')}
-              {campo('cep', 'CEP', 'text', false, '00000-000', 9)}
               {campo('profissao', 'Profissão')}
               {campo('proximodestino', 'Próximo destino')}
               {campo('ultimaprocedencia', 'Última procedência')}

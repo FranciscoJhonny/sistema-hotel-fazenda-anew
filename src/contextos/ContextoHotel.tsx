@@ -426,7 +426,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (error) return { sucesso: false, mensagem: 'Erro ao salvar: ' + error.message };
 
     if (valorPago > 0) {
-      await client.from('pagamento').insert({
+      const { data: novoPagamento } = await client.from('pagamento').insert({
         reservaid: data.reservaid,
         valor: valorPago,
         formapagamento: novaReserva.formapagamento || 'PIX',
@@ -439,7 +439,11 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         usuariooperacao: usuarioAtual?.usuarioid,
         dataoperacao: agora,
         naturezaoperacao: 'INSERT',
-      });
+      }).select().single();
+
+      if (novoPagamento) {
+        setPagamentos((prev) => [novoPagamento as Pagamento, ...prev]);
+      }
     }
 
     // Vincula a reserva ao cadastro FNRH se houver pré-cadastro

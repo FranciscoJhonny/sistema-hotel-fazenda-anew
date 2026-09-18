@@ -71,23 +71,31 @@ export const PaginaQuartos: React.FC = () => {
 
     const quartosFiltrados = useMemo(
         () =>
-            quartos.filter((quarto) => {
-                const termo = busca.trim().toLowerCase();
-                const correspondeBusca =
-                    !termo ||
-                    [
-                        quarto.numero,
-                        quarto.codigoidentificador,
-                        quarto.bloco,
-                        quarto.categoria,
-                    ].some((valor) =>
-                        String(valor).toLowerCase().includes(termo),
+            quartos
+                .filter((quarto) => {
+                    const termo = busca.trim().toLowerCase();
+                    const correspondeBusca =
+                        !termo ||
+                        [
+                            quarto.numero,
+                            quarto.codigoidentificador,
+                            quarto.bloco,
+                            quarto.categoria,
+                        ].some((valor) =>
+                            String(valor).toLowerCase().includes(termo),
+                        );
+                    return (
+                        correspondeBusca &&
+                        (filtroStatus === "TODOS" || quarto.status === filtroStatus)
                     );
-                return (
-                    correspondeBusca &&
-                    (filtroStatus === "TODOS" || quarto.status === filtroStatus)
-                );
-            }),
+                })
+                .sort((a, b) =>
+                    String(a.codigoidentificador || a.numero || "").localeCompare(
+                        String(b.codigoidentificador || b.numero || ""),
+                        undefined,
+                        { numeric: true, sensitivity: "base" }
+                    )
+                ),
         [busca, filtroStatus, quartos],
     );
 
