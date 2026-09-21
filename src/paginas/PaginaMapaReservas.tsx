@@ -543,8 +543,7 @@ export const PaginaMapaReservas: React.FC = () => {
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#2196F3]" /> Reservado</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#4CAF50]" /> Hospedado</span>
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#BDBDBD]" /> Concluída</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#E53935]" /> Cancelada</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#191c1d] border border-neutral-700" /> Manutenção (Bloqueado)</span>
+          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#E53935]" /> Cancelada</span>          
           <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#e5e7eb] border border-[#9ca3af]" /> Manutenção (Bloqueado)</span>
         </div>
       </div>
