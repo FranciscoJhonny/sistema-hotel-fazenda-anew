@@ -320,8 +320,6 @@ export const PaginaMapaReservas: React.FC = () => {
                 className={`transition-colors ${
                   quartoBloqueado
                     ? 'border-r border-[#d1d5db] bg-[#e5e7eb]/80 text-[#6b7280] cursor-not-allowed'
-                    : reservaAtiva?.statusreserva === 'HOSPEDADO'
-                    ? 'border-r border-[#e5e7eb] bg-[#4CAF50]'
                     : isDataPassada(dataIso)
                     ? 'border-r border-[#e5e7eb] bg-[#f8f9fa] opacity-30 cursor-not-allowed hover:bg-[#f8f9fa]'
                     : 'border-r border-[#e5e7eb] bg-[#f8f9fa] hover:bg-[#e6f4ea]'
