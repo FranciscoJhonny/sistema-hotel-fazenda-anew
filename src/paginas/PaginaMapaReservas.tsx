@@ -26,9 +26,11 @@ const addDias = (data: Date, dias: number) => {
   return nova;
 };
 
-const isDataPassada = (data: string) => {
-  const hoje = new Date().toISOString().slice(0, 10);
-  return data < hoje;
+const isDataPassada = (_data: string) => {
+  // TEMPORÁRIO PARA TESTES COM DADOS REAIS: Desativado a pedido do usuário
+  // const hoje = new Date().toISOString().slice(0, 10);
+  // return data < hoje;
+  return false;
 };
 
 const formatarDiaSemana = (date: Date) =>
