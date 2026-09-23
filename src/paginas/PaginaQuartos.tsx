@@ -237,7 +237,7 @@ export const PaginaQuartos: React.FC = () => {
                                     Código identificador
                                 </th>
                                 <th className="px-4 py-3">Bloco / Categoria</th>
-                                <th className="px-4 py-3">Capacidade</th>
+                                <th className="px-4 py-3">Camas</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3 text-right">Ações</th>
                             </tr>
@@ -272,8 +272,7 @@ export const PaginaQuartos: React.FC = () => {
                                             </p>
                                         </td>
                                         <td className="px-4 py-3">
-                                            {quarto.quantidadecamascasal ?? 0} casal, {quarto.quantidadecamassolteiro ?? 0} solteiro /{" "}
-                                            {quarto.capacidadecriancas} crianças
+                                            {quarto.quantidadecamascasal ?? 0} casal, {quarto.quantidadecamassolteiro ?? 0} solteiro
                                         </td>
                                         <td className="px-4 py-3">
                                             {quarto.status === "MANUTENCAO" ? (
@@ -426,22 +425,6 @@ export const PaginaQuartos: React.FC = () => {
                                     onChange={(evento) =>
                                         atualizarCampo(
                                             "quantidadecamassolteiro",
-                                            Number(evento.target.value),
-                                        )
-                                    }
-                                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
-                                />
-                            </label>
-                            <label className="text-xs font-semibold">
-                                Crianças
-                                <input
-                                    type="number"
-                                    min="0"
-                                    required
-                                    value={formulario.capacidadecriancas}
-                                    onChange={(evento) =>
-                                        atualizarCampo(
-                                            "capacidadecriancas",
                                             Number(evento.target.value),
                                         )
                                     }

@@ -486,6 +486,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             <h3 className="font-['Manrope'] text-xl font-bold">Nova Reserva</h3>
             <p className="text-xs text-white/70">
               Quarto {quarto.numero} • Capacidade {capacidadeMaxAdultos} ad + {capacidadeMaxCriancas} cri
+              Quarto {quarto.numero} • {quarto.quantidadecamascasal ?? 0} Cama(s) Casal, {quarto.quantidadecamassolteiro ?? 0} Cama(s) Solteiro
             </p>
           </div>
           <button type="button" onClick={onFechar} className="rounded-full p-1.5 hover:bg-white/10 disabled:opacity-50" disabled={enviando}>

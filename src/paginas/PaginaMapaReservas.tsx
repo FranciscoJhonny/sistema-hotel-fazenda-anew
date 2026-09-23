@@ -295,6 +295,7 @@ export const PaginaMapaReservas: React.FC = () => {
                 : 'text-[#717971]'
             }`}>
               {quartoBloqueado ? 'Manutenção' : `${quarto.capacidadeadultos} ad + ${quarto.capacidadecriancas} cri`}
+              {quartoBloqueado ? 'Manutenção' : `${quarto.quantidadecamascasal ?? 0} casal, ${quarto.quantidadecamassolteiro ?? 0} solt`}
             </span>
           </div>
 
