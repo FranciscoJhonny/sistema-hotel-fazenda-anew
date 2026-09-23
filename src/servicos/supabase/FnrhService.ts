@@ -566,4 +566,140 @@ export class FnrhService {
       return { sucesso: false, mensagem: err?.message || 'Erro ao vincular reserva ao cadastro FNRH.' };
     }
   }
+
+  /**
+   * Atualiza os dados de uma Ficha FNRH e seus acompanhantes (edição por atendente/administrador).
+   */
+  public static async atualizarCadastroFnrh(
+    cadastroid: number,
+    dados: Partial<CadastroFnrh>,
+    acompanhantes?: any[],
+    usuarioId?: number | string
+  ): Promise<{ sucesso: boolean; mensagem: string }> {
+    try {
+      const cliente = obterClienteSupabase();
+      if (!cliente) return { sucesso: false, mensagem: 'Cliente Supabase não conectado.' };
+
+      const agora = new Date().toISOString();
+      const usuarioIdNum = usuarioId ? Number(usuarioId) : null;
+
+      const dadosUpdate: Record<string, any> = {
+        dataoperacao: agora,
+        usuariooperacao: usuarioIdNum,
+        naturezaoperacao: 'UPDATE',
+      };
+
+      if (dados.nomecompleto !== undefined) dadosUpdate.nomecompleto = String(dados.nomecompleto).trim();
+      if (dados.cpf !== undefined) dadosUpdate.cpf = String(dados.cpf).trim();
+      if (dados.rg !== undefined) dadosUpdate.rg = String(dados.rg).trim();
+      if (dados.passaporte !== undefined) dadosUpdate.passaporte = String(dados.passaporte).trim();
+      if (dados.datanascimento !== undefined) dadosUpdate.datanascimento = dados.datanascimento;
+      if (dados.nacionalidade !== undefined) dadosUpdate.nacionalidade = dados.nacionalidade;
+      if (dados.sexo !== undefined) dadosUpdate.sexo = dados.sexo;
+      if (dados.telefone !== undefined) dadosUpdate.telefone = String(dados.telefone).trim();
+      if (dados.email !== undefined) dadosUpdate.email = String(dados.email).trim();
+      if (dados.endereco !== undefined) dadosUpdate.endereco = String(dados.endereco).trim();
+      if (dados.cidade !== undefined) dadosUpdate.cidade = String(dados.cidade).trim();
+      if (dados.estado !== undefined) dadosUpdate.estado = String(dados.estado).trim();
+      if (dados.cep !== undefined) dadosUpdate.cep = String(dados.cep).trim();
+      if (dados.profissao !== undefined) dadosUpdate.profissao = String(dados.profissao).trim();
+      if (dados.proximodestino !== undefined) dadosUpdate.proximodestino = String(dados.proximodestino).trim();
+      if (dados.ultimaprocedencia !== undefined) dadosUpdate.ultimaprocedencia = String(dados.ultimaprocedencia).trim();
+      if (dados.cpfresponsavelmenor !== undefined) dadosUpdate.cpfresponsavelmenor = String(dados.cpfresponsavelmenor).trim();
+      if (dados.dataentrada !== undefined) dadosUpdate.dataentrada = dados.dataentrada;
+      if (dados.horarioprevistochegada !== undefined) dadosUpdate.horarioprevistochegada = dados.horarioprevistochegada;
+      if (dados.datasaida !== undefined) dadosUpdate.datasaida = dados.datasaida;
+      if (dados.horarioprevistasaida !== undefined) dadosUpdate.horarioprevistasaida = dados.horarioprevistasaida;
+      if (dados.motivoviagem !== undefined) dadosUpdate.motivoviagem = dados.motivoviagem;
+      if (dados.transporte !== undefined) dadosUpdate.transporte = dados.transporte;
+      if (dados.placa !== undefined) dadosUpdate.placa = String(dados.placa).trim();
+      if (dados.modelocor !== undefined) dadosUpdate.modelocor = String(dados.modelocor).trim();
+      if (dados.numerohospedes !== undefined) dadosUpdate.numerohospedes = Number(dados.numerohospedes);
+      if (dados.adultos !== undefined) dadosUpdate.adultos = Number(dados.adultos);
+      if (dados.criancas !== undefined) dadosUpdate.criancas = Number(dados.criancas);
+      if (dados.alergias_restricoes !== undefined) dadosUpdate.alergias_restricoes = String(dados.alergias_restricoes).trim();
+      if (dados.solicitacoes_especiais !== undefined) dadosUpdate.solicitacoes_especiais = String(dados.solicitacoes_especiais).trim();
+
+      const { error: erroCad } = await cliente
+        .from('cadastro_fnrh')
+        .update(dadosUpdate)
+        .eq('cadastroid', cadastroid);
+
+      if (erroCad) {
+        return { sucesso: false, mensagem: erroCad.message };
+      }
+
+      // Se acompanhantes foram passados, sincroniza na tabela cadastro_fnrh_acompanhante
+      if (acompanhantes) {
+        await cliente
+          .from('cadastro_fnrh_acompanhante')
+          .delete()
+          .eq('cadastroid', cadastroid);
+
+        if (acompanhantes.length > 0) {
+          const paraInserir = acompanhantes.map((acomp) => {
+            let menoridade = Boolean(acomp.menoridade);
+            if (acomp.datanascimento) {
+              const dataNasc = new Date(acomp.datanascimento.includes('T') ? acomp.datanascimento : `${acomp.datanascimento}T00:00:00`);
+              if (!isNaN(dataNasc.getTime())) {
+                const hoje = new Date();
+                let id = hoje.getFullYear() - dataNasc.getFullYear();
+                const m = hoje.getMonth() - dataNasc.getMonth();
+                if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) id--;
+                menoridade = id < 18;
+              }
+            }
+
+            return {
+              cadastroid,
+              nomecompleto: acomp.nomecompleto?.trim() || '',
+              documento: acomp.documento?.trim() || '',
+              datanascimento: acomp.datanascimento || '',
+              menoridade,
+              cpfresponsavel: acomp.cpfresponsavel?.trim() || '',
+              observacoes: acomp.observacoes?.trim() || '',
+              datainclusao: agora,
+            };
+          });
+
+          const { error: erroAcomp } = await cliente
+            .from('cadastro_fnrh_acompanhante')
+            .insert(paraInserir);
+
+          if (erroAcomp) {
+            console.warn('[FnrhService] Aviso ao salvar acompanhantes:', erroAcomp);
+          }
+        }
+      }
+
+      // Se o titular já possui hospedeid, atualiza também a tabela public.hospede
+      if (dados.hospedeid) {
+        const dadosHospedeUpdate: Record<string, any> = {
+          dataoperacao: agora,
+          usuariooperacao: usuarioIdNum,
+          naturezaoperacao: 'UPDATE',
+        };
+        if (dados.nomecompleto !== undefined) dadosHospedeUpdate.nomecompleto = String(dados.nomecompleto).trim();
+        if (dados.cpf !== undefined) dadosHospedeUpdate.cpf = String(dados.cpf).trim();
+        if (dados.rg !== undefined) dadosHospedeUpdate.rg = String(dados.rg).trim();
+        if (dados.datanascimento !== undefined) dadosHospedeUpdate.datanascimento = dados.datanascimento;
+        if (dados.telefone !== undefined) {
+          dadosHospedeUpdate.telefone = String(dados.telefone).trim();
+          dadosHospedeUpdate.whatsapp = String(dados.telefone).trim();
+        }
+        if (dados.email !== undefined) dadosHospedeUpdate.email = String(dados.email).trim();
+        if (dados.endereco !== undefined) dadosHospedeUpdate.endereco = String(dados.endereco).trim();
+        if (dados.cidade !== undefined) dadosHospedeUpdate.cidade = String(dados.cidade).trim();
+        if (dados.estado !== undefined) dadosHospedeUpdate.estado = String(dados.estado).trim();
+        if (dados.cep !== undefined) dadosHospedeUpdate.cep = String(dados.cep).trim();
+
+        await cliente.from('hospede').update(dadosHospedeUpdate).eq('hospedeid', dados.hospedeid);
+      }
+
+      return { sucesso: true, mensagem: 'Ficha FNRH atualizada com sucesso!' };
+    } catch (err: any) {
+      console.error('[FnrhService] Erro ao atualizar cadastro FNRH:', err);
+      return { sucesso: false, mensagem: err?.message || 'Erro inesperado ao atualizar FNRH.' };
+    }
+  }
 }

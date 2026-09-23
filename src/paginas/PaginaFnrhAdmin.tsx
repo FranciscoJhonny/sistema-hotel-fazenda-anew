@@ -768,6 +768,7 @@ Qualquer dúvida, estamos à disposição!`;
           setCadastroDetalhes(null);
           handleIrParaReserva(c);
         }}
+        onAtualizar={carregarDados}
       />
 
       {/* Modal de Confirmação do Sinal (50%) */}

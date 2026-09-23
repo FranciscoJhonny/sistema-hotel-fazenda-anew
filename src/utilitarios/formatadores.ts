@@ -96,3 +96,32 @@ export function calcularDiarias(dataEntrada: string, dataSaida: string): number 
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return diffDays > 0 ? diffDays : 1;
 }
+
+export function calcularIdade(dataNascimentoStr?: string): string {
+  if (!dataNascimentoStr) return '--';
+  let dataNasc: Date;
+  if (dataNascimentoStr.includes('/')) {
+    const partes = dataNascimentoStr.split('/');
+    if (partes.length === 3) {
+      dataNasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+    } else {
+      dataNasc = new Date(dataNascimentoStr);
+    }
+  } else {
+    dataNasc = new Date(dataNascimentoStr.includes('T') ? dataNascimentoStr : `${dataNascimentoStr}T00:00:00`);
+  }
+
+  if (isNaN(dataNasc.getTime())) return '--';
+
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - dataNasc.getFullYear();
+  const m = hoje.getMonth() - dataNasc.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) {
+    idade--;
+  }
+
+  if (idade < 0) return '0 anos';
+  if (idade === 1) return '1 ano';
+  return `${idade} anos`;
+}
+
