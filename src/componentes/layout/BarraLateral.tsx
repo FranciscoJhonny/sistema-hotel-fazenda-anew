@@ -106,8 +106,8 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
       },
       {
         id: 'reservas-anteriores',
-        label: 'Reservas Anteriores',
-        icone: <History className="w-5 h-5" />,
+        label: 'Reservas',
+        icone: <CalendarDays className="w-5 h-5" />,
       },
       {
         id: 'produtos',

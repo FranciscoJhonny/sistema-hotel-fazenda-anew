@@ -29,7 +29,7 @@ import { ModalDetalhesFnrh } from '../componentes/fnrh/ModalDetalhesFnrh';
 import { ModalConfirmarSinalFnrh } from '../componentes/fnrh/ModalConfirmarSinalFnrh';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { useHotel } from '../contextos/ContextoHotel';
-import { formatarCpf, formatarData, formatarMoeda, formatarTelefone } from '../utilitarios/formatadores';
+import { formatarCpf, formatarData, formatarMoeda, formatarTelefone, calcularIdadeNumerica } from '../utilitarios/formatadores';
 
 export const PaginaFnrhAdmin: React.FC = () => {
   const { usuarioAtual, navegarPara, recarregarDados, reservas, hospedes } = useHotel();
@@ -59,6 +59,18 @@ export const PaginaFnrhAdmin: React.FC = () => {
   const handleIrParaReserva = async (cadastro: CadastroFnrh) => {
     setRedirecionandoReservaId(cadastro.cadastroid);
     try {
+      const idadesCriancasCalculadas: number[] = [];
+      if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
+        cadastro.acompanhantes.forEach((a) => {
+          if (a.datanascimento) {
+            const age = calcularIdadeNumerica(a.datanascimento);
+            if (age >= 0 && age <= 17) {
+              idadesCriancasCalculadas.push(age);
+            }
+          }
+        });
+      }
+
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(
           'fnrh_reserva_preenchimento',
@@ -71,7 +83,8 @@ export const PaginaFnrhAdmin: React.FC = () => {
             dataentrada: cadastro.dataentrada,
             datasaida: cadastro.datasaida,
             adultos: cadastro.adultos,
-            criancas: cadastro.criancas,
+            criancas: idadesCriancasCalculadas.length > 0 ? idadesCriancasCalculadas.length : cadastro.criancas,
+            idades_criancas: idadesCriancasCalculadas,
             valor_sinal: cadastro.valor_sinal,
           })
         );

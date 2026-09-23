@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { CalendarDays, CreditCard, X, Users, Bed, LoaderCircle } from 'lucide-react'; // ✅ Adicionado LoaderCircle
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, Pacote, FormaPagamento } from '../../tipos';
-import { formatarData, formatarMoeda, sanitizarValorMonetario } from '../../utilitarios/formatadores';
+import { formatarData, formatarMoeda, sanitizarValorMonetario, calcularIdadeNumerica } from '../../utilitarios/formatadores';
 import { FnrhService } from '../../servicos/supabase/FnrhService';
+import { obterClienteSupabase } from '../../lib/supabaseCliente';
 
 interface ModalReservaRapidaProps {
   aberto: boolean;
@@ -166,6 +167,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       let valorPagoPre = 0;
       let valorPagoTextoPre = '';
 
+      let idadesCriancasPre: number[] = [];
+
       if (typeof window !== 'undefined') {
         const raw = sessionStorage.getItem('fnrh_reserva_preenchimento');
         if (raw) {
@@ -175,6 +178,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             if (parsed.hospedeid) hospedePre = String(parsed.hospedeid);
             if (parsed.adultos) adultosPre = Number(parsed.adultos);
             if (parsed.criancas) criancasPre = Number(parsed.criancas);
+            if (parsed.idades_criancas && Array.isArray(parsed.idades_criancas)) {
+              idadesCriancasPre = parsed.idades_criancas;
+            }
             if (parsed.dataentrada) entradaPre = parsed.dataentrada;
             if (parsed.valor_sinal && Number(parsed.valor_sinal) > 0) {
               valorPagoPre = Number(parsed.valor_sinal);
@@ -189,8 +195,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setCadastroidFnrh(cadastroidPre);
       setHospedeId(hospedePre);
       setAdultos(adultosPre);
-      setCriancas(criancasPre);
-      setIdadesCriancas([]);
+      setCriancas(idadesCriancasPre.length > 0 ? idadesCriancasPre.length : criancasPre);
+      setIdadesCriancas(idadesCriancasPre);
       setObservacoes('');
       setPreReserva(false);
       setValorPago(valorPagoPre);
@@ -219,6 +225,62 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       }
     }
   }, [aberto, dataSelecionada]);
+
+  // Busca e calcula automaticamente a idade das crianças do hóspede / FNRH selecionado
+  useEffect(() => {
+    const carregarIdadesDoBanco = async () => {
+      if (!aberto || (!hospedeId && !cadastroidFnrh)) return;
+      const cliente = obterClienteSupabase();
+      if (!cliente) return;
+
+      try {
+        let idadesCalculadas: number[] = [];
+
+        // 1. Busca acompanhantes do cadastro FNRH se houver cadastroidFnrh
+        if (cadastroidFnrh) {
+          const { data: acompsFnrh } = await cliente
+            .from('cadastro_fnrh_acompanhante')
+            .select('datanascimento')
+            .eq('cadastroid', cadastroidFnrh);
+
+          if (acompsFnrh && acompsFnrh.length > 0) {
+            acompsFnrh.forEach((a: any) => {
+              if (a.datanascimento) {
+                const age = calcularIdadeNumerica(a.datanascimento);
+                if (age >= 0 && age <= 17) idadesCalculadas.push(age);
+              }
+            });
+          }
+        }
+
+        // 2. Se não encontrou no FNRH, busca na tabela acompanhante pelo hospedeId
+        if (idadesCalculadas.length === 0 && hospedeId) {
+          const { data: acompsOficial } = await cliente
+            .from('acompanhante')
+            .select('datanascimento')
+            .eq('cadastroid', hospedeId);
+
+          if (acompsOficial && acompsOficial.length > 0) {
+            acompsOficial.forEach((a: any) => {
+              if (a.datanascimento) {
+                const age = calcularIdadeNumerica(a.datanascimento);
+                if (age >= 0 && age <= 17) idadesCalculadas.push(age);
+              }
+            });
+          }
+        }
+
+        if (idadesCalculadas.length > 0) {
+          setCriancas(idadesCalculadas.length);
+          setIdadesCriancas(idadesCalculadas);
+        }
+      } catch (e) {
+        console.warn('Aviso ao carregar idades das crianças:', e);
+      }
+    };
+
+    carregarIdadesDoBanco();
+  }, [aberto, hospedeId, cadastroidFnrh]);
 
   useEffect(() => {
     if (!pacoteSelecionado || !dataEntrada) return;

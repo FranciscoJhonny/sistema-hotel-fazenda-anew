@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  History,
+  CalendarDays,
   Search,
   Calendar,
   Bed,
@@ -17,7 +17,8 @@ import {
   Eye,
   X,
   AlertCircle,
-  DollarSign
+  DollarSign,
+  Filter
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva, Quarto, Hospede, ConsumoExtra, Pagamento } from '../tipos';
@@ -31,7 +32,7 @@ import {
 } from '../utilitarios/formatadores';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
 
-interface ModalDetalhesReservaAnteriorProps {
+interface ModalDetalhesReservaProps {
   aberto: boolean;
   reserva: Reserva | null;
   quarto: Quarto | null;
@@ -41,7 +42,7 @@ interface ModalDetalhesReservaAnteriorProps {
   onFechar: () => void;
 }
 
-const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> = ({
+const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
   aberto,
   reserva,
   quarto,
@@ -64,13 +65,13 @@ const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> 
         }
 
         try {
-          // 1. Tenta buscar da tabela oficial acompanhante por reservaid
+          // 1. Busca da tabela oficial acompanhante por reservaid
           let { data: acompOficial } = await cliente
             .from('acompanhante')
             .select('*')
             .eq('reservaid', reserva.reservaid);
 
-          // 2. Se não encontrar, tenta da tabela cadastro_fnrh_acompanhante
+          // 2. Se não encontrar, busca da tabela cadastro_fnrh_acompanhante
           if (!acompOficial || acompOficial.length === 0) {
             const { data: acompFnrh } = await cliente
               .from('cadastro_fnrh_acompanhante')
@@ -93,7 +94,7 @@ const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> 
 
           setAcompanhantes(acompOficial || []);
         } catch (e) {
-          console.warn('[ModalReservaAnterior] Erro ao carregar acompanhantes:', e);
+          console.warn('[ModalReserva] Erro ao carregar acompanhantes:', e);
         } finally {
           setCarregandoAcomp(false);
         }
@@ -149,6 +150,23 @@ const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> 
     window.print();
   };
 
+  const statusBadgeStyle = (status: string) => {
+    switch (status) {
+      case 'PRE_RESERVA':
+        return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'RESERVADO':
+        return 'bg-blue-100 text-blue-900 border-blue-300';
+      case 'HOSPEDADO':
+        return 'bg-emerald-100 text-emerald-900 border-emerald-300';
+      case 'CONCLUIDA':
+        return 'bg-slate-100 text-slate-800 border-slate-300';
+      case 'CANCELADA':
+        return 'bg-red-100 text-red-800 border-red-300';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs overflow-y-auto">
       <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-[#c1c9bf] overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
@@ -157,19 +175,19 @@ const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> 
         <div className="bg-[#053d1e] px-6 py-4 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/10 rounded-xl">
-              <History className="w-5 h-5 text-emerald-300" />
+              <CalendarDays className="w-5 h-5 text-emerald-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold font-['Manrope']">
                   Conferência da Reserva {reserva.codigo || `#RES-${reserva.reservaid}`}
                 </h2>
-                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border ${statusBadgeStyle(reserva.statusreserva)}`}>
                   {reserva.statusreserva}
                 </span>
               </div>
               <p className="text-xs text-white/80">
-                Quarto: <strong className="text-white">{quarto?.codigoidentificador || quarto?.numero || '--'}</strong> ({quarto?.categoria || 'Standard'}) • Realizada em: {dataReservaExibicao}
+                Quarto: <strong className="text-white">{quarto?.codigoidentificador || quarto?.numero || '--'}</strong> ({quarto?.categoria || 'Standard'}) • Data Reserva: {dataReservaExibicao}
               </p>
             </div>
           </div>
@@ -232,7 +250,7 @@ const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> 
               </div>
 
               <div>
-                <span className="text-slate-500 block">Quarto que Ficou</span>
+                <span className="text-slate-500 block">Quarto</span>
                 <span className="font-bold text-emerald-800 text-sm">
                   {quarto?.codigoidentificador || quarto?.numero || '--'} ({quarto?.categoria || 'Standard'})
                 </span>
@@ -314,7 +332,7 @@ const ModalDetalhesReservaAnterior: React.FC<ModalDetalhesReservaAnteriorProps> 
               Conferência Financeira & Consumos ("O que gastou")
             </h3>
 
-            {/* Tabela de Resumo Financeiro Requerida */}
+            {/* Tabela de Resumo Financeiro */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 mb-4">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
@@ -451,6 +469,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
   const { reservas, quartos, hospedes, consumosExtras, pagamentos, recarregarDados } = useHotel();
   const [busca, setBusca] = useState('');
   const [quartoFiltro, setQuartoFiltro] = useState<string>('TODOS');
+  const [statusFiltro, setStatusFiltro] = useState<string>('TODOS');
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState(false);
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
 
@@ -463,17 +482,13 @@ export const PaginaReservasAnteriores: React.FC = () => {
     }
   };
 
-  // Filtra apenas reservas anteriores / finalizadas ou historico
-  const reservasHistorico = useMemo(() => {
+  // Filtra todas as reservas (Pré-reserva, Reservado, Check-in/Hospedado, Check-out/Concluída, Cancelada)
+  const reservasFiltradas = useMemo(() => {
     return reservas.filter((r) => {
-      // Considera histórico reservas CONCLUIDA, CANCELADA ou com data de saída anterior à data atual
-      const dataHoje = new Date().toISOString().slice(0, 10);
-      const ehHistorico =
-        r.statusreserva === 'CONCLUIDA' ||
-        r.statusreserva === 'CANCELADA' ||
-        r.datasaida < dataHoje;
-
-      if (!ehHistorico) return false;
+      // Filtro por Status
+      if (statusFiltro !== 'TODOS' && r.statusreserva !== statusFiltro) {
+        return false;
+      }
 
       // Filtro por Quarto
       if (quartoFiltro !== 'TODOS') {
@@ -505,8 +520,8 @@ export const PaginaReservasAnteriores: React.FC = () => {
       }
 
       return true;
-    }).sort((a, b) => b.datasaida.localeCompare(a.datasaida));
-  }, [reservas, quartos, hospedes, busca, quartoFiltro]);
+    }).sort((a, b) => b.dataentrada.localeCompare(a.dataentrada));
+  }, [reservas, quartos, hospedes, busca, quartoFiltro, statusFiltro]);
 
   const quartoDaReservaSelecionada = useMemo(() => {
     if (!reservaSelecionada) return null;
@@ -518,6 +533,23 @@ export const PaginaReservasAnteriores: React.FC = () => {
     return hospedes.find((h) => String(h.hospedeid) === String(reservaSelecionada.hospedeid)) || null;
   }, [reservaSelecionada, hospedes]);
 
+  const statusBadgeStyle = (status: string) => {
+    switch (status) {
+      case 'PRE_RESERVA':
+        return 'bg-amber-100 text-amber-900 border-amber-300';
+      case 'RESERVADO':
+        return 'bg-blue-100 text-blue-900 border-blue-300';
+      case 'HOSPEDADO':
+        return 'bg-emerald-100 text-emerald-900 border-emerald-300';
+      case 'CONCLUIDA':
+        return 'bg-slate-100 text-slate-800 border-slate-300';
+      case 'CANCELADA':
+        return 'bg-red-100 text-red-800 border-red-300';
+      default:
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Cabeçalho da Página */}
@@ -525,12 +557,12 @@ export const PaginaReservasAnteriores: React.FC = () => {
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2.5 bg-[#e6f4ea] text-[#053d1e] rounded-xl">
-              <History className="w-6 h-6" />
+              <CalendarDays className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">Reservas Anteriores</h1>
+              <h1 className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">Reservas</h1>
               <p className="text-xs text-[#717971]">
-                Histórico completo e conferência de estadias passadas, consumos e acompanhantes
+                Visão completa e conferência de todas as reservas do hotel (Pré-reservas, Reservados, Hospedados e Concluídas)
               </p>
             </div>
           </div>
@@ -548,7 +580,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
       </div>
 
       {/* Barra de Filtros e Pesquisa */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
         <div className="sm:col-span-2 relative">
           <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
           <input
@@ -558,6 +590,21 @@ export const PaginaReservasAnteriores: React.FC = () => {
             onChange={(e) => setBusca(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-medium text-slate-800 outline-none focus:border-[#053d1e] shadow-xs"
           />
+        </div>
+
+        <div>
+          <select
+            value={statusFiltro}
+            onChange={(e) => setStatusFiltro(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#053d1e] shadow-xs"
+          >
+            <option value="TODOS">Todos os Status</option>
+            <option value="PRE_RESERVA">Pré-reserva</option>
+            <option value="RESERVADO">Reservado</option>
+            <option value="HOSPEDADO">Hospedado (Check-in)</option>
+            <option value="CONCLUIDA">Concluída (Check-out)</option>
+            <option value="CANCELADA">Cancelada</option>
+          </select>
         </div>
 
         <div>
@@ -576,18 +623,18 @@ export const PaginaReservasAnteriores: React.FC = () => {
         </div>
       </div>
 
-      {/* Lista de Reservas Anteriores */}
+      {/* Tabela da Lista Geral de Reservas */}
       <div className="rounded-2xl border border-[#c1c9bf] bg-white overflow-hidden shadow-xs">
-        {reservasHistorico.length === 0 ? (
+        {reservasFiltradas.length === 0 ? (
           <div className="p-12 text-center">
-            <History className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h3 className="text-sm font-bold text-slate-800 font-['Manrope']">
-              Nenhuma reserva anterior encontrada
+              Nenhuma reserva encontrada
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              {busca || quartoFiltro !== 'TODOS'
-                ? 'Tente alterar os termos da busca ou filtro de quartos.'
-                : 'As reservas encerradas e passadas aparecerão nesta lista.'}
+              {busca || quartoFiltro !== 'TODOS' || statusFiltro !== 'TODOS'
+                ? 'Tente alterar os termos da busca ou os filtros aplicados.'
+                : 'As reservas cadastradas aparecerão nesta lista.'}
             </p>
           </div>
         ) : (
@@ -605,7 +652,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {reservasHistorico.map((r) => {
+                {reservasFiltradas.map((r) => {
                   const q = quartos.find((item) => String(item.quartoid) === String(r.quartoid));
                   const h = hospedes.find((item) => String(item.hospedeid) === String(r.hospedeid));
                   const consumosR = consumosExtras.filter((c) => String(c.reservaid) === String(r.reservaid));
@@ -667,15 +714,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
 
                       {/* Status */}
                       <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${
-                            r.statusreserva === 'CONCLUIDA'
-                              ? 'bg-slate-100 text-slate-800 border-slate-300'
-                              : r.statusreserva === 'CANCELADA'
-                              ? 'bg-red-100 text-red-800 border-red-300'
-                              : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                          }`}
-                        >
+                        <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${statusBadgeStyle(r.statusreserva)}`}>
                           {r.statusreserva}
                         </span>
                       </td>
@@ -700,8 +739,8 @@ export const PaginaReservasAnteriores: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de Conferência de Reserva Anterior */}
-      <ModalDetalhesReservaAnterior
+      {/* Modal de Conferência Geral da Reserva */}
+      <ModalDetalhesReserva
         aberto={Boolean(reservaSelecionada)}
         reserva={reservaSelecionada}
         quarto={quartoDaReservaSelecionada}
@@ -713,4 +752,3 @@ export const PaginaReservasAnteriores: React.FC = () => {
     </div>
   );
 };
-

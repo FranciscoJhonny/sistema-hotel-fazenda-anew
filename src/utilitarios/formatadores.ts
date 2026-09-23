@@ -125,3 +125,28 @@ export function calcularIdade(dataNascimentoStr?: string): string {
   return `${idade} anos`;
 }
 
+export function calcularIdadeNumerica(dataNascimentoStr?: string): number {
+  if (!dataNascimentoStr) return 0;
+  let dataNasc: Date;
+  if (dataNascimentoStr.includes('/')) {
+    const partes = dataNascimentoStr.split('/');
+    if (partes.length === 3) {
+      dataNasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+    } else {
+      dataNasc = new Date(dataNascimentoStr);
+    }
+  } else {
+    dataNasc = new Date(dataNascimentoStr.includes('T') ? dataNascimentoStr : `${dataNascimentoStr}T00:00:00`);
+  }
+
+  if (isNaN(dataNasc.getTime())) return 0;
+
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - dataNasc.getFullYear();
+  const m = hoje.getMonth() - dataNasc.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) {
+    idade--;
+  }
+  return Math.max(0, idade);
+}
+
