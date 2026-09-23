@@ -294,8 +294,7 @@ export const PaginaMapaReservas: React.FC = () => {
                 ? 'rounded bg-[#e5e7eb] px-1.5 py-0.5 font-bold uppercase tracking-wider text-[#374151] border border-[#d1d5db]' 
                 : 'text-[#717971]'
             }`}>
-              {quartoBloqueado ? 'Manutenção' : `${quarto.capacidadeadultos} ad + ${quarto.capacidadecriancas} cri`}
-              {quartoBloqueado ? 'Manutenção' : `${quarto.quantidadecamascasal ?? 0} casal, ${quarto.quantidadecamassolteiro ?? 0} solt`}
+              {quartoBloqueado ? 'Manutenção' : `${quarto.quantidadecamascasal ?? 0} casal, ${quarto.quantidadecamassolteiro ?? 0} solteiro`}
             </span>
           </div>
 

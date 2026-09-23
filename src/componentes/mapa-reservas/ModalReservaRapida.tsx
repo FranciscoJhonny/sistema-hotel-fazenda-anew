@@ -154,8 +154,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const hospedeSelecionado = hospedes.find((h) => String(h.hospedeid) === hospedeId) || null;
   const pacotesAtivos = pacotes.filter((p) => p.ativo !== false);
 
-  const capacidadeMaxAdultos = Number(quarto?.capacidadeadultos ?? 4);
-  const capacidadeMaxCriancas = Number(quarto?.capacidadecriancas ?? 3);
+  const capacidadeMaxAdultos = 10;
+  const capacidadeMaxCriancas = 10;
 
   useEffect(() => {
     if (aberto && dataSelecionada) {
@@ -484,8 +484,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         <div className="flex items-center justify-between border-b border-[#c1c9bf] bg-[#053d1e] px-6 py-4 text-white">
           <div>
             <h3 className="font-['Manrope'] text-xl font-bold">Nova Reserva</h3>
-            <p className="text-xs text-white/70">
-              Quarto {quarto.numero} • Capacidade {capacidadeMaxAdultos} ad + {capacidadeMaxCriancas} cri
+            <p className="text-xs text-white/70">              
               Quarto {quarto.numero} • {quarto.quantidadecamascasal ?? 0} Cama(s) Casal, {quarto.quantidadecamassolteiro ?? 0} Cama(s) Solteiro
             </p>
           </div>
@@ -592,8 +591,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                     disabled={enviando}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 font-bold text-[#191c1d] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
-                    {Array.from({ length: capacidadeMaxAdultos + 1 }).map((_, i) => (
-                      <option key={i} value={i}>{i}</option>
+                    {Array.from({ length: 10 }, (_, i) => i + 1).map((val) => (
+                      <option key={val} value={val}>{val}</option>
                     ))}
                   </select>
                 </label>
@@ -606,8 +605,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                     disabled={enviando}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 font-bold text-[#191c1d] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
-                    {Array.from({ length: capacidadeMaxCriancas + 1 }).map((_, i) => (
-                      <option key={i} value={i}>{i}</option>
+                    {Array.from({ length: 11 }, (_, i) => i).map((val) => (
+                      <option key={val} value={val}>{val}</option>
                     ))}
                   </select>
                 </label>
