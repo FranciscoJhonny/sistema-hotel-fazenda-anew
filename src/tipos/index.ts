@@ -86,7 +86,9 @@ export interface Quarto extends EntidadeAuditavel {
   codigoidentificador: string; // "B1", "B2", etc.
   bloco: BlocoQuarto;
   categoria: CategoriaQuarto;
-  capacidadeadultos: number;
+  quantidadecamascasal: number;
+  quantidadecamassolteiro: number;
+  capacidadeadultos?: number;
   capacidadecriancas: number;
   valordiariapadrao: number;
   status: StatusQuarto;

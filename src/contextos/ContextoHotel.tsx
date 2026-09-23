@@ -77,6 +77,8 @@ const normalizarQuartoDoBanco = (quarto: any): Quarto => {
     quartoid: d.quartoid ?? d.QuartoId ?? 0, numero: d.numero ?? d.Numero ?? 'S/N',
     codigoidentificador: d.codigoidentificador ?? d.CodigoIdentificador ?? d.numero ?? 'S/N',
     bloco: d.bloco ?? d.Bloco ?? 'A', categoria: d.categoria ?? d.Categoria ?? 'Standard',
+    quantidadecamascasal: Number(d.quantidadecamascasal ?? d.QuantidadeCamasCasal ?? 1),
+    quantidadecamassolteiro: Number(d.quantidadecamassolteiro ?? d.QuantidadeCamasSolteiro ?? 0),
     capacidadeadultos: Number(d.capacidadeadultos ?? d.CapacidadeAdultos ?? 2),
     capacidadecriancas: Number(d.capacidadecriancas ?? d.CapacidadeCriancas ?? 0),
     valordiariapadrao: Number(d.valordiariapadrao ?? d.ValorDiariaPadrao ?? 0),

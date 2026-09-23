@@ -37,7 +37,8 @@ const formularioInicial: DadosQuarto = {
     codigoidentificador: "",
     bloco: "B",
     categoria: "Standard Duplo",
-    capacidadeadultos: 2,
+    quantidadecamascasal: 1,
+    quantidadecamassolteiro: 0,
     capacidadecriancas: 0,
     status: "DISPONIVEL",
     descricao: "",
@@ -112,7 +113,8 @@ export const PaginaQuartos: React.FC = () => {
             codigoidentificador: quarto.codigoidentificador,
             bloco: quarto.bloco,
             categoria: quarto.categoria,
-            capacidadeadultos: quarto.capacidadeadultos,
+            quantidadecamascasal: quarto.quantidadecamascasal ?? 1,
+            quantidadecamassolteiro: quarto.quantidadecamassolteiro ?? 0,
             capacidadecriancas: quarto.capacidadecriancas,
             status: quarto.status,
             descricao: quarto.descricao || "",
@@ -270,7 +272,7 @@ export const PaginaQuartos: React.FC = () => {
                                             </p>
                                         </td>
                                         <td className="px-4 py-3">
-                                            {quarto.capacidadeadultos} adultos /{" "}
+                                            {quarto.quantidadecamascasal ?? 0} casal, {quarto.quantidadecamassolteiro ?? 0} solteiro /{" "}
                                             {quarto.capacidadecriancas} crianças
                                         </td>
                                         <td className="px-4 py-3">
@@ -399,15 +401,31 @@ export const PaginaQuartos: React.FC = () => {
                                 </select>
                             </label>
                             <label className="text-xs font-semibold">
-                                Adultos
+                                Camas de Casal
                                 <input
                                     type="number"
                                     min="0"
                                     required
-                                    value={formulario.capacidadeadultos}
+                                    value={formulario.quantidadecamascasal ?? 0}
                                     onChange={(evento) =>
                                         atualizarCampo(
-                                            "capacidadeadultos",
+                                            "quantidadecamascasal",
+                                            Number(evento.target.value),
+                                        )
+                                    }
+                                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
+                                />
+                            </label>
+                            <label className="text-xs font-semibold">
+                                Camas de Solteiro
+                                <input
+                                    type="number"
+                                    min="0"
+                                    required
+                                    value={formulario.quantidadecamassolteiro ?? 0}
+                                    onChange={(evento) =>
+                                        atualizarCampo(
+                                            "quantidadecamassolteiro",
                                             Number(evento.target.value),
                                         )
                                     }
