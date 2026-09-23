@@ -301,6 +301,7 @@ export type PaginaNavegacao =
   | 'checkout'
   | 'hospedes'
   | 'fnrh'
+  | 'reservas-anteriores'
   | 'financeiro'
   | 'loja'
   | 'produtos'

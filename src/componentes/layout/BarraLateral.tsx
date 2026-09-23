@@ -4,6 +4,7 @@ import {
   CalendarDays,
   DoorOpen,
   HelpCircle,
+  History,
   LayoutDashboard,
   LogIn,
   LogOut,
@@ -65,6 +66,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'fnrh',
         label: 'Links FNRH',
         icone: <FileText className="w-5 h-5" />,
+      },
+      {
+        id: 'reservas-anteriores',
+        label: 'Reservas Anteriores',
+        icone: <History className="w-5 h-5" />,
       },
       {
         id: 'mapa-reservas',
