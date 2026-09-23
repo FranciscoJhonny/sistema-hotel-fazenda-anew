@@ -90,6 +90,7 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   const link = gerarLinkPublicoFnrh(cadastro.token_acesso);
   const estaExpirado = new Date(cadastro.token_expira_em) < new Date() && cadastro.status === 'AGUARDANDO_PAGAMENTO';
   const preenchido = Boolean(cadastro.nomecompleto && cadastro.cpf && cadastro.declaracao_aceita);
+  const podeEditar = cadastro.status === 'AGUARDANDO_PAGAMENTO';
 
   const handleCopiar = async () => {
     try {
@@ -220,7 +221,7 @@ Qualquer dúvida estamos à disposição!`;
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {!modoEdicao && (
+            {podeEditar && !modoEdicao && (
               <button
                 type="button"
                 onClick={() => setModoEdicao(true)}
@@ -904,14 +905,16 @@ Qualquer dúvida estamos à disposição!`;
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => setModoEdicao(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-900 transition-colors"
-                >
-                  <Edit2 className="w-4 h-4 text-emerald-700" />
-                  Editar Ficha
-                </button>
+                {podeEditar && (
+                  <button
+                    type="button"
+                    onClick={() => setModoEdicao(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-emerald-900 transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4 text-emerald-700" />
+                    Editar Ficha
+                  </button>
+                )}
 
                 {cadastro.status === 'AGUARDANDO_PAGAMENTO' && onConfirmarSinal && (
                   <button

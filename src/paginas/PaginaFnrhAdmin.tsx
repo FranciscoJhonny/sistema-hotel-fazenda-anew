@@ -668,11 +668,20 @@ Qualquer dúvida, estamos à disposição!`;
                           <button
                             type="button"
                             onClick={() => setCadastroDetalhes(item)}
-                            title="Visualizar / Editar Ficha Completa"
+                            title={item.status === 'AGUARDANDO_PAGAMENTO' ? 'Visualizar e Editar Ficha Completa' : 'Visualizar Ficha Completa'}
                             className="p-1.5 text-[#414941] hover:text-[#053d1e] hover:bg-[#e1e3e4] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
-                            <span>Editar</span>
+                            {item.status === 'AGUARDANDO_PAGAMENTO' ? (
+                              <>
+                                <Edit2 className="w-3.5 h-3.5" />
+                                <span>Editar</span>
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Ver Ficha</span>
+                              </>
+                            )}
                           </button>
 
                           {/* Confirmar Sinal */}
