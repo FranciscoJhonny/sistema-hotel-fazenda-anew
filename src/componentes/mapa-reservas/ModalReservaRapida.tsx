@@ -157,6 +157,15 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const capacidadeMaxAdultos = 10;
   const capacidadeMaxCriancas = 10;
 
+  // Limpa a mensagem de erro vermelha automaticamente após 3.5 segundos
+  useEffect(() => {
+    if (!erro) return;
+    const timer = setTimeout(() => {
+      setErro(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [erro]);
+
   useEffect(() => {
     if (aberto && dataSelecionada) {
       let hospedePre = '';
@@ -383,8 +392,13 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       return;
     }
 
-    if (adultos < 1 || adultos > capacidadeMaxAdultos) {
-      setErro(`A quantidade de adultos deve estar entre 1 e ${capacidadeMaxAdultos}.`);
+    if (adultos < 1) {
+      setErro('Selecione pelo menos 1 adulto para realizar a reserva.');
+      return;
+    }
+
+    if (adultos > 10) {
+      setErro('A quantidade de adultos não pode ultrapassar 10.');
       return;
     }
 
@@ -550,7 +564,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               <span>Pacote</span>
               <select
                 value={pacoteId}
-                onChange={(e) => setPacoteId(e.target.value)}
+                onChange={(e) => {
+                  setPacoteId(e.target.value);
+                  if (e.target.value) setErro(null);
+                }}
                 disabled={enviando}
                 className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
@@ -587,11 +604,17 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                   <span>Adultos</span>
                   <select
                     value={adultos}
-                    onChange={(e) => setAdultos(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setAdultos(val);
+                      if (val >= 1) {
+                        setErro(null);
+                      }
+                    }}
                     disabled={enviando}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 font-bold text-[#191c1d] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
-                    {Array.from({ length: 10 }, (_, i) => i + 1).map((val) => (
+                    {Array.from({ length: 11 }, (_, i) => i).map((val) => (
                       <option key={val} value={val}>{val}</option>
                     ))}
                   </select>
@@ -601,7 +624,11 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                   <span>Crianças</span>
                   <select
                     value={criancas}
-                    onChange={(e) => setCriancas(Number(e.target.value))}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setCriancas(val);
+                      setErro(null);
+                    }}
                     disabled={enviando}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 font-bold text-[#191c1d] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
