@@ -51,11 +51,12 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
     return `${dia} de ${mes} de ${ano}`;
   };
 
+  const dataHojeStr = (dataSistema || '').slice(0, 10);
   const chegadasHoje = reservas.filter((r) =>
-    (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada === dataSistema
+    (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && (r.dataentrada || '').slice(0, 10) <= dataHojeStr
   );
   const saidasHoje = reservas.filter(
-    (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
+    (r) => r.statusreserva === 'HOSPEDADO' && (r.datasaida || '').slice(0, 10) <= dataHojeStr
   );
 
   const totalNotificacoes = chegadasHoje.length + saidasHoje.length;

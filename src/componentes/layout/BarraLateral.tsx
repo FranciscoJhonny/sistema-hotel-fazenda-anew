@@ -41,13 +41,17 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
     dataSistema,
   } = useHotel();
 
-  // Contadores para badges
-  const checkinsHoje = reservas.filter(
-    (r) => (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema
-  ).length;
-  const checkoutsHoje = reservas.filter(
-    (r) => r.statusreserva === 'HOSPEDADO' && r.datasaida === dataSistema
-  ).length;
+  // Contadores para badges no menu lateral
+  const dataHojeStr = (dataSistema || '').slice(0, 10);
+  const checkinsHoje = reservas.filter((r) => {
+    const entrada = (r.dataentrada || '').slice(0, 10);
+    return (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && entrada && entrada <= dataHojeStr;
+  }).length;
+
+  const checkoutsHoje = reservas.filter((r) => {
+    const saida = (r.datasaida || '').slice(0, 10);
+    return r.statusreserva === 'HOSPEDADO' && (saida ? saida <= dataHojeStr : true);
+  }).length;
 
   const quartosOcupados = quartos.filter((q) => q.status === 'OCUPADO').length;
 
