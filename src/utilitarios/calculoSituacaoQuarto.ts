@@ -9,8 +9,10 @@ export const calcularStatusQuarto = (
   reservaAtiva: Reserva | null;
   proximaReserva: Reserva | null;
 } => {
+  const qStatus = String(statusBaseQuarto || '').toUpperCase();
+
   // Se o quarto estiver em manutenção no cadastro, seu status é MANUTENCAO
-  if (String(statusBaseQuarto || '').toUpperCase() === 'MANUTENCAO') {
+  if (qStatus === 'MANUTENCAO') {
     return { status: 'MANUTENCAO', reservaAtiva: null, proximaReserva: null };
   }
 
@@ -34,6 +36,11 @@ export const calcularStatusQuarto = (
 
   if (reservaAtiva) {
     return { status: 'OCUPADO', reservaAtiva, proximaReserva: null };
+  }
+
+  // 2. Se o quarto está 'A_LIMPAR' ou 'EM_LIMPEZA' (e não há hóspede ativo hospedado)
+  if (qStatus === 'A_LIMPAR' || qStatus === 'EM_LIMPEZA') {
+    return { status: qStatus as StatusQuarto, reservaAtiva: null, proximaReserva: null };
   }
 
   // 2. Verifica se há check-in previsto para HOJE

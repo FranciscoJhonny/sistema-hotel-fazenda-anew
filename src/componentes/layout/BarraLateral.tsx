@@ -31,6 +31,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
   const {
     paginaAtual,
     navegarPara,
+    recarregarDados,
     logout,
     usuarioAtual,
     usuarios,
@@ -172,6 +173,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
   const handleNavegar = (pagina: PaginaNavegacao) => {
     navegarPara(pagina);
+    recarregarDados();
     if (onFecharMobile) onFecharMobile();
   };
 

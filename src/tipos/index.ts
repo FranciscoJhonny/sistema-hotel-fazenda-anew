@@ -1,6 +1,6 @@
 // src/tipos/index.ts
 
-export type StatusQuarto = 'DISPONIVEL' | 'RESERVADO' | 'OCUPADO' | 'AGUARDANDO_CHECKIN' | 'MANUTENCAO';
+export type StatusQuarto = 'DISPONIVEL' | 'RESERVADO' | 'OCUPADO' | 'AGUARDANDO_CHECKIN' | 'MANUTENCAO' | 'A_LIMPAR' | 'EM_LIMPEZA';
 
 export type CategoriaQuarto = 
   | 'Standard Duplo'

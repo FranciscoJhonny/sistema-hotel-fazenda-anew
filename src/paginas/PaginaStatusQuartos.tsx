@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarCheck, Search } from 'lucide-react';
+import { CalendarCheck, Search, Sparkles, CheckCircle2, Play } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { CardQuarto } from '../componentes/quartos/CardQuarto';
 import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
-import { Quarto, Reserva } from '../tipos';
+import { Quarto, Reserva, StatusQuarto } from '../tipos';
 import { calcularStatusQuarto } from '../utilitarios/calculoSituacaoQuarto';
 import { ReservaService } from '../servicos/supabase/ReservaService';
 
@@ -14,7 +14,7 @@ type QuartoEnriquecido = Quarto & {
 };
 
 export const PaginaStatusQuartos: React.FC = () => {
-  const { quartos, carregando: carregandoQuartos, erro: erroQuartos } = useHotel();
+  const { quartos, atualizarStatusQuarto, carregando: carregandoQuartos, erro: erroQuartos } = useHotel();
 
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [carregandoReservas, setCarregandoReservas] = useState<boolean>(true);
@@ -122,6 +122,8 @@ export const PaginaStatusQuartos: React.FC = () => {
   // CONTAGENS
   const totalQuartos = quartosEnriquecidos.length || 0;
   const disponiveis = quartosEnriquecidos.filter((q) => q.statusCalculado === 'DISPONIVEL').length;
+  const aLimpar = quartosEnriquecidos.filter((q) => q.statusCalculado === 'A_LIMPAR').length;
+  const emLimpeza = quartosEnriquecidos.filter((q) => q.statusCalculado === 'EM_LIMPEZA').length;
   const reservados = quartosEnriquecidos.filter((q) => q.statusCalculado === 'RESERVADO').length;
   const ocupados = quartosEnriquecidos.filter((q) => q.statusCalculado === 'OCUPADO').length;
   const agCheckin = quartosEnriquecidos.filter((q) => q.statusCalculado === 'AGUARDANDO_CHECKIN').length;
@@ -134,9 +136,13 @@ export const PaginaStatusQuartos: React.FC = () => {
       return q.statusCalculado === filtroStatus;
     })
     .sort((quartoA, quartoB) => {
-      const ocupadoA = quartoA.statusCalculado === 'OCUPADO' ? 1 : 0;
-      const ocupadoB = quartoB.statusCalculado === 'OCUPADO' ? 1 : 0;
-      return ocupadoB - ocupadoA;
+      const prioridade = (status: string) => {
+        if (status === 'A_LIMPAR') return 3;
+        if (status === 'EM_LIMPEZA') return 2;
+        if (status === 'OCUPADO') return 1;
+        return 0;
+      };
+      return prioridade(quartoB.statusCalculado) - prioridade(quartoA.statusCalculado);
     });
 
   const handleAbrirDetalhesQuarto = (quarto: Quarto) => {
@@ -186,13 +192,13 @@ export const PaginaStatusQuartos: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 mb-5 border-b border-[#f3f4f6]">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="font-['Manrope'] text-xl font-bold text-[#111827]">Status dos Quartos</h2>
+              <h2 className="font-['Manrope'] text-xl font-bold text-[#111827]">Status dos Quartos & Limpeza</h2>
               <span className="text-xs font-bold text-[#245437] bg-[#f0fdf4] px-2.5 py-0.5 rounded-full border border-[#bbf7d0]">
                 {totalQuartos} Quartos
               </span>
             </div>
             <p className="text-xs text-[#6b7280] mt-1">
-              Consulta: {formatarDataSemFuso(dataConsulta)}
+              Gerencie a higienização e ocupação dos quartos.
             </p>
           </div>
 
@@ -203,6 +209,18 @@ export const PaginaStatusQuartos: React.FC = () => {
                 className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'TODOS' ? 'bg-[#245437] text-white shadow-xs' : 'bg-[#f3f4f6] text-[#4b5563] hover:bg-[#e5e7eb]'}`}
               >
                 Todos ({totalQuartos})
+              </button>
+              <button 
+                onClick={() => setFiltroStatus('A_LIMPAR')} 
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'A_LIMPAR' ? 'bg-[#d97706] text-white shadow-xs' : 'bg-[#fff3dc] text-[#b45309] hover:bg-[#fde68a]'}`}
+              >
+                A Limpar ({aLimpar})
+              </button>
+              <button 
+                onClick={() => setFiltroStatus('EM_LIMPEZA')} 
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'EM_LIMPEZA' ? 'bg-[#0284c7] text-white shadow-xs' : 'bg-[#e0f2fe] text-[#0369a1] hover:bg-[#bae6fd]'}`}
+              >
+                Em Limpeza ({emLimpeza})
               </button>
               <button 
                 onClick={() => setFiltroStatus('DISPONIVEL')} 
@@ -239,21 +257,79 @@ export const PaginaStatusQuartos: React.FC = () => {
           </div>
         </div>
 
-        {/* Grade de Quartos */}
+        {/* Grade de Quartos com Ações Rápidas de Limpeza */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {quartosFiltrados.map((quarto: QuartoEnriquecido, index: number) => {
-            // Corrige o tipo para o card
-            const reservasParaCard: Reserva[] = [];
-            if (quarto.reservaAtiva) reservasParaCard.push(quarto.reservaAtiva);
-            else if (quarto.proximaReserva) reservasParaCard.push(quarto.proximaReserva);
+            const qId = quarto.quartoid;
+            const st = quarto.statusCalculado;
 
             return (
-              <CardQuarto
-                key={obterIdQuarto(quarto) || `quarto-${index}`}
-                quarto={quarto}
-                //aoClicar={handleAbrirDetalhesQuarto}
-                //reservas={reservasParaCard}
-              />
+              <div key={obterIdQuarto(quarto) || `quarto-${index}`} className="flex flex-col h-full bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden shadow-xs hover:shadow-md transition-all">
+                <div className="flex-1">
+                  <CardQuarto quarto={quarto} />
+                </div>
+                
+                {/* Painel de Controle de Limpeza / Status */}
+                <div className="p-2 bg-[#f9fafb] border-t border-[#e5e7eb] flex items-center justify-between gap-1 text-xs">
+                  {st === 'A_LIMPAR' && (
+                    <>
+                      <button
+                        onClick={() => atualizarStatusQuarto(qId, 'EM_LIMPEZA')}
+                        className="flex-1 py-1.5 px-2 bg-[#0284c7] hover:bg-[#0369a1] text-white rounded-lg font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                        title="Começar a limpar este quarto"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Iniciar Limpeza</span>
+                      </button>
+                      <button
+                        onClick={() => atualizarStatusQuarto(qId, 'DISPONIVEL')}
+                        className="py-1.5 px-2 bg-[#166534] hover:bg-[#14532d] text-white rounded-lg font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                        title="Marcar como limpo e disponível"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Concluir</span>
+                      </button>
+                    </>
+                  )}
+
+                  {st === 'EM_LIMPEZA' && (
+                    <>
+                      <button
+                        onClick={() => atualizarStatusQuarto(qId, 'DISPONIVEL')}
+                        className="flex-1 py-1.5 px-2 bg-[#166534] hover:bg-[#14532d] text-white rounded-lg font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                        title="Limpeza concluída! Liberar quarto como disponível"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Concluir Limpeza</span>
+                      </button>
+                      <button
+                        onClick={() => atualizarStatusQuarto(qId, 'A_LIMPAR')}
+                        className="py-1.5 px-2 bg-[#f3f4f6] hover:bg-[#e5e7eb] text-[#4b5563] rounded-lg font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer border border-[#d1d5db]"
+                        title="Voltar para A Limpar"
+                      >
+                        <span>Voltar</span>
+                      </button>
+                    </>
+                  )}
+
+                  {st === 'DISPONIVEL' && (
+                    <button
+                      onClick={() => atualizarStatusQuarto(qId, 'A_LIMPAR')}
+                      className="w-full py-1.5 px-2 bg-[#f3f4f6] hover:bg-[#fff3dc] text-[#b45309] rounded-lg font-semibold flex items-center justify-center gap-1 transition-colors cursor-pointer border border-[#fde68a]"
+                      title="Marcar quarto para limpeza"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Marcar P/ Limpar</span>
+                    </button>
+                  )}
+
+                  {st !== 'A_LIMPAR' && st !== 'EM_LIMPEZA' && st !== 'DISPONIVEL' && (
+                    <div className="w-full py-1 text-center text-[11px] text-[#6b7280] font-medium">
+                      Status: <span className="font-bold">{st}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             );
           })}
           {quartosFiltrados.length === 0 && (
@@ -263,16 +339,6 @@ export const PaginaStatusQuartos: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* <ModalReservaRapida
-        quarto={quartoSelecionado}
-        aberto={modalReservaAberto}
-        dataSelecionada={dataConsulta}
-        onFechar={() => {
-          setModalReservaAberto(false);
-          setQuartoSelecionado(null);
-        }}
-      /> */}
 
     </div>
   );

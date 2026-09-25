@@ -267,6 +267,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const navegarPara = (pagina: PaginaNavegacao) => {
     setPaginaAtual(pagina);
+    recarregarDados();
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -647,7 +648,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (client) await client.from('reserva').update(dadosReserva).eq('reservaid', reservaId);
     setReservas(prev => prev.map(r => String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r) as Reserva[]);
-    await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
+    await atualizarStatusQuarto(reserva.quartoid, 'A_LIMPAR');
 
     return { sucesso: true, mensagem: `Check-out do Quarto ${reserva.quartonumero} finalizado!` };
   };

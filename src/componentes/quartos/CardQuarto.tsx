@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bed, User, Users, Calendar, Wrench, Lock, CheckCircle2 } from 'lucide-react';
+import { Bed, User, Users, Calendar, Wrench, Lock, CheckCircle2, Sparkles } from 'lucide-react';
 import { Quarto, StatusQuarto, Reserva } from '../../tipos';
 import { formatarData } from '../../utilitarios/formatadores';
 
@@ -95,6 +95,20 @@ export const CardQuarto: React.FC<CardQuartoProps> = ({
           classePill: 'bg-[#e5e7eb] text-[#374151] border border-[#d1d5db]',
           corIcone: 'text-[#4b5563]',
           icone: <Wrench className="w-3.5 h-3.5 text-[#4b5563]" />,
+        };
+      case 'A_LIMPAR':
+        return {
+          label: 'A Limpar',
+          classePill: 'bg-[#fff3dc] text-[#b45309] border border-[#fde68a]',
+          corIcone: 'text-[#d97706]',
+          icone: <Sparkles className="w-3.5 h-3.5" />,
+        };
+      case 'EM_LIMPEZA':
+        return {
+          label: 'Em Limpeza',
+          classePill: 'bg-[#e0f2fe] text-[#0369a1] border border-[#bae6fd]',
+          corIcone: 'text-[#0284c7]',
+          icone: <Sparkles className="w-3.5 h-3.5 animate-pulse" />,
         };
       default:
         return {

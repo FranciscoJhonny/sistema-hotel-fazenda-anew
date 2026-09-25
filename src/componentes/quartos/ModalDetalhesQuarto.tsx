@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Plus,
+  Sparkles,
 } from 'lucide-react';
 import { Quarto, Reserva } from '../../tipos';
 import { formatarMoeda, formatarData } from '../../utilitarios/formatadores';
@@ -105,6 +106,17 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
     }, 1500);
   };
 
+  const handleMudarStatusLimpeza = (novoStatus: 'A_LIMPAR' | 'EM_LIMPEZA' | 'DISPONIVEL') => {
+    const qId = getVal(quarto, ['quartoid', 'QuartoId']);
+    atualizarStatusQuarto(qId, novoStatus);
+    const rotulos = { A_LIMPAR: 'A Limpar', EM_LIMPEZA: 'Em Limpeza', DISPONIVEL: 'Disponível' };
+    setFeedback(`Status do Quarto ${quartoNumero} alterado para "${rotulos[novoStatus]}".`);
+    setTimeout(() => {
+      setFeedback(null);
+      onFechar();
+    }, 1500);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="bg-white rounded-2xl border border-[#c1c9bf] shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh]">
@@ -150,6 +162,16 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-xs font-bold text-[#374151] border border-[#d1d5db] shadow-xs">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#4b5563]" />
                     Manutenção
+                  </span>
+                ) : quartoStatus === 'A_LIMPAR' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fff3dc] px-2.5 py-1 text-xs font-bold text-[#b45309] border border-[#fde68a] shadow-xs">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    A Limpar
+                  </span>
+                ) : quartoStatus === 'EM_LIMPEZA' ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e0f2fe] px-2.5 py-1 text-xs font-bold text-[#0369a1] border border-[#bae6fd] shadow-xs">
+                    <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                    Em Limpeza
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e6f4ea] px-2.5 py-1 text-xs font-semibold text-[#137333] border border-[#b8f0c2]">
@@ -278,17 +300,58 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
 
         {/* Barra de Ações Rápidas */}
         <div className="px-6 py-4 bg-[#f8f9fa] border-t border-[#e1e3e4] flex flex-wrap items-center justify-between gap-2">
-          <button
-            onClick={handleAlternarBloqueio}
-            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-              quartoStatus === 'MANUTENCAO'
-                ? 'bg-[#4b5563] text-white border-[#4b5563] hover:bg-[#374151]'
-                : 'border-[#c1c9bf] hover:bg-[#e1e3e4] text-[#414941]'
-            }`}
-          >
-            <Wrench className="w-4 h-4" />
-            {quartoStatus === 'MANUTENCAO' ? 'Liberar Quarto (Disponível)' : 'Bloquear em Manutenção'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleAlternarBloqueio}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                quartoStatus === 'MANUTENCAO'
+                  ? 'bg-[#4b5563] text-white border-[#4b5563] hover:bg-[#374151]'
+                  : 'border-[#c1c9bf] hover:bg-[#e1e3e4] text-[#414941]'
+              }`}
+            >
+              <Wrench className="w-4 h-4" />
+              {quartoStatus === 'MANUTENCAO' ? 'Liberar Quarto' : 'Manutenção'}
+            </button>
+
+            {quartoStatus === 'A_LIMPAR' && (
+              <>
+                <button
+                  onClick={() => handleMudarStatusLimpeza('EM_LIMPEZA')}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#0284c7] hover:bg-[#0369a1] text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Iniciar Limpeza
+                </button>
+                <button
+                  onClick={() => handleMudarStatusLimpeza('DISPONIVEL')}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#166534] hover:bg-[#14532d] text-white transition-colors cursor-pointer shadow-xs"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Marcar Limpo
+                </button>
+              </>
+            )}
+
+            {quartoStatus === 'EM_LIMPEZA' && (
+              <button
+                onClick={() => handleMudarStatusLimpeza('DISPONIVEL')}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#166534] hover:bg-[#14532d] text-white transition-colors cursor-pointer shadow-xs"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Concluir Limpeza (Disponível)
+              </button>
+            )}
+
+            {quartoStatus === 'DISPONIVEL' && !reservaAtual && (
+              <button
+                onClick={() => handleMudarStatusLimpeza('A_LIMPAR')}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-[#fff3dc] text-[#b45309] border border-[#fde68a] hover:bg-[#fde68a] transition-colors cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                Marcar A Limpar
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-2">
             {(reservaAtual?.statusreserva === 'PRE_RESERVA' || reservaAtual?.statusreserva === 'RESERVADO') && (

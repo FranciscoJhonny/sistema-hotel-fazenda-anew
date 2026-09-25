@@ -88,6 +88,8 @@ export const PaginaDashboard: React.FC = () => {
   const quartosAguardando = quartosEnriquecidos.filter((q) => q.statusCalculado === 'AGUARDANDO_CHECKIN').length;
   const quartosDisponiveis = quartosEnriquecidos.filter((q) => q.statusCalculado === 'DISPONIVEL').length;
   const quartosManutencao = quartosEnriquecidos.filter((q) => q.statusCalculado === 'MANUTENCAO').length;
+  const quartosALimpar = quartosEnriquecidos.filter((q) => q.statusCalculado === 'A_LIMPAR').length;
+  const quartosEmLimpeza = quartosEnriquecidos.filter((q) => q.statusCalculado === 'EM_LIMPEZA').length;
 
   const taxaOcupacao = totalQuartos > 0 ? Math.round((quartosOcupados / totalQuartos) * 100) : 0;
   const taxaDisponiveis = totalQuartos > 0 ? Math.round((quartosDisponiveis / totalQuartos) * 100) : 0;
@@ -292,6 +294,16 @@ export const PaginaDashboard: React.FC = () => {
               <button onClick={() => setFiltroStatus('TODOS')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'TODOS' ? 'bg-[#245437] text-white shadow-xs' : 'bg-[#f3f4f6] text-[#4b5563] hover:bg-[#e5e7eb]'}`}>
                 Todos ({totalQuartos})
               </button>
+              {quartosALimpar > 0 && (
+                <button onClick={() => setFiltroStatus('A_LIMPAR')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'A_LIMPAR' ? 'bg-[#d97706] text-white shadow-xs' : 'bg-[#fff3dc] text-[#b45309] hover:bg-[#fde68a]'}`}>
+                  A Limpar ({quartosALimpar})
+                </button>
+              )}
+              {quartosEmLimpeza > 0 && (
+                <button onClick={() => setFiltroStatus('EM_LIMPEZA')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'EM_LIMPEZA' ? 'bg-[#0284c7] text-white shadow-xs' : 'bg-[#e0f2fe] text-[#0369a1] hover:bg-[#bae6fd]'}`}>
+                  Em Limpeza ({quartosEmLimpeza})
+                </button>
+              )}
               <button onClick={() => setFiltroStatus('DISPONIVEL')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'DISPONIVEL' ? 'bg-[#166534] text-white shadow-xs' : 'bg-[#dcfce7] text-[#166534] hover:bg-[#bbf7d0]'}`}>
                 Disponíveis ({quartosDisponiveis})
               </button>

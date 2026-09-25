@@ -16,6 +16,8 @@ const categorias: CategoriaQuarto[] = [
 ];
 const statusSelecionaveis: StatusQuarto[] = [
     "DISPONIVEL",
+    "A_LIMPAR",
+    "EM_LIMPEZA",
     "MANUTENCAO",
 ];
 const blocos: BlocoQuarto[] = ["B", "C", "D"];
@@ -52,6 +54,8 @@ const rotuloStatus: Record<StatusQuarto, string> = {
     OCUPADO: "Ocupado",
     AGUARDANDO_CHECKIN: "Aguardando check-in",
     MANUTENCAO: "Manutenção",
+    A_LIMPAR: "A limpar",
+    EM_LIMPEZA: "Em limpeza",
 };
 
 export const PaginaQuartos: React.FC = () => {
@@ -279,6 +283,16 @@ export const PaginaQuartos: React.FC = () => {
                                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e5e7eb] px-2.5 py-1 text-[11px] font-bold text-[#374151] border border-[#d1d5db] shadow-xs">
                                                     <span className="h-1.5 w-1.5 rounded-full bg-[#4b5563]" />
                                                     Manutenção
+                                                </span>
+                                            ) : quarto.status === "A_LIMPAR" ? (
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fff3dc] px-2.5 py-1 text-[11px] font-bold text-[#b45309] border border-[#fde68a] shadow-xs">
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-[#b45309]" />
+                                                    A limpar
+                                                </span>
+                                            ) : quarto.status === "EM_LIMPEZA" ? (
+                                                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e0f2fe] px-2.5 py-1 text-[11px] font-bold text-[#0369a1] border border-[#bae6fd] shadow-xs">
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-[#0369a1]" />
+                                                    Em limpeza
                                                 </span>
                                             ) : (
                                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e6f4ea] px-2.5 py-1 text-[11px] font-semibold text-[#137333] border border-[#b8f0c2]">
