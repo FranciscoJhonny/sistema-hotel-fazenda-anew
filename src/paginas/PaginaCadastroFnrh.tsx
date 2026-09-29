@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone } from 'lucide-react';
+import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone, X } from 'lucide-react';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
 import { LogoHotel } from '../componentes/comuns/LogoHotel';
 import { aplicarMascaraCpf, aplicarMascaraTelefone, formatarCep } from '../utilitarios/formatadores';
@@ -64,6 +64,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [modalErro, setModalErro] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
   const [jaEnviado, setJaEnviado] = useState(false);
   const [nomeHospedeEnviado, setNomeHospedeEnviado] = useState('');
@@ -158,28 +159,46 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
   const salvar = async (evento: React.FormEvent) => {
     evento.preventDefault();
     setErro(null);
+    setModalErro(null);
+
+    if (!dados.nomecompleto?.toString().trim()) {
+      setModalErro('O campo "Nome Completo" do titular é de preenchimento obrigatório.');
+      return;
+    }
 
     const cpfFormatado = aplicarMascaraCpf(String(dados.cpf || ''));
-    if (!dados.nomecompleto || !cpfFormatado || !dados.telefone) {
-      setErro('Preencha nome completo, CPF e telefone.');
+    if (!cpfFormatado?.trim()) {
+      setModalErro('O campo "CPF" do titular é de preenchimento obrigatório.');
       return;
     }
 
     // Valida se o CPF possui 11 dígitos
     const digitosCpf = cpfFormatado.replace(/\D/g, '');
     if (digitosCpf.length !== 11) {
-      setErro('O CPF do titular deve conter 11 dígitos.');
+      setModalErro('O CPF do titular deve conter 11 dígitos numéricos completos.');
       return;
     }
 
+    if (!dados.telefone?.toString().trim()) {
+      setModalErro('O campo "Telefone / WhatsApp" é de preenchimento obrigatório.');
+      return;
+    }
+
+    for (let i = 0; i < acompanhantes.length; i++) {
+      if (!acompanhantes[i].nomecompleto?.trim()) {
+        setModalErro(`O campo "Nome completo" do acompanhante #${i + 1} é obrigatório.`);
+        return;
+      }
+    }
+
     if (!dados.declaracao_aceita) {
-      setErro('É necessário aceitar a declaração da FNRH.');
+      setModalErro('É necessário aceitar os termos da declaração da FNRH para prosseguir.');
       return;
     }
 
     const cliente = obterClienteSupabase();
     if (!cliente) {
-      setErro('Não foi possível conectar ao sistema.');
+      setModalErro('Não foi possível conectar ao sistema. Verifique sua conexão.');
       return;
     }
 
@@ -205,7 +224,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     });
     setSalvando(false);
 
-    if (error) setErro(error.message);
+    if (error) setModalErro(error.message || 'Ocorreu um erro ao salvar seu cadastro. Tente novamente.');
     else setEnviado(true);
   };
 
@@ -344,14 +363,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           <p className="mt-3 text-xs text-white/70">Preencha seus dados para concluir o cadastro da hospedagem.</p>
         </header>
 
-        {erro && (
-          <div className="mb-4 flex items-center gap-2 rounded-xl border border-[#ffdad6] bg-[#ffdad6] px-4 py-3 text-xs font-semibold text-[#ba1a1a]">
-            <AlertCircle className="h-4 w-4" />
-            {erro}
-          </div>
-        )}
-
-        <form onSubmit={salvar} className="space-y-5">
+        <form onSubmit={salvar} noValidate className="space-y-5">
           {/* Titular */}
           <section className="rounded-2xl border border-[#c1c9bf] bg-white p-5 shadow-xs">
             <h2 className="mb-4 font-['Manrope'] text-lg font-bold">Dados do hóspede titular</h2>
@@ -531,6 +543,43 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
         <p className="mt-5 text-center text-xs text-[#717971]">CNPJ 47.680.087/0001-59 • Hotel Fazenda Anew</p>
       </div>
+
+      {/* Modal de Erro de Validade/Preenchimento */}
+      {modalErro && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs animate-fadeIn">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl border border-red-100 relative">
+            <button
+              type="button"
+              onClick={() => setModalErro(null)}
+              className="absolute right-3.5 top-3.5 p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600">
+              <AlertCircle className="h-8 w-8" />
+            </div>
+
+            <h3 className="font-['Manrope'] text-base font-bold text-slate-900">
+              Atenção
+            </h3>
+
+            <p className="mt-2 text-xs font-medium text-slate-600 leading-relaxed">
+              {modalErro}
+            </p>
+
+            <div className="mt-5 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setModalErro(null)}
+                className="w-full rounded-xl bg-[#053d1e] px-6 py-2.5 text-xs font-bold text-white hover:bg-[#043017] transition-all shadow-md cursor-pointer"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

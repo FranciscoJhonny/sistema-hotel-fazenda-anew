@@ -18,6 +18,7 @@ import {
 import { FnrhService } from '../../servicos/supabase/FnrhService';
 import { CadastroFnrh } from '../../tipos';
 import { useHotel } from '../../contextos/ContextoHotel';
+import { aplicarMascaraTelefone } from '../../utilitarios/formatadores';
 
 interface ModalGerarLinkFnrhProps {
   aberto: boolean;
@@ -310,8 +311,9 @@ Qualquer dúvida, estamos à disposição!`;
                     <input
                       type="tel"
                       placeholder="(67) 99999-9999"
+                      maxLength={15}
                       value={telefone}
-                      onChange={(e) => setTelefone(e.target.value)}
+                      onChange={(e) => setTelefone(aplicarMascaraTelefone(e.target.value))}
                       className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e]"
                     />
                   </div>
