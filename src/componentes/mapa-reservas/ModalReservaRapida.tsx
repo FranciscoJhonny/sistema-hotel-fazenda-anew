@@ -170,7 +170,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     if (aberto && dataSelecionada) {
       let hospedePre = '';
       let cadastroidPre: number | null = null;
-      let adultosPre = 0;
+      let adultosPre = 1;
       let criancasPre = 0;
       let entradaPre = dataSelecionada;
       let valorPagoPre = 0;
