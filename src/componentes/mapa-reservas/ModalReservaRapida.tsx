@@ -195,8 +195,11 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               valorPagoPre = Number(parsed.valor_sinal);
               valorPagoTextoPre = Number(parsed.valor_sinal).toFixed(2).replace('.', ',');
             }
+            // ✅ Limpa o sessionStorage imediatamente após consumir para que cliques futuros em quartos não reutilizem dados antigos!
+            sessionStorage.removeItem('fnrh_reserva_preenchimento');
           } catch (e) {
             console.warn('Erro ao ler fnrh_reserva_preenchimento:', e);
+            sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
         }
       }
