@@ -119,7 +119,6 @@ export interface Hospede extends EntidadeAuditavel {
   whatsapp?: string | null;
   email?: string | null;
   endereco?: string | null;
-  numero?: string | null;
   cidade?: string | null;
   estado?: string | null;
   cep?: string | null;
@@ -354,7 +353,6 @@ export interface CadastroFnrh {
   telefone?: string;
   email?: string;
   endereco?: string;
-  numero?: string;
   cidade?: string;
   estado?: string;
   cep?: string;

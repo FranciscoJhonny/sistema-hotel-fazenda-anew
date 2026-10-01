@@ -413,15 +413,6 @@ Qualquer dúvida estamos à disposição!`;
                   />
                 </div>
                 <div>
-                  <label className="text-slate-600 block font-semibold mb-1">N.º / Lote / Apto</label>
-                  <input
-                    type="text"
-                    value={dadosEditados.numero || ''}
-                    onChange={(e) => setDadosEditados({ ...dadosEditados, numero: e.target.value })}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
-                  />
-                </div>
-                <div>
                   <label className="text-slate-600 block font-semibold mb-1">Cidade / Estado</label>
                   <div className="flex gap-2">
                     <input
@@ -503,7 +494,7 @@ Qualquer dúvida estamos à disposição!`;
                 <div className="lg:col-span-2">
                   <span className="text-slate-500 block">Endereço Residencial</span>
                   <span className="font-semibold text-slate-900">
-                    {(dadosEditados.endereco || cadastro.endereco) ? `${dadosEditados.endereco || cadastro.endereco}${(dadosEditados.numero || cadastro.numero) ? `, Nº ${dadosEditados.numero || cadastro.numero}` : ''}, ${dadosEditados.cidade || cadastro.cidade || ''} - ${dadosEditados.estado || cadastro.estado || ''} ${dadosEditados.cep || cadastro.cep ? `(CEP: ${dadosEditados.cep || cadastro.cep})` : ''}` : '--'}
+                    {(dadosEditados.endereco || cadastro.endereco) ? `${dadosEditados.endereco || cadastro.endereco}, ${dadosEditados.cidade || cadastro.cidade || ''} - ${dadosEditados.estado || cadastro.estado || ''} ${dadosEditados.cep || cadastro.cep ? `(CEP: ${dadosEditados.cep || cadastro.cep})` : ''}` : '--'}
                   </span>
                 </div>
                 <div>
