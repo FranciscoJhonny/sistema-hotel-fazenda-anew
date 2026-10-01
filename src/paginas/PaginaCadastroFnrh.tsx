@@ -36,6 +36,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     telefone: '',
     email: '',
     endereco: '',
+    numero: '',
     cidade: '',
     estado: '',
     cep: '',
@@ -390,6 +391,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
               {campo('email', 'E-mail', 'email', false, 'seuemail@exemplo.com')}
               {campo('cep', 'CEP', 'text', false, '00000-000', 9)}
               {campo('endereco', 'Endereço')}
+              {campo('numero', 'Número / Lote / Apto', 'text', false, 'Ex: 123, Lt 4')}
               {campo('cidade', 'Cidade')}
               {campo('estado', 'UF')}
               {campo('profissao', 'Profissão')}
