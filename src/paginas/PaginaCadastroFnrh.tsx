@@ -45,9 +45,9 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     ultimaprocedencia: '',
     cpfresponsavelmenor: '',
     dataentrada: '',
-    horarioprevistochegada: '',
+    horarioprevistochegada: '07:00',
     datasaida: '',
-    horarioprevistasaida: '',
+    horarioprevistasaida: '15:00',
     motivoviagem: '',
     transporte: '',
     placa: '',
@@ -102,6 +102,8 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
         if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
         if (cadastro.telefone) cadastro.telefone = aplicarMascaraTelefone(String(cadastro.telefone));
         if (cadastro.cep) cadastro.cep = formatarCep(String(cadastro.cep));
+        if (!cadastro.horarioprevistochegada) cadastro.horarioprevistochegada = '07:00';
+        if (!cadastro.horarioprevistasaida) cadastro.horarioprevistasaida = '15:00';
 
         setDados((atual) => ({ ...atual, ...cadastro }));
         setAcompanhantes(

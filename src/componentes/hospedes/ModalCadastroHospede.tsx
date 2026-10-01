@@ -53,6 +53,7 @@ export const ModalCadastroHospede: React.FC<ModalCadastroHospedeProps> = ({
   const [email, setEmail] = useState<string>('');
   const [cep, setCep] = useState<string>('');
   const [endereco, setEndereco] = useState<string>('');
+  const [numero, setNumero] = useState<string>('');
   const [cidade, setCidade] = useState<string>('Campo Grande');
   const [estado, setEstado] = useState<string>('MS');
   const [buscandoCep, setBuscandoCep] = useState<boolean>(false);
@@ -85,6 +86,7 @@ export const ModalCadastroHospede: React.FC<ModalCadastroHospedeProps> = ({
       setEmail(hospedeEdicao.email || '');
       setCep(formatarCep(hospedeEdicao.cep || ''));
       setEndereco(hospedeEdicao.endereco || '');
+      setNumero(hospedeEdicao.numero || '');
       setCidade(hospedeEdicao.cidade || 'Campo Grande');
       setEstado(hospedeEdicao.estado || 'MS');
 
@@ -109,6 +111,7 @@ export const ModalCadastroHospede: React.FC<ModalCadastroHospedeProps> = ({
       setEmail('');
       setCep('');
       setEndereco('');
+      setNumero('');
       setCidade('Campo Grande');
       setEstado('MS');
 
@@ -185,6 +188,7 @@ export const ModalCadastroHospede: React.FC<ModalCadastroHospedeProps> = ({
       email: email.trim() || null,
       cep: cep.trim() || null,
       endereco: endereco.trim() || null,
+      numero: numero.trim() || null,
       cidade: cidade.trim() || 'Campo Grande',
       estado: estado.trim() || 'MS',
 
@@ -463,9 +467,23 @@ export const ModalCadastroHospede: React.FC<ModalCadastroHospedeProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="Rua, Número, Bairro"
+                  placeholder="Rua, Bairro"
                   value={endereco}
                   onChange={(e) => setEndereco(e.target.value)}
+                  className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#053d1e]"
+                />
+              </div>
+
+              {/* Número / Lote / Apto */}
+              <div className="sm:col-span-4">
+                <label className="block font-semibold text-slate-700 mb-1">
+                  N.º / Lote / Apto
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: 123, Lt 4, Apto 201"
+                  value={numero}
+                  onChange={(e) => setNumero(e.target.value)}
                   className="w-full p-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-[#053d1e]"
                 />
               </div>
