@@ -477,7 +477,15 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         sessionStorage.removeItem('fnrh_reserva_preenchimento');
       }
       setCadastroidFnrh(null);
-
+      setHospedeId('');
+      setAdultos(0);
+      setCriancas(0);
+      setIdadesCriancas([]);
+      setObservacoes('');
+      setValorPago(0);
+      setValorPagoTexto('');
+      setPreReserva(false);
+      setAutorizarExcecaoSinal(false);
       onSucesso?.(resultado.mensagem || 'Reserva gravada com sucesso!');
       onFechar();
     } catch (error: any) {

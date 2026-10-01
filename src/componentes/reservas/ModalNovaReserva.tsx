@@ -86,13 +86,46 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   const [sucessoFeedback, setSucessoFeedback] = useState<string | null>(null);
   const [enviando, setEnviando] = useState<boolean>(false);
 
-  // Sincroniza quarto pré-selecionado quando a modal abre
+  // Reseta e limpa o formulário completo quando a modal abre
   useEffect(() => {
-    if (quartoPreSelecionado) {
-      setQuartoSelecionadoId(Number(quartoPreSelecionado.quartoid));
-      setValorDiaria(quartoPreSelecionado.valordiariapadrao);
+    if (aberto) {
+      setHospedeId(null);
+      setNomeHospede('');
+      setCpfHospede('');
+      setTelefoneHospede('');
+      setEmailHospede('');
+      setCidadeHospede('Campo Grande');
+      setEstadoHospede('MS');
+      setModoNovoHospede(true);
+
+      const entradaInicial = dataSistema || new Date().toISOString().slice(0, 10);
+      setDataEntrada(entradaInicial);
+
+      const dataObj = new Date(`${entradaInicial}T00:00:00`);
+      dataObj.setDate(dataObj.getDate() + 2);
+      setDataSaida(dataObj.toISOString().slice(0, 10));
+
+      setHorarioEntrada(configuracoes.checkintime || '09:00');
+      setHorarioSaida(configuracoes.checkouttime || '15:00');
+      setTipoAtendimento('HOSPEDAGEM');
+      setAdultos(2);
+      setCriancas(0);
+      setPacoteId(undefined);
+      setValorDesconto('');
+      setValorPago('');
+      setIsPreReserva(false);
+      setAutorizarExcecaoSinal(false);
+      setFormaPagamento('PIX');
+      setObservacoes('');
+      setErroValidacao(null);
+      setSucessoFeedback(null);
+
+      if (quartoPreSelecionado) {
+        setQuartoSelecionadoId(Number(quartoPreSelecionado.quartoid));
+        setValorDiaria(quartoPreSelecionado.valordiariapadrao);
+      }
     }
-  }, [quartoPreSelecionado]);
+  }, [aberto, quartoPreSelecionado, dataSistema]);
 
   // Atualiza valor diária quando quarto muda
   useEffect(() => {
