@@ -170,7 +170,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     if (aberto && dataSelecionada) {
       let hospedePre = '';
       let cadastroidPre: number | null = null;
-      let adultosPre = 1;
+      let adultosPre = 0;
       let criancasPre = 0;
       let entradaPre = dataSelecionada;
       let valorPagoPre = 0;
@@ -195,9 +195,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               valorPagoPre = Number(parsed.valor_sinal);
               valorPagoTextoPre = Number(parsed.valor_sinal).toFixed(2).replace('.', ',');
             }
+            sessionStorage.removeItem('fnrh_reserva_preenchimento');
           } catch (e) {
             console.warn('Erro ao ler fnrh_reserva_preenchimento:', e);
-          } finally {
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
         }
@@ -205,11 +205,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
       setCadastroidFnrh(cadastroidPre);
       setHospedeId(hospedePre);
-      setAdultos(adultosPre > 0 ? adultosPre : 1);
+      setAdultos(adultosPre);
       setCriancas(idadesCriancasPre.length > 0 ? idadesCriancasPre.length : criancasPre);
       setIdadesCriancas(idadesCriancasPre);
-      setPacoteId('');
-      setTipoAtendimento('HOSPEDAGEM');
       setObservacoes('');
       setPreReserva(false);
       setValorPago(valorPagoPre);
@@ -271,7 +269,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           const { data: acompsOficial } = await cliente
             .from('acompanhante')
             .select('datanascimento')
-            .eq('cadastroid', hospedeId);
+            .eq('hospedeid', Number(hospedeId));
 
           if (acompsOficial && acompsOficial.length > 0) {
             acompsOficial.forEach((a: any) => {
@@ -283,9 +281,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           }
         }
 
-        if (idadesCalculadas.length > 0) {
-          setCriancas(idadesCalculadas.length);
-          setIdadesCriancas(idadesCalculadas);
+        setCriancas(idadesCalculadas.length);
+        setIdadesCriancas(idadesCalculadas);
+        if (hospedeId && adultos < 1) {
+          setAdultos(1);
         }
       } catch (e) {
         console.warn('Aviso ao carregar idades das crianças:', e);
@@ -293,7 +292,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     };
 
     carregarIdadesDoBanco();
-  }, [aberto, hospedeId, cadastroidFnrh]);
+  }, [aberto, hospedeId, cadastroidFnrh, adultos]);
 
   useEffect(() => {
     if (!pacoteSelecionado || !dataEntrada) return;
@@ -779,7 +778,11 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
               <select
                 value={hospedeId}
-                onChange={(e) => setHospedeId(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setHospedeId(val);
+                  if (val && adultos < 1) setAdultos(1);
+                }}
                 disabled={enviando}
                 className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
