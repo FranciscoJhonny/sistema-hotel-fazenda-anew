@@ -195,9 +195,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               valorPagoPre = Number(parsed.valor_sinal);
               valorPagoTextoPre = Number(parsed.valor_sinal).toFixed(2).replace('.', ',');
             }
-            sessionStorage.removeItem('fnrh_reserva_preenchimento');
           } catch (e) {
             console.warn('Erro ao ler fnrh_reserva_preenchimento:', e);
+          } finally {
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
         }
@@ -205,9 +205,11 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
       setCadastroidFnrh(cadastroidPre);
       setHospedeId(hospedePre);
-      setAdultos(adultosPre);
+      setAdultos(adultosPre > 0 ? adultosPre : 1);
       setCriancas(idadesCriancasPre.length > 0 ? idadesCriancasPre.length : criancasPre);
       setIdadesCriancas(idadesCriancasPre);
+      setPacoteId('');
+      setTipoAtendimento('HOSPEDAGEM');
       setObservacoes('');
       setPreReserva(false);
       setValorPago(valorPagoPre);

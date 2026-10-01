@@ -312,9 +312,6 @@ export const PaginaMapaReservas: React.FC = () => {
                 onClick={() => {
                   if (quartoBloqueado || reservaAtiva) return;
                   if (isDataPassada(dataIso)) return;
-                  if (typeof window !== 'undefined') {
-                    sessionStorage.removeItem('fnrh_reserva_preenchimento');
-                  }
                   setQuartoSelecionado(quarto);
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
