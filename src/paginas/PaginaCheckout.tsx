@@ -286,7 +286,7 @@ export const PaginaCheckout: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[#717971] mt-1">
-            Conferência de frigobar, liquidação de débitos e liberação imediata do quarto no mapa.
+            Conferência de consumos (Bar e Lojinha), liquidação de débitos e liberação imediata do quarto no mapa.
           </p>
         </div>
         <div className="text-right">

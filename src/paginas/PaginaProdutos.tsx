@@ -7,8 +7,7 @@ import { formatarMoeda, sanitizarValorMonetario } from '../utilitarios/formatado
 
 const categorias: { id: CategoriaProduto; label: string }[] = [
   { id: 'LOJINHA', label: 'Lojinha' },
-  { id: 'FRIGOBAR', label: 'Frigobar' },
-  { id: 'SERVICOS', label: 'Serviços' },
+  { id: 'BAR', label: 'Bar' },
 ];
 
 const produtoInicial = {
@@ -112,7 +111,7 @@ export const PaginaProdutos: React.FC = () => {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="font-['Manrope'] text-xl font-bold">Cadastro de Produtos</h1>
-          <p className="text-xs text-[#717971] mt-1">Lojinha, frigobar e serviços disponíveis para lançamento.</p>
+          <p className="text-xs text-[#717971] mt-1">Lojinha e Bar disponíveis para cadastro e lançamento.</p>
         </div>
         <button onClick={abrirNovo} className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs">
           <Plus className="w-4 h-4" /> Novo Produto
@@ -165,11 +164,11 @@ export const PaginaProdutos: React.FC = () => {
                   <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                     produto.categoria === 'LOJINHA'
                       ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                      : produto.categoria === 'FRIGOBAR'
-                      ? 'bg-purple-100 text-purple-900 border border-purple-200'
+                      : produto.categoria === 'BAR'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-200'
                       : 'bg-slate-100 text-slate-800 border border-slate-200'
                   }`}>
-                    {produto.categoria === 'LOJINHA' ? 'Lojinha' : produto.categoria === 'FRIGOBAR' ? 'Frigobar' : produto.categoria}
+                    {produto.categoria === 'LOJINHA' ? 'Lojinha' : produto.categoria === 'BAR' ? 'Bar' : produto.categoria}
                   </span>
                 </td>
                 <td className="p-3 font-bold">{formatarMoeda(produto.preco)}</td>

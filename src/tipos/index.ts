@@ -215,7 +215,7 @@ export interface Produto extends EntidadeAuditavel {
   estoque: number;
 }
 
-export type CategoriaProduto = 'FRIGOBAR' | 'LOJINHA' | 'SERVICOS' | string;
+export type CategoriaProduto = 'LOJINHA' | 'BAR' | string;
 
 export interface ConsumoExtra extends EntidadeAuditavel {
   consumoid: number | string;
