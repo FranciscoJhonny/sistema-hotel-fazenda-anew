@@ -240,7 +240,14 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   // Busca e calcula automaticamente a idade das crianças do hóspede / FNRH selecionado
   useEffect(() => {
     const carregarIdadesDoBanco = async () => {
-      if (!aberto || (!hospedeId && !cadastroidFnrh)) return;
+      if (!aberto) return;
+
+      if (!hospedeId && !cadastroidFnrh) {
+        setCriancas(0);
+        setIdadesCriancas([]);
+        return;
+      }
+
       const cliente = obterClienteSupabase();
       if (!cliente) return;
 
