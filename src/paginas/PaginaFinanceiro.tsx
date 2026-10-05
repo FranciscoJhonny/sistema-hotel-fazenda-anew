@@ -149,8 +149,7 @@ export const PaginaFinanceiro: React.FC = () => {
       const adultosReserva = Number(reserva.adultos || 0);
       const criancasReserva = Number(reserva.criancas || 0);
       const somaAdultosCriancas = adultosReserva + criancasReserva;
-      const qtdDeclarada = Number(reserva.numerohospedes || 0);
-      const totalHospedesReserva = Math.max(somaAdultosCriancas, qtdDeclarada, 1);
+      const totalHospedesReserva = Math.max(somaAdultosCriancas, 1);
 
       return {
         quarto: quarto?.codigoidentificador || reserva.quartonumero || '',
@@ -257,7 +256,7 @@ export const PaginaFinanceiro: React.FC = () => {
         resumo.criancas,
         formatarData(resumo.dataEntrada),
         formatarData(resumo.dataSaida),
-        formatarData(resumo.dataReserva),
+        formatarData(resumo.dataReserva || ''),
         Number(resumo.valorReserva || 0),
         resumo.pagtoReserva || '',
         resumo.produtosLojinha || '',
@@ -652,7 +651,7 @@ export const PaginaFinanceiro: React.FC = () => {
                     <td className="py-3 px-3 text-center font-semibold">{resumo.criancas}</td>
                     <td className="py-3 px-3">{formatarData(resumo.dataEntrada)}</td>
                     <td className="py-3 px-3">{formatarData(resumo.dataSaida)}</td>
-                    <td className="py-3 px-3">{formatarData(resumo.dataReserva)}</td>
+                    <td className="py-3 px-3">{formatarData(resumo.dataReserva || '')}</td>
                     <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorReserva)}</td>
                     <td className="py-3 px-3">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoReserva ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
