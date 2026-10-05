@@ -78,6 +78,11 @@ export const PaginaQuartos: React.FC = () => {
         () =>
             quartos
                 .filter((quarto) => {
+                    const cod = String(quarto.codigoidentificador || '').toUpperCase();
+                    const num = String(quarto.numero || '').toUpperCase();
+                    const cat = String(quarto.categoria || '').toUpperCase();
+                    if (cod === 'DAY_USE' || num === 'DU' || num === 'DAY USE' || cat === 'DAY USE') return false;
+
                     const termo = busca.trim().toLowerCase();
                     const correspondeBusca =
                         !termo ||

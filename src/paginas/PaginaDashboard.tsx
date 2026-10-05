@@ -49,11 +49,20 @@ export const PaginaDashboard: React.FC = () => {
     return `${ano}-${mes}-${dia}`;
   });
 
+  const quartosFisicos = useMemo(() => {
+    return (quartos || []).filter((q) => {
+      const cod = String(q.codigoidentificador || '').toUpperCase();
+      const num = String(q.numero || '').toUpperCase();
+      const cat = String(q.categoria || '').toUpperCase();
+      return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
+    });
+  }, [quartos]);
+
   // CÁLCULO DINÂMICO DOS QUARTOS BASEADO NAS RESERVAS E DATA
   const quartosEnriquecidos: QuartoEnriquecido[] = useMemo(() => {
-    if (!quartos || !reservas) return [];
+    if (!quartosFisicos || !reservas) return [];
 
-    return quartos.map((quarto: Quarto) => {
+    return quartosFisicos.map((quarto: Quarto) => {
       const qStatus = (quarto.status || '').toUpperCase();
       if (qStatus === 'MANUTENCAO') {
         return {
@@ -79,7 +88,7 @@ export const PaginaDashboard: React.FC = () => {
 
       return { ...quarto, statusCalculado: status, reservaAtiva, proximaReserva };
     });
-  }, [quartos, reservas, dataConsulta]);
+  }, [quartosFisicos, reservas, dataConsulta]);
 
   // Métricas baseadas no status CALCULADO
   const totalQuartos = quartosEnriquecidos.length || 0;

@@ -16,6 +16,15 @@ type QuartoEnriquecido = Quarto & {
 export const PaginaStatusQuartos: React.FC = () => {
   const { quartos, atualizarStatusQuarto, carregando: carregandoQuartos, erro: erroQuartos } = useHotel();
 
+  const quartosFisicos = useMemo(() => {
+    return (quartos || []).filter((q) => {
+      const cod = String(q.codigoidentificador || '').toUpperCase();
+      const num = String(q.numero || '').toUpperCase();
+      const cat = String(q.categoria || '').toUpperCase();
+      return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
+    });
+  }, [quartos]);
+
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [carregandoReservas, setCarregandoReservas] = useState<boolean>(true);
   const [erroReservas, setErroReservas] = useState<string | null>(null);
@@ -87,9 +96,9 @@ export const PaginaStatusQuartos: React.FC = () => {
 
   // CÁLCULO DINÂMICO USANDO A DATA CONSULTA
   const quartosEnriquecidos: QuartoEnriquecido[] = useMemo(() => {
-    if (!quartos || !reservas) return [];
+    if (!quartosFisicos || !reservas) return [];
 
-    return quartos.map((quarto: Quarto) => {
+    return quartosFisicos.map((quarto: Quarto) => {
       const qStatus = (quarto.status || '').toUpperCase();
       if (qStatus === 'MANUTENCAO') {
         return {
@@ -117,7 +126,7 @@ export const PaginaStatusQuartos: React.FC = () => {
         proximaReserva
       };
     });
-  }, [quartos, reservas, dataConsulta]);
+  }, [quartosFisicos, reservas, dataConsulta]);
 
   // CONTAGENS
   const totalQuartos = quartosEnriquecidos.length || 0;

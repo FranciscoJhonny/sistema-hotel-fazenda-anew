@@ -469,7 +469,17 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     onCarregandoChange?.(true);
 
     try {
-      const quartoEfetivo = quarto || quartos[0];
+      const quartoDayUse = modoDayUse
+        ? quartos.find((q) => q.codigoidentificador === 'DAY_USE' || q.numero === 'DU' || String(q.quartoid) === '17')
+        : null;
+
+      const quartoEfetivo = modoDayUse
+        ? quartoDayUse
+        : (quarto || quartos[0]);
+
+      const idQuartoFinal = modoDayUse
+        ? (quartoDayUse ? quartoDayUse.quartoid : 17)
+        : (quartoEfetivo ? quartoEfetivo.quartoid : 0);
 
       const resultado = await criarReserva({
         cadastroid: cadastroidFnrh || undefined,
@@ -477,10 +487,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         hospedenome: hospedeSelecionado?.nomecompleto || '',
         hospedetelefone: hospedeSelecionado?.telefone || '',
         hospedeemail: hospedeSelecionado?.email || '',
-        quartoid: quartoEfetivo ? quartoEfetivo.quartoid : 0,
-        quartonumero: modoDayUse ? 'DAY USE' : (quartoEfetivo?.numero || 'DAY USE'),
+        quartoid: idQuartoFinal,
+        quartonumero: modoDayUse ? 'DU' : (quartoEfetivo?.numero || 'DU'),
         quartocodigo: modoDayUse ? 'DAY_USE' : (quartoEfetivo?.codigoidentificador || 'DAY_USE'),
-        quartocategoria: modoDayUse ? 'DAY USE' : (quartoEfetivo?.categoria || 'Day Use'),
+        quartocategoria: modoDayUse ? 'Day Use' : (quartoEfetivo?.categoria || 'Day Use'),
         adultos: modoDayUse ? 1 : adultos,
         criancas: modoDayUse ? 0 : criancas,
         dataentrada: dataEntrada,

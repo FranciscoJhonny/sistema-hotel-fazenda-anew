@@ -64,6 +64,15 @@ const nomesStatusReserva: Record<string, string> = {
 
 export const PaginaMapaReservas: React.FC = () => {
   const { quartos, reservas, hospedes, recarregarDados } = useHotel();
+
+  const quartosFisicos = useMemo(() => {
+    return quartos.filter((q) => {
+      const cod = String(q.codigoidentificador || '').toUpperCase();
+      const num = String(q.numero || '').toUpperCase();
+      const cat = String(q.categoria || '').toUpperCase();
+      return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
+    });
+  }, [quartos]);
   const [periodoInicio, setPeriodoInicio] = useState<Date>(periodoInicialPadrao);
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE'>('TODOS');
   const [busca, setBusca] = useState('');
@@ -137,7 +146,7 @@ export const PaginaMapaReservas: React.FC = () => {
       'D': [],
     };
 
-    quartos.forEach((quarto) => {
+    quartosFisicos.forEach((quarto) => {
       if (quarto.ativo === false) return;
 
       const bloco = quarto.bloco || 'B';
@@ -155,7 +164,7 @@ export const PaginaMapaReservas: React.FC = () => {
     });
 
     return blocosMap;
-  }, [quartos]);
+  }, [quartosFisicos]);
 
   // 🔥 DATA ATUAL DO SISTEMA
   const dataAtual = new Date().toISOString().slice(0, 10);
@@ -194,18 +203,18 @@ export const PaginaMapaReservas: React.FC = () => {
   // 🔥 CALCULAR QUARTOS EM LIMPEZA (OCUPADOS COM CHECK-OUT HOJE)
   const quartosEmLimpeza = useMemo(() => {
     const checkoutsHojeIds = checkoutsHoje.map(r => r.quartoid);
-    return quartos.filter(q =>
+    return quartosFisicos.filter(q =>
       checkoutsHojeIds.includes(q.quartoid) &&
       q.status === 'OCUPADO'
     );
-  }, [quartos, checkoutsHoje]);
+  }, [quartosFisicos, checkoutsHoje]);
 
   // 🔥 CALCULAR QUARTOS PRONTOS (DISPONÍVEIS E NÃO EM MANUTENÇÃO)
   const quartosProntos = useMemo(() => {
-    return quartos.filter(q =>
+    return quartosFisicos.filter(q =>
       q.status === 'DISPONIVEL' || q.status === 'RESERVADO'
     );
-  }, [quartos]);
+  }, [quartosFisicos]);
 
   // Filtrar e enriquecer reservas
   const reservasVisiveis = useMemo(() => {
@@ -246,8 +255,8 @@ export const PaginaMapaReservas: React.FC = () => {
   }, [reservas, periodoInicio, numeroDias, filtroStatus, busca, hospedeMap, quartos]);
 
   const ocupacao = useMemo(() => {
-    if (reservasVisiveis.length === 0 || quartos.length === 0) return 0;
-    const totalDias = numeroDias * quartos.length;
+    if (reservasVisiveis.length === 0 || quartosFisicos.length === 0) return 0;
+    const totalDias = numeroDias * quartosFisicos.length;
     let diasOcupados = 0;
 
     reservasVisiveis.forEach((res) => {
@@ -258,7 +267,7 @@ export const PaginaMapaReservas: React.FC = () => {
     });
 
     return Math.min(100, Math.round((diasOcupados / totalDias) * 100));
-  }, [reservasVisiveis, numeroDias, quartos.length]);
+  }, [reservasVisiveis, numeroDias, quartosFisicos.length]);
 
   const avancarPeriodo = () => setPeriodoInicio((prev) => addDias(prev, 7));
   const retrocederPeriodo = () => setPeriodoInicio((prev) => addDias(prev, -7));
@@ -516,7 +525,7 @@ export const PaginaMapaReservas: React.FC = () => {
           <div className="grid" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
             <div className="flex items-center justify-between border-r border-b border-[#c1c9bf] bg-[#f8f9fa] px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-[#191c1d]">
               <span>ACOMODAÇÃO</span>
-              <span className="rounded-full bg-[#e6f4ea] px-1.5 py-0.5 text-[9px] font-bold text-[#053d1e]">{quartos.length} Quartos</span>
+              <span className="rounded-full bg-[#e6f4ea] px-1.5 py-0.5 text-[9px] font-bold text-[#053d1e]">{quartosFisicos.length} Quartos</span>
             </div>
 
             {datasVisiveis.map((data) => {
@@ -652,11 +661,11 @@ export const PaginaMapaReservas: React.FC = () => {
             <div className="mt-2 h-2 w-full rounded-full bg-[#f3f4f6]">
               <div
                 className="h-2 rounded-full bg-[#053d1e] transition-all duration-300"
-                style={{ width: `${(quartosProntos.length / Math.max(quartos.length, 1)) * 100}%` }}
+                style={{ width: `${(quartosProntos.length / Math.max(quartosFisicos.length, 1)) * 100}%` }}
               />
             </div>
             <p className="mt-1 text-[10px] text-[#717971]">
-              {Math.round((quartosProntos.length / Math.max(quartos.length, 1)) * 100)}% dos quartos disponíveis
+              {Math.round((quartosProntos.length / Math.max(quartosFisicos.length, 1)) * 100)}% dos quartos disponíveis
             </p>
           </div>
         </div>
