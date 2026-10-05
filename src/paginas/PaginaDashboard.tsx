@@ -13,7 +13,7 @@ import { CardQuarto } from '../componentes/quartos/CardQuarto';
 import { ModalDetalhesQuarto } from '../componentes/quartos/ModalDetalhesQuarto';
 import { ModalNovaReserva } from '../componentes/reservas/ModalNovaReserva';
 import { useHotel } from '../contextos/ContextoHotel';
-import { Quarto, Reserva } from '../tipos';
+import { Quarto, Reserva, StatusQuarto } from '../tipos';
 import { calcularStatusQuarto } from '../utilitarios/calculoSituacaoQuarto';
 
 type QuartoEnriquecido = Quarto & {
