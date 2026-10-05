@@ -9,6 +9,8 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        stream: path.resolve(__dirname, 'src/utilitarios/streamPolyfill.ts'),
+        'node:stream': path.resolve(__dirname, 'src/utilitarios/streamPolyfill.ts'),
       },
     },
     server: {

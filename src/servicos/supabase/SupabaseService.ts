@@ -125,7 +125,14 @@ export class SupabaseService {
     }
 
     try {
-      const { error } = await client.from('Configuracao').select('ConfiguracaoId').limit(1);
+      let { error } = await client.from('configuracao').select('*').limit(1);
+
+      if (error) {
+        const fallback = await client.from('quarto').select('*').limit(1);
+        if (!fallback.error) {
+          error = null;
+        }
+      }
 
       if (error) {
         return {
