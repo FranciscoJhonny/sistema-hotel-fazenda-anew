@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Search,
+  Sun,
   Wrench,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
@@ -73,6 +74,7 @@ export const PaginaMapaReservas: React.FC = () => {
   const [carregandoReserva, setCarregandoReserva] = useState(false);
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState(false);
   const [hospedeFnrhAviso, setHospedeFnrhAviso] = useState<{ nome: string; dataentrada?: string } | null>(null);
+  const [modoDayUse, setModoDayUse] = useState(false);
 
   const handleRecarregar = async () => {
     setCarregandoAtualizacao(true);
@@ -81,6 +83,16 @@ export const PaginaMapaReservas: React.FC = () => {
     } finally {
       setCarregandoAtualizacao(false);
     }
+  };
+
+  const handleAbrirDayUse = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('fnrh_reserva_preenchimento');
+    }
+    setQuartoSelecionado(null);
+    setDataSelecionada(new Date().toISOString().slice(0, 10));
+    setModoDayUse(true);
+    setModalAberto(true);
   };
 
   useEffect(() => {
@@ -312,6 +324,7 @@ export const PaginaMapaReservas: React.FC = () => {
                 onClick={() => {
                   if (quartoBloqueado || reservaAtiva) return;
                   if (isDataPassada(dataIso)) return;
+                  setModoDayUse(false);
                   setQuartoSelecionado(quarto);
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
@@ -419,6 +432,15 @@ export const PaginaMapaReservas: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleAbrirDayUse}
+              title="Criar reserva de Day Use (sem vínculo de quarto)"
+              className="flex items-center gap-1.5 rounded-full bg-[#053d1e] px-4 py-1.5 text-xs font-bold text-white hover:bg-[#043017] transition-all cursor-pointer shadow-xs"
+            >
+              <Sun className="h-4 w-4 text-amber-300" />
+              <span>+ Criar Day Use</span>
+            </button>
             <button
               type="button"
               onClick={handleRecarregar}
@@ -644,10 +666,12 @@ export const PaginaMapaReservas: React.FC = () => {
         aberto={modalAberto}
         quarto={quartoSelecionado}
         dataSelecionada={dataSelecionada}
+        modoDayUse={modoDayUse}
         onFechar={() => {
           setModalAberto(false);
           setQuartoSelecionado(null);
           setDataSelecionada(null);
+          setModoDayUse(false);
         }}
         onSucesso={(mensagem) => {
           // 1. Exibe a mensagem de sucesso
@@ -659,13 +683,12 @@ export const PaginaMapaReservas: React.FC = () => {
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
           
-          // 2. Fecha a modal e limpa os dados selecionados para a próxima reserva
           // 3. Fecha a modal e limpa os dados selecionados para a próxima reserva
           setModalAberto(false);
           setQuartoSelecionado(null);
           setDataSelecionada(null);
+          setModoDayUse(false);
           
-          // 3. Remove a mensagem de sucesso após 4 segundos
           // 4. Remove a mensagem de sucesso após 4 segundos
           window.setTimeout(() => setMensagemSucesso(null), 4000);
         }}
