@@ -12,6 +12,7 @@ import { PaginaHospedes } from './paginas/PaginaHospedes';
 import { PaginaFinanceiro } from './paginas/PaginaFinanceiro';
 import { PaginaLoja } from './paginas/PaginaLoja';
 import { PaginaProdutos } from './paginas/PaginaProdutos';
+import { PaginaPacotes } from './paginas/PaginaPacotes';
 import { PaginaQuartos } from './paginas/PaginaQuartos';
 import { PaginaUsuarios } from './paginas/PaginaUsuarios';
 import { PaginaConfiguracoes } from './paginas/PaginaConfiguracoes';
@@ -75,6 +76,8 @@ const ConteudoPrincipal: React.FC = () => {
         return <PaginaLoja />;
       case 'produtos':
         return <PaginaProdutos />;
+      case 'pacotes':
+        return <PaginaPacotes />;
       case 'usuarios':
         return <PaginaUsuarios />;
       case 'configuracoes':

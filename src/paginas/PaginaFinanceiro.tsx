@@ -92,7 +92,7 @@ export const PaginaFinanceiro: React.FC = () => {
     });
   }, [consumosExtras, reservasDoPeriodo, usarFiltroData, dataInicioFiltro, dataFimFiltro]);
 
-  // 3. NOVA GRID VIEW: RESUMO POR RESERVA (CORRIGIDO)
+  // 3. NOVA GRID VIEW: RESUMO POR RESERVA (CORRIGIDO E INCLUINDO BAR)
   const resumoReservas = useMemo(() => {
     return reservasDoPeriodo.map(reserva => {
       // Encontrar o quarto
@@ -105,6 +105,15 @@ export const PaginaFinanceiro: React.FC = () => {
       const valorLojinha = consumosLojinha.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
       const produtosLojinhaConcat = consumosLojinha.length > 0
         ? consumosLojinha.map(c => `${c.quantidade}x ${c.descricao || c.categoria}`).join(', ')
+        : '';
+
+      // Consumos de Bar desta reserva
+      const consumosBar = consumosDessasReservas.filter(
+        c => String(c.reservaid) === String(reserva.reservaid) && c.categoria?.toUpperCase() === 'BAR'
+      );
+      const valorBar = consumosBar.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
+      const produtosBarConcat = consumosBar.length > 0
+        ? consumosBar.map(c => `${c.quantidade}x ${c.descricao || c.categoria}`).join(', ')
         : '';
 
       // Pagamentos desta reserva
@@ -135,8 +144,8 @@ export const PaginaFinanceiro: React.FC = () => {
         metodoPagamentoLojinha = formatarNomePagamento(pagtoLojinhaEspecifico.formapagamento);
       }
 
-      // CORREÇÃO: Total Geral = Sinal + Checkout + Lojinha
-      const totalGeral = valorReservaPago + valorCheckoutPago + valorLojinha;
+      // CORREÇÃO: Total Geral = Sinal + Checkout + Lojinha + Bar
+      const totalGeral = valorReservaPago + valorCheckoutPago + valorLojinha + valorBar;
 
       // STATUS: Só é "PAGO" se estiver CONCLUIDA (fez check-out) e o saldo for zerado
       let status = 'PENDENTE';
@@ -164,6 +173,8 @@ export const PaginaFinanceiro: React.FC = () => {
         produtosLojinha: produtosLojinhaConcat,
         valorLojinha: valorLojinha,
         pagtoLojinha: metodoPagamentoLojinha,
+        produtosBar: produtosBarConcat,
+        valorBar: valorBar,
         pagtoReserva: metodosSinal,
         valorCheckout: valorCheckoutPago,
         pagtoCheckout: metodosCheckout,
@@ -181,13 +192,14 @@ export const PaginaFinanceiro: React.FC = () => {
       .reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
 
     const totalVendasLoja = resumoReservas.reduce((acc, r) => acc + Number(r.valorLojinha || 0), 0);
+    const totalVendasBar = resumoReservas.reduce((acc, r) => acc + Number(r.valorBar || 0), 0);
     const totalSinalReserva = resumoReservas.reduce((acc, r) => acc + Number(r.valorReserva || 0), 0);
     const totalSaldoReserva = resumoReservas.reduce((acc, r) => acc + Number(r.valorCheckout || 0), 0);
     const totalHospedes = resumoReservas.reduce((acc, r) => acc + Number(r.totalHospedes || 0), 0);
     const totalAdultos = resumoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
 
-    const receitaTotalRealizada = totalSinalReserva + totalSaldoReserva + totalVendasLoja + totalConsumosFrigobar;
+    const receitaTotalRealizada = totalSinalReserva + totalSaldoReserva + totalVendasLoja + totalVendasBar + totalConsumosFrigobar;
 
     const totalSaldosPendentes = reservasDoPeriodo
       .filter(r => Number(r.saldo || 0) > 0)
@@ -198,6 +210,7 @@ export const PaginaFinanceiro: React.FC = () => {
       totalSinalReserva,
       totalSaldoReserva,
       totalVendasLoja,
+      totalVendasBar,
       totalConsumosFrigobar,
       totalSaldosPendentes,
       totalHospedes,
@@ -206,7 +219,7 @@ export const PaginaFinanceiro: React.FC = () => {
     };
   }, [pagamentosDoPeriodo, consumosDessasReservas, reservasDoPeriodo, resumoReservas]);
 
-  // FUNÇÃO DE EXPORTAÇÃO PARA EXCEL (Mantida exatamente como você ajustou)
+  // FUNÇÃO DE EXPORTAÇÃO PARA EXCEL
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
@@ -219,7 +232,7 @@ export const PaginaFinanceiro: React.FC = () => {
     const titulo = 'HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO';
     const periodo = `Período: ${formatarData(dataInicioFiltro)} a ${formatarData(dataFimFiltro)}`;
 
-    // ORDEM CORRIGIDA DAS COLUNAS
+    // ORDEM DAS COLUNAS (INCLUINDO BAR)
     wsData.push([titulo]);
     wsData.push([periodo]);
     wsData.push([
@@ -235,6 +248,8 @@ export const PaginaFinanceiro: React.FC = () => {
       'Produtos (Loja)',
       'Valor Loja (R$)',
       'Pagamento Loja',
+      'Produtos (Bar)',
+      'Valor Bar (R$)',
       'Valor Checkout',
       'Pagamento Checkout',
       'Total Geral (R$)'
@@ -242,13 +257,13 @@ export const PaginaFinanceiro: React.FC = () => {
 
     let totalValorReserva = 0;
     let totalValorLoja = 0;
+    let totalValorBar = 0;
     let totalValorCheckout = 0;
     let totalGeral = 0;
     let totalAdultosExcel = 0;
     let totalCriancasExcel = 0;
 
     resumoReservas.forEach((resumo) => {
-      // ORDEM CORRIGIDA DOS DADOS
       wsData.push([
         resumo.quarto,
         resumo.hospede,
@@ -262,6 +277,8 @@ export const PaginaFinanceiro: React.FC = () => {
         resumo.produtosLojinha || '',
         Number(resumo.valorLojinha || 0),
         resumo.pagtoLojinha || '',
+        resumo.produtosBar || '',
+        Number(resumo.valorBar || 0),
         Number(resumo.valorCheckout || 0),
         resumo.pagtoCheckout || '',
         Number(resumo.total || 0)
@@ -271,11 +288,12 @@ export const PaginaFinanceiro: React.FC = () => {
       totalCriancasExcel += Number(resumo.criancas || 0);
       totalValorReserva += Number(resumo.valorReserva || 0);
       totalValorLoja += Number(resumo.valorLojinha || 0);
+      totalValorBar += Number(resumo.valorBar || 0);
       totalValorCheckout += Number(resumo.valorCheckout || 0);
       totalGeral += Number(resumo.total || 0);
     });
 
-    // ORDEM CORRIGIDA DO TOTAL
+    // LINHA TOTAL GERAL (17 colunas: A a Q)
     const linhaTotalIndex = wsData.length;
     wsData.push([
       'Total Geral',        // Coluna A (0)
@@ -288,14 +306,16 @@ export const PaginaFinanceiro: React.FC = () => {
       '',                   // Coluna J (9) - Produtos Loja
       totalValorLoja,       // Coluna K (10) - Valor Loja
       '',                   // Coluna L (11) - Pagamento Loja
-      totalValorCheckout,   // Coluna M (12) - Valor Checkout
-      '',                   // Coluna N (13) - Pagamento Checkout
-      totalGeral            // Coluna O (14) - Total Geral
+      '',                   // Coluna M (12) - Produtos Bar
+      totalValorBar,        // Coluna N (13) - Valor Bar
+      totalValorCheckout,   // Coluna O (14) - Valor Checkout
+      '',                   // Coluna P (15) - Pagamento Checkout
+      totalGeral            // Coluna Q (16) - Total Geral
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // LARGURAS ATUALIZADAS (15 colunas)
+    // LARGURAS ATUALIZADAS (17 colunas)
     ws['!cols'] = [
       { wch: 10 },  // A Nº Quarto
       { wch: 29 },  // B Nome
@@ -309,20 +329,21 @@ export const PaginaFinanceiro: React.FC = () => {
       { wch: 45 },  // J Produtos Loja
       { wch: 16 },  // K Valor Loja
       { wch: 14 },  // L Pagamento Loja
-      { wch: 16 },  // M Valor Checkout
-      { wch: 16 },  // N Pagamento Checkout
-      { wch: 19 }   // O Total Geral
+      { wch: 45 },  // M Produtos Bar
+      { wch: 16 },  // N Valor Bar
+      { wch: 16 },  // O Valor Checkout
+      { wch: 16 },  // P Pagamento Checkout
+      { wch: 19 }   // Q Total Geral
     ];
 
-    // Mesclagens para 15 colunas (A-O, 0-14)
+    // Mesclagens para 17 colunas (A-Q, 0-16)
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 14 } }
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 16 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 16 } }
     ];
 
     const COR_TITULO = '2E5A27';
     const COR_CABECALHO = '4A7C59';
-    const COR_DESTAQUE = '92D050';
     const COR_ZEBRA = 'F2F6F0';
     const COR_BORDA = '6B8066';
     const COR_TOTAL = '375623';
@@ -344,8 +365,8 @@ export const PaginaFinanceiro: React.FC = () => {
 
     const formatoMoeda = '[$R$-pt-BR] #,##0.00;[$R$-pt-BR] #,##0.00;[$R$-pt-BR] -';
 
-    // Título - A1:O1
-    for (let c = 0; c < 15; c++) {
+    // Título - A1:Q1
+    for (let c = 0; c < 17; c++) {
       const addr = XLSX.utils.encode_col(c) + '1';
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
       ws[addr].s = {
@@ -355,8 +376,8 @@ export const PaginaFinanceiro: React.FC = () => {
       };
     }
 
-    // Período - A2:O2
-    for (let c = 0; c < 15; c++) {
+    // Período - A2:Q2
+    for (let c = 0; c < 17; c++) {
       const addr = XLSX.utils.encode_col(c) + '2';
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
       ws[addr].s = {
@@ -366,8 +387,8 @@ export const PaginaFinanceiro: React.FC = () => {
       };
     }
 
-    // Cabeçalho - A3:O3
-    for (let c = 0; c < 15; c++) {
+    // Cabeçalho - A3:Q3
+    for (let c = 0; c < 17; c++) {
       const addr = XLSX.utils.encode_col(c) + '3';
       ws[addr].s = {
         fill: { fgColor: { rgb: COR_CABECALHO } },
@@ -377,7 +398,7 @@ export const PaginaFinanceiro: React.FC = () => {
       };
     }
 
-    // Dados - A4:O...
+    // Dados - A4:Q...
     const primeiraLinhaDadosExcel = 4;
     const ultimaLinhaDadosExcel = linhaTotalIndex;
 
@@ -388,13 +409,13 @@ export const PaginaFinanceiro: React.FC = () => {
 
       const corFundo = (excelRow - primeiraLinhaDadosExcel) % 2 === 0 ? BRANCO : COR_ZEBRA;
 
-      for (let c = 0; c < 15; c++) {
+      for (let c = 0; c < 17; c++) {
         const addr = XLSX.utils.encode_col(c) + excelRow;
         if (!ws[addr]) ws[addr] = { t: 's', v: '' };
 
         let horizontal: 'left' | 'center' | 'right' = 'center';
-        if (c === 1 || c === 9) horizontal = 'left';  // Nome (1) e Produtos (9)
-        if (c === 7 || c === 10 || c === 12 || c === 14) horizontal = 'right';  // Valores (7, 10, 12, 14)
+        if (c === 1 || c === 9 || c === 12) horizontal = 'left';  // Nome (1), Prod Loja (9), Prod Bar (12)
+        if (c === 7 || c === 10 || c === 13 || c === 14 || c === 16) horizontal = 'right';  // Valores (7, 10, 13, 14, 16)
 
         ws[addr].s = {
           fill: { fgColor: { rgb: corFundo } },
@@ -403,8 +424,8 @@ export const PaginaFinanceiro: React.FC = () => {
           border: bordaFina
         };
 
-        // Formatação de moeda nas colunas H, K, M, O (índices 7, 10, 12, 14)
-        if (c === 7 || c === 10 || c === 12 || c === 14) {
+        // Formatação de moeda nas colunas H, K, N, O, Q (índices 7, 10, 13, 14, 16)
+        if (c === 7 || c === 10 || c === 13 || c === 14 || c === 16) {
           ws[addr].z = formatoMoeda;
         }
       }
@@ -412,7 +433,7 @@ export const PaginaFinanceiro: React.FC = () => {
 
     // Total Geral - linha final
     const totalExcelRow = linhaTotalIndex + 1;
-    for (let c = 0; c < 15; c++) {
+    for (let c = 0; c < 17; c++) {
       const addr = XLSX.utils.encode_col(c) + totalExcelRow;
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
 
@@ -420,7 +441,7 @@ export const PaginaFinanceiro: React.FC = () => {
         fill: { fgColor: { rgb: COR_TOTAL } },
         font: { name: 'Calibri', sz: 14, bold: true, color: { rgb: BRANCO } },
         alignment: {
-          horizontal: c === 0 || c === 2 || c === 3 || c === 8 || c === 9 || c === 11 || c === 13 ? 'center' : 'right',
+          horizontal: c === 0 || c === 2 || c === 3 || c === 8 || c === 9 || c === 11 || c === 12 || c === 15 ? 'center' : 'right',
           vertical: 'center',
           wrapText: false
         },
@@ -432,7 +453,7 @@ export const PaginaFinanceiro: React.FC = () => {
         }
       };
 
-      if (c === 7 || c === 10 || c === 12 || c === 14) {
+      if (c === 7 || c === 10 || c === 13 || c === 14 || c === 16) {
         ws[addr].z = formatoMoeda;
       }
     }
@@ -529,7 +550,7 @@ export const PaginaFinanceiro: React.FC = () => {
       </div>
 
       {/* Filtro de Data */}
-      <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs">
+      <div className="bg-[#ffffff] border border-[#c1c9bf] rounded-2xl p-5 shadow-xs">
         <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
           <div className="flex-1">
             <label className="block text-xs font-semibold text-[#414941] mb-1.5"><Calendar className="w-3.5 h-3.5 inline mr-1" />Data Inicial</label>
@@ -576,14 +597,14 @@ export const PaginaFinanceiro: React.FC = () => {
       </div>
 
       {/* Cards de Resumo Financeiro */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
           <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Receita Total Realizada</p>
           <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">
             {formatarMoeda(analytics.receitaTotalRealizada)}
           </h3>
           <p className="text-[11px] text-[#137333] font-semibold mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5" /> Soma exata dos 4 pilares
+            <ArrowUpRight className="w-3.5 h-3.5" /> Soma exata dos 5 pilares
           </p>
         </div>
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
@@ -597,6 +618,10 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
           <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Consumos Lojinha</p>
           <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">{formatarMoeda(analytics.totalVendasLoja)}</h3>
+        </div>
+        <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
+          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Consumos Bar</p>
+          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">{formatarMoeda(analytics.totalVendasBar)}</h3>
         </div>
         <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
           <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Total de Hóspedes</p>
@@ -636,6 +661,8 @@ export const PaginaFinanceiro: React.FC = () => {
                   <th className="py-3 px-3 whitespace-nowrap">Produtos Lojinha</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Lojinha</th>
                   <th className="py-3 px-3 whitespace-nowrap">Pag. Lojinha</th>
+                  <th className="py-3 px-3 whitespace-nowrap">Produtos Bar</th>
+                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Bar</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Check-out</th>
                   <th className="py-3 px-3 whitespace-nowrap">Pag. Check-out</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Total</th>
@@ -667,6 +694,10 @@ export const PaginaFinanceiro: React.FC = () => {
                         {resumo.pagtoLojinha || '-'}
                       </span>
                     </td>
+                    <td className="py-3 px-3 max-w-[200px] truncate" title={resumo.produtosBar}>
+                      {resumo.produtosBar || '-'}
+                    </td>
+                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorBar)}</td>
                     <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorCheckout)}</td>
                     <td className="py-3 px-3">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoCheckout ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
@@ -685,7 +716,7 @@ export const PaginaFinanceiro: React.FC = () => {
 
                 {resumoReservas.length === 0 && (
                   <tr>
-                    <td colSpan={16} className="py-8 text-center text-[#717971]">
+                    <td colSpan={18} className="py-8 text-center text-[#717971]">
                       <Receipt className="w-8 h-8 mx-auto mb-2 opacity-50" />
                       <p>Nenhuma reserva encontrada para o período selecionado.</p>
                     </td>
@@ -704,6 +735,8 @@ export const PaginaFinanceiro: React.FC = () => {
                     <td></td>
                     <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.valorLojinha, 0))}</td>
                     <td></td>
+                    <td></td>
+                    <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.valorBar, 0))}</td>
                     <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.valorCheckout, 0))}</td>
                     <td></td>
                     <td className="py-3 px-3 text-right">{formatarMoeda(resumoReservas.reduce((acc, r) => acc + r.total, 0))}</td>
@@ -727,7 +760,7 @@ export const PaginaFinanceiro: React.FC = () => {
             <div className="flex justify-between"><span className="text-[#414941]">1. Valor de Reserva (Sinal):</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalSinalReserva)}</span></div>
             <div className="flex justify-between"><span className="text-[#414941]">2. Valor do Check-out (Saldo):</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalSaldoReserva)}</span></div>
             <div className="flex justify-between"><span className="text-[#414941]">3. Consumos Lojinha:</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalVendasLoja)}</span></div>
-            {/* <div className="flex justify-between"><span className="text-[#414941]">4. Consumos Frigobar/Serviços:</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalConsumosFrigobar)}</span></div> */}
+            <div className="flex justify-between"><span className="text-[#414941]">4. Consumos Bar:</span><span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalVendasBar)}</span></div>
             <div className="border-t border-[#b8f0c2] pt-2 mt-2 flex justify-between">
               <span className="font-bold text-[#053d1e]">SOMA TOTAL:</span>
               <span className="font-extrabold text-lg text-[#053d1e]">{formatarMoeda(analytics.receitaTotalRealizada)}</span>

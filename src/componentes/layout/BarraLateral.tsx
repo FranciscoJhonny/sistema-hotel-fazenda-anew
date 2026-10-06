@@ -10,6 +10,7 @@ import {
   LogOut,
   Settings,
   Package,
+  Sparkles,
   Users,
   FileText,
   UserCog
@@ -118,6 +119,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'produtos',
         label: 'Produto',
         icone: <Package className="w-5 h-5" />,
+      },
+      {
+        id: 'pacotes',
+        label: 'Pacotes',
+        icone: <Sparkles className="w-5 h-5" />,
       },
       {
         id: 'usuarios',

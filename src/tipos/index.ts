@@ -142,13 +142,17 @@ export interface Pacote extends EntidadeAuditavel {
   pacoteid: number | string;
   nome: string;
   descricao?: string;
-  datainicio?: string;
-  datafim?: string;
+  datainicio?: string | null;
+  datafim?: string | null;
   valor: number;
   adultosinclusos: number;
   criancasinclusas: number;
   quantidadedias: number;
-  tipopacote?: 'HOSPEDAGEM' | 'DAY_USE' | 'FERIADO' | string;
+  incluicafemanha?: boolean;
+  incluialmoco?: boolean;
+  incluijantar?: boolean;
+  incluipasseios?: boolean;
+  tipopacote?: 'HOSPEDAGEM' | 'DAY_USE' | 'FERIADO' | 'EVENTO' | string;
 }
 
 // =============================================================================
@@ -308,6 +312,7 @@ export type PaginaNavegacao =
   | 'financeiro'
   | 'loja'
   | 'produtos'
+  | 'pacotes'
   | 'usuarios'
   | 'configuracoes';
 
