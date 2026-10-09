@@ -38,7 +38,7 @@ export type TipoLancamentoPagamento =
   | 'SALDO_RESERVA'
   | 'CONSUMO_EXTRA';
 
-export type PerfilUsuario = 'MASTER' | 'ADMIN' | 'RECEPCAO' | 'VENDAS';
+export type PerfilUsuario = 'MASTER' | 'ADMIN' | 'RECEPCAO' | 'VENDAS' | 'DIRETORIA' | 'EXECUTIVO';
 
 export type TipoVenda = 'LOJA' | 'ALMOCO' | 'DAY_USE' | 'CONSUMO_QUARTO';
 
@@ -301,6 +301,7 @@ export interface ConfiguracaoSistema {
 export type PaginaNavegacao = 
   | 'login'
   | 'dashboard'
+  | 'dashboard-executivo'
   | 'quartos'
   | 'status-quartos'
   | 'mapa-reservas'

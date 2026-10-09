@@ -102,10 +102,11 @@ export class AuthService implements IAuthService {
     let perfil: PerfilUsuario = 'RECEPCAO';
     const idPerfil = Number(data.perfilid || data.PerfilId || data.perfil_id || 0);
 
-    // 1. Verificar pelo nome da descrição do perfil do JOIN
-    const descricaoPerfil = (data.perfil?.descricao || data.Perfil?.descricao || '').toString().toUpperCase();
+    const perfilString = (data.perfil || data.Perfil || data.cargo || '').toString().toUpperCase();
 
-    if (descricaoPerfil.includes('MASTER') || idPerfil === 1) {
+    if (descricaoPerfil.includes('DIRETORIA') || descricaoPerfil.includes('EXECUTIVO') || perfilString.includes('DIRETORIA') || perfilString.includes('EXECUTIVO') || idPerfil === 4 || idPerfil === 6) {
+      perfil = 'DIRETORIA';
+    } else if (descricaoPerfil.includes('MASTER') || idPerfil === 1) {
       perfil = 'MASTER';
     } else if (descricaoPerfil.includes('ADMIN') || descricaoPerfil.includes('ADMINISTRADOR') || idPerfil === 2) {
       perfil = 'ADMIN';

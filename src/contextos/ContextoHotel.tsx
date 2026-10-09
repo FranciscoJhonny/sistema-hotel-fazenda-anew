@@ -213,7 +213,12 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           if (usuarioDb) {
             setUsuarioAtual(usuarioSalvo);
             setAutenticado(true);
-            const paginaPadrao: PaginaNavegacao = usuarioSalvo.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+            const paginaPadrao: PaginaNavegacao =
+              (usuarioSalvo.perfil === 'DIRETORIA' || usuarioSalvo.perfil === 'EXECUTIVO')
+                ? 'dashboard-executivo'
+                : usuarioSalvo.perfil === 'RECEPCAO'
+                ? 'checkin'
+                : 'dashboard';
             setPaginaAtual(paginaPadrao);
             return;
           }
@@ -248,7 +253,12 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         const usuario = resultado.dados as Usuario;
         setUsuarioAtual(usuario);
         setAutenticado(true);
-        const paginaInicial: PaginaNavegacao = usuario.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+        const paginaInicial: PaginaNavegacao =
+          (usuario.perfil === 'DIRETORIA' || usuario.perfil === 'EXECUTIVO')
+            ? 'dashboard-executivo'
+            : usuario.perfil === 'RECEPCAO'
+            ? 'checkin'
+            : 'dashboard';
         setPaginaAtual(paginaInicial);
         return { sucesso: true, usuario };
       }

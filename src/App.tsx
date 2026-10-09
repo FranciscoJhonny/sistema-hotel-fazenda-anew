@@ -4,6 +4,7 @@ import { PaginaNavegacao } from './tipos';
 import { BarraLateral } from './componentes/layout/BarraLateral';
 import { BarraSuperior } from './componentes/layout/BarraSuperior';
 import { PaginaDashboard } from './paginas/PaginaDashboard';
+import { PaginaDashboardExecutivo } from './paginas/PaginaDashboardExecutivo';
 import { PaginaStatusQuartos } from './paginas/PaginaStatusQuartos';
 import { PaginaMapaReservas } from './paginas/PaginaMapaReservas';
 import { PaginaCheckin } from './paginas/PaginaCheckin';
@@ -43,9 +44,15 @@ const ConteudoPrincipal: React.FC = () => {
     return null;
   }
 
+  // Trava de permissão: Perfil DIRETORIA/EXECUTIVO acessa exclusivamente o Dashboard Executivo
+  if ((usuarioAtual?.perfil === 'DIRETORIA' || usuarioAtual?.perfil === 'EXECUTIVO') && paginaAtual !== 'dashboard-executivo') {
+    navegarPara('dashboard-executivo');
+    return null;
+  }
+
   // Trava de permissão: Perfil diferente de MASTER (Dono) tentando acessar a Gestão de Usuários
   if (paginaAtual === 'usuarios' && usuarioAtual?.perfil !== 'MASTER') {
-    const destino = usuarioAtual?.perfil === 'RECEPCAO' ? 'checkin' : 'dashboard';
+    const destino = usuarioAtual?.perfil === 'RECEPCAO' ? 'checkin' : usuarioAtual?.perfil === 'DIRETORIA' || usuarioAtual?.perfil === 'EXECUTIVO' ? 'dashboard-executivo' : 'dashboard';
     navegarPara(destino);
     return null;
   }
@@ -54,6 +61,8 @@ const ConteudoPrincipal: React.FC = () => {
     switch (paginaAtual) {
       case 'dashboard':
         return <PaginaDashboard />;
+      case 'dashboard-executivo':
+        return <PaginaDashboardExecutivo />;
       case 'quartos':
         return <PaginaQuartos />;
       case 'status-quartos':

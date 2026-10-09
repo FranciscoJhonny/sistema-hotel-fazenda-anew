@@ -11,6 +11,7 @@ import {
   Settings,
   Package,
   Sparkles,
+  TrendingUp,
   Users,
   FileText,
   UserCog
@@ -67,6 +68,11 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
         id: 'dashboard',
         label: 'Dashboard',
         icone: <LayoutDashboard className="w-5 h-5" />,
+      },
+      {
+        id: 'dashboard-executivo',
+        label: 'Macro Financeira',
+        icone: <TrendingUp className="w-5 h-5" />,
       },
       {
         id: 'fnrh',
@@ -167,9 +173,29 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
       },
     ];
 
+  const itensMenuDiretoria: {
+    id: PaginaNavegacao;
+    label: string;
+    icone: React.ReactNode;
+    contador?: number;
+  }[] = [
+    {
+      id: 'dashboard-executivo',
+      label: 'Visão Macro Financeira',
+      icone: <TrendingUp className="w-5 h-5" />,
+    },
+  ];
+
+  // Perfil DIRETORIA/EXECUTIVO visualiza exclusivamente a Visão Macro Financeira.
   // Perfil RECEPCAO visualiza exclusivamente Check-in, Check-out, Produto e Quartos.
   // O item 'usuarios' (Gestão de Usuários) é visível EXCLUSIVAMENTE para o perfil MASTER (Dono do Sistema).
-  const itensMenuBase = usuarioAtual?.perfil === 'RECEPCAO' ? itensMenuRecepcao : itensMenuAdmin;
+  const eDiretoria = usuarioAtual?.perfil === 'DIRETORIA' || usuarioAtual?.perfil === 'EXECUTIVO';
+  const itensMenuBase = eDiretoria
+    ? itensMenuDiretoria
+    : usuarioAtual?.perfil === 'RECEPCAO'
+    ? itensMenuRecepcao
+    : itensMenuAdmin;
+
   const itensMenu = itensMenuBase.filter((item) => {
     if (item.id === 'usuarios') {
       return usuarioAtual?.perfil === 'MASTER';
@@ -209,6 +235,8 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
           <p className="font-['Inter'] text-[11px] text-[#717971] uppercase tracking-wider font-semibold mt-0.5">
             {usuarioAtual?.perfil === 'MASTER'
               ? 'Dono do Sistema'
+              : eDiretoria
+              ? 'Diretoria / Executivo'
               : usuarioAtual?.perfil === 'RECEPCAO'
               ? 'Recepção'
               : 'Administração'}
