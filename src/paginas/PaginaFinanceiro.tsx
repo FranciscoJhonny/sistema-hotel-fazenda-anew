@@ -17,16 +17,28 @@ import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { Pagamento, Reserva, ConsumoExtra } from '../tipos';
 import * as XLSX from 'xlsx-js-style';
 
-// Formatação legível dos métodos de pagamento
-const formatarNomePagamento = (forma: string) => {
+// Formatação legível e discriminada por forma de pagamento e parcelamento
+const formatarNomePagamento = (forma: string, parcelas?: number) => {
+  const parcelaTexto = parcelas && Number(parcelas) > 1 ? ` (${parcelas}x)` : '';
   switch (forma) {
     case 'PIX': return 'PIX';
-    case 'CARTAO_CREDITO': return 'Crédito';
+    case 'CARTAO_CREDITO': return `Crédito${parcelaTexto}`;
     case 'CARTAO_DEBITO': return 'Débito';
     case 'DINHEIRO': return 'Dinheiro';
     case 'TRANSFERENCIA': return 'Transferência';
-    default: return forma || 'Não informado';
+    default: return forma ? `${forma}${parcelaTexto}` : 'Não informado';
   }
+};
+
+// Formata lista discriminada de pagamentos (Ex: "PIX: R$ 150,00 | Crédito (3x): R$ 350,00")
+const formatarDiscriminacaoPagamentos = (lista: Pagamento[]) => {
+  if (!lista || lista.length === 0) return '';
+  return lista
+    .map((p) => {
+      const nome = formatarNomePagamento(p.formapagamento, (p as any).parcelas);
+      return `${nome}: ${formatarMoeda(Number(p.valor || 0))}`;
+    })
+    .join(' | ');
 };
 
 export const PaginaFinanceiro: React.FC = () => {
@@ -88,7 +100,7 @@ export const PaginaFinanceiro: React.FC = () => {
     });
   }, [consumosExtras, reservasDoPeriodo, usarFiltroData, dataInicioFiltro, dataFimFiltro]);
 
-  // 3. RESUMO CONSOLIDADO POR RESERVA
+  // 3. RESUMO CONSOLIDADO DISCRIMINADO POR RESERVA
   const resumoReservas = useMemo(() => {
     return reservasDoPeriodo.map((reserva) => {
       const quarto = quartos?.find((q) => String(q.quartoid) === String(reserva.quartoid));
@@ -111,43 +123,48 @@ export const PaginaFinanceiro: React.FC = () => {
         ? consumosBar.map((c) => `${c.quantidade}x ${c.descricao || c.categoria}`).join(', ')
         : '';
 
-      // Pagamentos associados à reserva
+      // Todos os pagamentos desta reserva
       const pagamentosDaReserva = pagamentosDoPeriodo.filter(
         (p) => String(p.reservaid) === String(reserva.reservaid)
       );
 
-      // Pagamento do Sinal (Reserva Inicial)
+      // Pagamentos de Sinal da Reserva
       const pagamentosSinal = pagamentosDaReserva.filter(
         (p) => p.tipolancamento === 'SINAL_RESERVA' || !p.tipolancamento
       );
       const somaPagosSinal = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
       const valorReservaPago = somaPagosSinal > 0 ? somaPagosSinal : Number(reserva.valorpago || 0);
 
-      const metodosSinalUnicos = [...new Set(pagamentosSinal.map((p) => formatarNomePagamento(p.formapagamento)))].filter(Boolean);
-      const metodosSinal = metodosSinalUnicos.length > 0
-        ? metodosSinalUnicos.join(' / ')
+      const pagtoReservaDetalhado = pagamentosSinal.length > 0
+        ? formatarDiscriminacaoPagamentos(pagamentosSinal)
         : formatarNomePagamento(reserva.formapagamento || 'PIX');
 
-      // Pagamentos do Checkout (Saldo e Consumos Extra liquidados)
+      // Pagamentos executados no Checkout (Saldo Restante e Consumos)
       const pagamentosCheckout = pagamentosDaReserva.filter(
         (p) => p.tipolancamento === 'SALDO_RESERVA' || p.tipolancamento === 'CONSUMO_EXTRA'
       );
       const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-      const metodosCheckout = [...new Set(pagamentosCheckout.map((p) => formatarNomePagamento(p.formapagamento)))].filter(Boolean).join(' / ') || '';
 
-      // Rastreamento dos métodos de pagamento dos consumos extras
-      const pagamentosConsumo = pagamentosDaReserva.filter((p) => p.tipolancamento === 'CONSUMO_EXTRA');
-      const metodoConsumoGeral = pagamentosConsumo.length > 0
-        ? [...new Set(pagamentosConsumo.map((p) => formatarNomePagamento(p.formapagamento)))].join(' / ')
-        : (reserva.statusreserva === 'CONCLUIDA' ? (metodosCheckout || 'Acerto no Check-out') : '');
+      // Discriminação exata com parcelas e valores
+      const pagtoCheckoutDetalhado = formatarDiscriminacaoPagamentos(pagamentosCheckout);
 
-      const pagtoLojinha = valorLojinha > 0 ? (metodoConsumoGeral || '-') : '';
-      const pagtoBar = valorBar > 0 ? (metodoConsumoGeral || '-') : '';
+      // Rastrear pagamento exclusivo de consumo (quando pago separado)
+      const pagamentosExtras = pagamentosDaReserva.filter((p) => p.tipolancamento === 'CONSUMO_EXTRA');
+      const pagtoExtrasSeparado = formatarDiscriminacaoPagamentos(pagamentosExtras);
 
-      // Total Financeiro: Soma de todos os pagamentos realizados nesta reserva
+      // Se foi pago separado, mostra a discriminação do consumo. Se foi junto no checkout, aponta acerto consolidado.
+      const pagtoLojinha = valorLojinha > 0
+        ? (pagtoExtrasSeparado || (reserva.statusreserva === 'CONCLUIDA' ? (pagtoCheckoutDetalhado || 'Liquidado no Checkout') : 'Pendente'))
+        : '';
+
+      const pagtoBar = valorBar > 0
+        ? (pagtoExtrasSeparado || (reserva.statusreserva === 'CONCLUIDA' ? (pagtoCheckoutDetalhado || 'Liquidado no Checkout') : 'Pendente'))
+        : '';
+
+      // Total financeiro realizado no banco
       const totalGeral = valorReservaPago + valorCheckoutPago;
 
-      // Status do Pagamento
+      // Status
       let status = 'PENDENTE';
       if (reserva.statusreserva === 'CONCLUIDA' && Number(reserva.saldo || 0) <= 0.01) {
         status = 'PAGO';
@@ -169,7 +186,7 @@ export const PaginaFinanceiro: React.FC = () => {
         dataEntrada: reserva.dataentrada,
         dataSaida: reserva.datasaida,
         valorReserva: valorReservaPago,
-        pagtoReserva: metodosSinal,
+        pagtoReserva: pagtoReservaDetalhado,
         produtosLojinha: produtosLojinhaConcat,
         valorLojinha: valorLojinha,
         pagtoLojinha: pagtoLojinha,
@@ -177,7 +194,7 @@ export const PaginaFinanceiro: React.FC = () => {
         valorBar: valorBar,
         pagtoBar: pagtoBar,
         valorCheckout: valorCheckoutPago,
-        pagtoCheckout: metodosCheckout,
+        pagtoCheckout: pagtoCheckoutDetalhado,
         total: totalGeral,
         totalHospedes: totalHospedesReserva,
         status: status,
@@ -199,7 +216,6 @@ export const PaginaFinanceiro: React.FC = () => {
     const totalAdultos = resumoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
 
-    // Receita Total Realizada (entradas efetivas)
     const receitaTotalRealizada = totalSinalReserva + totalSaldoReserva;
 
     const totalSaldosPendentes = reservasDoPeriodo
@@ -220,7 +236,7 @@ export const PaginaFinanceiro: React.FC = () => {
     };
   }, [consumosDessasReservas, reservasDoPeriodo, resumoReservas]);
 
-  // 5. EXPORTAÇÃO EXCEL COM TODAS AS 18 COLUNAS ALINHADAS
+  // 5. EXPORTAÇÃO EXCEL COM TODAS AS 18 COLUNAS ALINHADAS E DETALHADAS
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
@@ -233,7 +249,7 @@ export const PaginaFinanceiro: React.FC = () => {
     const titulo = 'HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO';
     const periodo = `Período: ${formatarData(dataInicioFiltro || '')} a ${formatarData(dataFimFiltro || '')}`;
 
-    // CABEÇALHO (18 colunas: A a R)
+    // CABEÇALHO COMPLETO (18 colunas: A a R)
     wsData.push([titulo]);
     wsData.push([periodo]);
     wsData.push([
@@ -245,7 +261,7 @@ export const PaginaFinanceiro: React.FC = () => {
       'Data Saída',
       'Data Reserva',
       'Valor Reserva (R$)',
-      'Pag. Reserva',
+      'Pag. Reserva (Detalhado)',
       'Produtos (Loja)',
       'Valor Loja (R$)',
       'Pag. Loja',
@@ -253,7 +269,7 @@ export const PaginaFinanceiro: React.FC = () => {
       'Valor Bar (R$)',
       'Pag. Bar',
       'Valor Check-out (R$)',
-      'Pag. Check-out',
+      'Pag. Check-out (Detalhado c/ Parcelas)',
       'Total Geral (R$)',
     ]);
 
@@ -321,7 +337,7 @@ export const PaginaFinanceiro: React.FC = () => {
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // LARGURAS DAS COLUNAS
+    // LARGURAS EXPANDIDAS PARA CABER A DISCRIMINAÇÃO
     ws['!cols'] = [
       { wch: 10 }, // A Nº Quarto
       { wch: 28 }, // B Nome
@@ -331,15 +347,15 @@ export const PaginaFinanceiro: React.FC = () => {
       { wch: 11 }, // F Data Saída
       { wch: 11 }, // G Data Reserva
       { wch: 18 }, // H Valor Reserva
-      { wch: 16 }, // I Pag. Reserva
+      { wch: 30 }, // I Pag. Reserva Detalhado
       { wch: 35 }, // J Produtos Loja
       { wch: 15 }, // K Valor Loja
-      { wch: 16 }, // L Pag. Loja
+      { wch: 25 }, // L Pag. Loja
       { wch: 35 }, // M Produtos Bar
       { wch: 15 }, // N Valor Bar
-      { wch: 16 }, // O Pag. Bar
+      { wch: 25 }, // O Pag. Bar
       { wch: 18 }, // P Valor Checkout
-      { wch: 22 }, // Q Pag. Checkout
+      { wch: 40 }, // Q Pag. Checkout Detalhado
       { wch: 19 }, // R Total Geral
     ];
 
@@ -415,13 +431,13 @@ export const PaginaFinanceiro: React.FC = () => {
         if (!ws[addr]) ws[addr] = { t: 's', v: '' };
 
         let horizontal: 'left' | 'center' | 'right' = 'center';
-        if (c === 1 || c === 9 || c === 12) horizontal = 'left';
+        if (c === 1 || c === 8 || c === 9 || c === 11 || c === 12 || c === 14 || c === 16) horizontal = 'left';
         if (c === 7 || c === 10 || c === 13 || c === 15 || c === 17) horizontal = 'right';
 
         ws[addr].s = {
           fill: { fgColor: { rgb: corFundo } },
           font: fonteBase,
-          alignment: { horizontal, vertical: 'center', wrapText: false },
+          alignment: { horizontal, vertical: 'center', wrapText: true },
           border: bordaFina,
         };
 
@@ -512,7 +528,7 @@ export const PaginaFinanceiro: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[#717971] mt-1">
-            Gestão consolidada de diárias, adiantamentos, consumos de Bar/Lojinha e liquidações do check-out.
+            Gestão consolidada de diárias, adiantamentos, consumos de Bar/Lojinha e liquidações discriminadas do check-out.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -645,7 +661,7 @@ export const PaginaFinanceiro: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid: Tabela Detalhada */}
+      {/* Grid: Tabela Detalhada com Quebra de Linha em Múltiplos Pagamentos */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl shadow-xs overflow-hidden">
         <div className="px-5 py-4 border-b border-[#c1c9bf] flex items-center justify-between">
           <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d]">
@@ -683,7 +699,7 @@ export const PaginaFinanceiro: React.FC = () => {
                   <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Bar</th>
                   <th className="py-3 px-3 whitespace-nowrap">Pag. Bar</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Check-out</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Pag. Check-out</th>
+                  <th className="py-3 px-3 whitespace-nowrap min-w-[200px]">Pag. Check-out (Detalhes)</th>
                   <th className="py-3 px-3 text-right whitespace-nowrap">Total Pago</th>
                   <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
                 </tr>
@@ -726,10 +742,18 @@ export const PaginaFinanceiro: React.FC = () => {
                       </span>
                     </td>
                     <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorCheckout)}</td>
-                    <td className="py-3 px-3">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoCheckout ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
-                        {resumo.pagtoCheckout || '-'}
-                      </span>
+                    <td className="py-3 px-3 font-medium">
+                      {resumo.pagtoCheckout ? (
+                        <div className="flex flex-col gap-0.5">
+                          {resumo.pagtoCheckout.split(' | ').map((item, idx) => (
+                            <span key={idx} className="inline-block bg-slate-100 text-slate-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
                     </td>
                     <td className="py-3 px-3 text-right font-extrabold text-[#053d1e]">{formatarMoeda(resumo.total)}</td>
                     <td className="py-3 px-3 text-center">
