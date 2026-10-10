@@ -18,7 +18,8 @@ import {
   X,
   AlertCircle,
   DollarSign,
-  Filter
+  Filter,
+  PauseCircle
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva, Quarto, Hospede, ConsumoExtra, Pagamento } from '../tipos';
@@ -40,6 +41,7 @@ interface ModalDetalhesReservaProps {
   consumos: ConsumoExtra[];
   pagamentos: Pagamento[];
   onFechar: () => void;
+  onRemarcar?: (reserva: Reserva) => void;
 }
 
 const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
@@ -50,6 +52,7 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
   consumos,
   pagamentos,
   onFechar,
+  onRemarcar,
 }) => {
   const [acompanhantes, setAcompanhantes] = useState<any[]>([]);
   const [carregandoAcomp, setCarregandoAcomp] = useState(false);
@@ -106,37 +109,27 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
 
   if (!aberto || !reserva) return null;
 
-  // Cálculos Financeiros
-  const vlrReserva = reserva.valortotal || 0;
+  // Filtra pagamentos e consumos
+  const consumosReserva = consumos.filter((c) => String(c.reservaid) === String(reserva.reservaid));
+  const pagamentosReserva = pagamentos.filter((p) => String(p.reservaid) === String(reserva.reservaid));
 
-  // Pagamentos da Reserva (Sinal)
-  const pagamentosReservaSinal = pagamentos.filter(
-    (p) => String(p.reservaid) === String(reserva.reservaid) && p.tipolancamento === 'SINAL_RESERVA'
-  );
-  const pagReserva = pagamentosReservaSinal.length > 0
-    ? pagamentosReservaSinal.reduce((acc, curr) => acc + (curr.valor || 0), 0)
-    : (reserva.valorpago || 0);
+  // Separa consumos da Lojinha/Consumo extra
+  const consumosLojinha = consumosReserva;
+  const vlrLojinha = consumosLojinha.reduce((acc, c) => acc + (c.valortotal || 0), 0);
+  const pagLojinha = pagamentosReserva
+    .filter((p) => p.tipolancamento === 'CONSUMO_EXTRA')
+    .reduce((acc, p) => acc + (p.valor || 0), 0);
 
-  // Consumos Lojinha
-  const consumosLojinha = consumos.filter(
-    (c) => String(c.reservaid) === String(reserva.reservaid)
-  );
-  const vlrLojinha = consumosLojinha.reduce((acc, curr) => acc + (curr.valortotal || 0), 0);
+  // Valores da diária/hospedagem
+  const vlrReserva = Number(reserva.valortotal || 0);
+  const pagReserva = Number(reserva.valorpago || 0);
 
-  // Pagamentos Lojinha
-  const pagamentosLojinha = pagamentos.filter(
-    (p) => String(p.reservaid) === String(reserva.reservaid) && p.tipolancamento === 'CONSUMO_EXTRA'
-  );
-  const pagLojinha = pagamentosLojinha.reduce((acc, curr) => acc + (curr.valor || 0), 0);
+  // Lançamentos no check-out
+  const pagCheckout = pagamentosReserva
+    .filter((p) => p.tipolancamento === 'SALDO_RESERVA')
+    .reduce((acc, p) => acc + (p.valor || 0), 0);
+  const vlrCheckout = Math.max(0, (vlrReserva - pagReserva) + (vlrLojinha - pagLojinha));
 
-  // Check-out
-  const pagamentosCheckout = pagamentos.filter(
-    (p) => String(p.reservaid) === String(reserva.reservaid) && p.tipolancamento === 'SALDO_RESERVA'
-  );
-  const pagCheckout = pagamentosCheckout.reduce((acc, curr) => acc + (curr.valor || 0), 0);
-  const vlrCheckout = Math.max(0, (vlrReserva + vlrLojinha) - (pagReserva + pagLojinha));
-
-  // Totais Gerais
   const totalGeral = vlrReserva + vlrLojinha;
   const totalPagoGeral = pagReserva + pagLojinha + pagCheckout;
   const saldoFinal = Math.max(0, totalGeral - totalPagoGeral);
@@ -150,49 +143,49 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
     window.print();
   };
 
-  const statusBadgeStyle = (status: string) => {
-    switch (status) {
-      case 'PRE_RESERVA':
-        return 'bg-amber-100 text-amber-900 border-amber-300';
-      case 'RESERVADO':
-        return 'bg-blue-100 text-blue-900 border-blue-300';
-      case 'HOSPEDADO':
-        return 'bg-emerald-100 text-emerald-900 border-emerald-300';
-      case 'CONCLUIDA':
-        return 'bg-slate-100 text-slate-800 border-slate-300';
-      case 'CANCELADA':
-        return 'bg-red-100 text-red-800 border-red-300';
-      default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
+  const ehCredito = reserva.statusreserva === 'CREDITO';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-[#c1c9bf] overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl border border-[#c1c9bf] shadow-2xl max-w-4xl w-full overflow-hidden flex flex-col max-h-[90vh] my-8 animate-in fade-in zoom-in-95 duration-200">
         
-        {/* Cabeçalho do Modal */}
-        <div className="bg-[#053d1e] px-6 py-4 text-white flex items-center justify-between shrink-0">
+        {/* Cabeçalho do Comprovante/Conferência */}
+        <div className="bg-[#053d1e] text-white px-6 py-4 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-white/10 rounded-xl">
-              <CalendarDays className="w-5 h-5 text-emerald-300" />
+              <FileText className="w-6 h-6 text-emerald-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold font-['Manrope']">
-                  Conferência da Reserva {reserva.codigo || `#RES-${reserva.reservaid}`}
+                <h2 className="font-['Manrope'] text-lg font-bold">
+                  Reserva #{reserva.codigo || reserva.reservaid}
                 </h2>
-                <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border ${statusBadgeStyle(reserva.statusreserva)}`}>
-                  {reserva.statusreserva}
+                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  ehCredito ? 'bg-amber-100 text-amber-950 border border-amber-300' : 'bg-white/20 text-white'
+                }`}>
+                  {ehCredito ? '⏸️ CRÉDITO ATIVO' : reserva.statusreserva}
                 </span>
               </div>
-              <p className="text-xs text-white/80">
+              <p className="text-xs text-white/80 mt-0.5">
                 Quarto: <strong className="text-white">{quarto?.codigoidentificador || quarto?.numero || '--'}</strong> ({quarto?.categoria || 'Standard'}) • Data Reserva: {dataReservaExibicao}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {ehCredito && onRemarcar && (
+              <button
+                type="button"
+                onClick={() => {
+                  onFechar();
+                  onRemarcar(reserva);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-400 text-amber-950 hover:bg-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span>Remarcar Reserva</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleImprimir}
@@ -203,7 +196,7 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
             </button>
             <button
               onClick={onFechar}
-              className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -212,6 +205,33 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
 
         {/* Conteúdo com Scroll */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-800">
+
+          {/* Banner de Crédito Ativo se aplicável */}
+          {ehCredito && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs font-medium text-amber-950 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <PauseCircle className="w-6 h-6 text-amber-700 shrink-0" />
+                <div>
+                  <span className="font-bold text-sm block">Reserva Suspensa com Crédito Ativo</span>
+                  <span className="text-amber-900 text-[11px] block mt-0.5">
+                    O quarto físico foi desvinculado e o valor já pago de <strong>{formatarMoeda(reserva.valorpago)}</strong> foi mantido como saldo para remarcação.
+                  </span>
+                </div>
+              </div>
+              {onRemarcar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onFechar();
+                    onRemarcar(reserva);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#053d1e] hover:bg-[#1d502f] text-white text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs"
+                >
+                  Remarcar Agora
+                </button>
+              )}
+            </div>
+          )}
 
           {/* SEÇÃO 1: Dados da Reserva & Acompanhantes */}
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
@@ -249,75 +269,55 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
                 </span>
               </div>
 
-              <div>
-                <span className="text-slate-500 block">Quarto</span>
-                <span className="font-bold text-emerald-800 text-sm">
-                  {quarto?.codigoidentificador || quarto?.numero || '--'} ({quarto?.categoria || 'Standard'})
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-slate-500 block">Check-in Previsto</span>
+                <span className="font-bold text-slate-800">
+                  {formatarData(reserva.dataentrada)} ({reserva.horarioprevistochegada || '14:00'})
                 </span>
               </div>
 
-              <div>
-                <span className="text-slate-500 block">Data da Reserva</span>
-                <span className="font-semibold text-slate-900">
-                  {dataReservaExibicao}
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-slate-500 block">Check-out Previsto</span>
+                <span className="font-bold text-slate-800">
+                  {formatarData(reserva.datasaida)}
                 </span>
               </div>
 
-              <div>
-                <span className="text-slate-500 block">Data Entrada ➔ Saída</span>
-                <span className="font-semibold text-slate-900">
-                  {formatarData(reserva.dataentrada)} ➔ {formatarData(reserva.datasaida)} ({numDiarias} diária(s))
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-slate-500 block">Duração / Ocupantes</span>
+                <span className="font-bold text-slate-800">
+                  {numDiarias} diária(s) • {reserva.adultos} adulto(s), {reserva.criancas} criança(s)
                 </span>
               </div>
 
-              <div>
-                <span className="text-slate-500 block">Total de Hóspedes</span>
-                <span className="font-semibold text-slate-900">
-                  {Number(reserva.adultos || 1) + Number(reserva.criancas || 0)} ({reserva.adultos || 1} ad + {reserva.criancas || 0} cri)
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-slate-500 block">Forma de Pagamento</span>
+                <span className="font-bold text-emerald-800">
+                  {reserva.formapagamento || 'PIX'}
                 </span>
               </div>
             </div>
 
-            {/* Acompanhantes */}
+            {/* Acompanhantes Vinculados */}
             <div className="mt-4 pt-3 border-t border-slate-100">
               <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-emerald-700" />
-                Acompanhantes Cadastrados ({acompanhantes.length})
+                <Users className="w-3.5 h-3.5 text-[#053d1e]" />
+                Acompanhantes Vinculados ({acompanhantes.length})
               </h4>
 
               {carregandoAcomp ? (
-                <p className="text-xs text-slate-400 italic">Carregando acompanhantes...</p>
+                <div className="text-xs text-slate-500 py-2 italic">Carregando acompanhantes...</div>
               ) : acompanhantes.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">Nenhum acompanhante cadastrado para esta reserva.</p>
+                <div className="text-xs text-slate-400 py-1.5 italic">Nenhum acompanhante cadastrado nesta reserva.</div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  {acompanhantes.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/80 text-xs space-y-1"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900">{item.nomecompleto}</span>
-                        <span className="font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded text-[10px]">
-                          {calcularIdade(item.datanascimento)}
-                        </span>
-                      </div>
-                      <div className="text-slate-500 text-[11px] flex flex-wrap justify-between gap-1">
-                        <span>Doc: {item.documento || 'Sem doc.'}</span>
-                        {item.datanascimento && (
-                          <span>Nasc: {formatarData(item.datanascimento)}</span>
-                        )}
-                      </div>
-                      {item.cpfresponsavel && (
-                        <div className="text-[10px] text-slate-600">
-                          Resp: {formatarCpf(item.cpfresponsavel)}
-                        </div>
-                      )}
-                      {item.observacoes && (
-                        <div className="text-[10px] text-slate-500 italic bg-white p-1 rounded border border-slate-100">
-                          Obs: {item.observacoes}
-                        </div>
-                      )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {acompanhantes.map((acomp, index) => (
+                    <div key={index} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="font-bold text-slate-800 block">{acomp.nomecompleto}</span>
+                      <span className="text-[11px] text-slate-500">
+                        {acomp.documento ? `Doc: ${acomp.documento}` : 'Sem documento'} •{' '}
+                        {acomp.datanascimento ? `Nasc: ${formatarData(acomp.datanascimento)}` : 'Idade N/I'}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -325,11 +325,11 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
             </div>
           </section>
 
-          {/* SEÇÃO 2: Detalhamento Financeiro & Consumos ("O que gastou") */}
+          {/* SEÇÃO 2: Detalhamento Financeiro & Consumos */}
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
             <h3 className="text-sm font-bold font-['Manrope'] text-[#053d1e] mb-3 flex items-center gap-2 border-b border-slate-100 pb-2">
               <DollarSign className="w-4 h-4 text-[#053d1e]" />
-              Conferência Financeira & Consumos ("O que gastou")
+              Conferência Financeira & Consumos
             </h3>
 
             {/* Tabela de Resumo Financeiro */}
@@ -449,15 +449,21 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
           >
             Fechar Conferência
           </button>
+
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleImprimir}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-xs cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-emerald-300" />
-              Imprimir Comprovante de Conferência
-            </button>
+            {ehCredito && onRemarcar && (
+              <button
+                type="button"
+                onClick={() => {
+                  onFechar();
+                  onRemarcar(reserva);
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs shadow-2xs cursor-pointer flex items-center gap-1.5"
+              >
+                <CalendarDays className="w-4 h-4" />
+                <span>Remarcar Reserva</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -466,11 +472,13 @@ const ModalDetalhesReserva: React.FC<ModalDetalhesReservaProps> = ({
 };
 
 export const PaginaReservasAnteriores: React.FC = () => {
-  const { reservas, quartos, hospedes, consumosExtras, pagamentos, recarregarDados } = useHotel();
+  const { reservas, quartos, hospedes, consumosExtras, pagamentos, recarregarDados, navegarPara } = useHotel();
+
   const [busca, setBusca] = useState('');
-  const [quartoFiltro, setQuartoFiltro] = useState<string>('TODOS');
-  const [statusFiltro, setStatusFiltro] = useState<string>('TODOS');
+  const [quartoFiltro, setQuartoFiltro] = useState('TODOS');
+  const [statusFiltro, setStatusFiltro] = useState('TODOS');
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState(false);
+
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
 
   const handleRecarregar = async () => {
@@ -482,23 +490,28 @@ export const PaginaReservasAnteriores: React.FC = () => {
     }
   };
 
-  // Filtra todas as reservas (Pré-reserva, Reservado, Check-in/Hospedado, Check-out/Concluída, Cancelada)
+  const handleRemarcar = (reservaCredito: Reserva) => {
+    const hospede = hospedes.find((h) => String(h.hospedeid) === String(reservaCredito.hospedeid));
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('fnrh_reserva_preenchimento', JSON.stringify({
+        nomecompleto: hospede?.nomecompleto || reservaCredito.hospedenome || 'Hóspede',
+        hospedeid: reservaCredito.hospedeid,
+        valorpago: Number(reservaCredito.valorpago || 0),
+      }));
+    }
+    navegarPara('mapa-reservas');
+  };
+
   const reservasFiltradas = useMemo(() => {
     return reservas.filter((r) => {
-      // Filtro por Status
+      if (quartoFiltro !== 'TODOS' && String(r.quartoid) !== quartoFiltro) {
+        return false;
+      }
+
       if (statusFiltro !== 'TODOS' && r.statusreserva !== statusFiltro) {
         return false;
       }
 
-      // Filtro por Quarto
-      if (quartoFiltro !== 'TODOS') {
-        const q = quartos.find((item) => String(item.quartoid) === String(r.quartoid));
-        if (!q || (q.numero !== quartoFiltro && q.codigoidentificador !== quartoFiltro)) {
-          return false;
-        }
-      }
-
-      // Filtro de Busca por Texto (Nome, CPF, Código Reserva, Quarto)
       if (busca.trim()) {
         const termo = busca.toLowerCase().trim();
         const codigo = (r.codigo || '').toLowerCase();
@@ -541,6 +554,8 @@ export const PaginaReservasAnteriores: React.FC = () => {
         return 'bg-blue-100 text-blue-900 border-blue-300';
       case 'HOSPEDADO':
         return 'bg-emerald-100 text-emerald-900 border-emerald-300';
+      case 'CREDITO':
+        return 'bg-amber-200 text-amber-950 border-amber-400 font-extrabold';
       case 'CONCLUIDA':
         return 'bg-slate-100 text-slate-800 border-slate-300';
       case 'CANCELADA':
@@ -562,7 +577,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
             <div>
               <h1 className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">Reservas</h1>
               <p className="text-xs text-[#717971]">
-                Visão completa e conferência de todas as reservas do hotel (Pré-reservas, Reservados, Hospedados e Concluídas)
+                Visão completa e conferência de todas as reservas do hotel (Pré-reservas, Reservados, Hospedados, Crédito e Concluídas)
               </p>
             </div>
           </div>
@@ -596,13 +611,14 @@ export const PaginaReservasAnteriores: React.FC = () => {
           <select
             value={statusFiltro}
             onChange={(e) => setStatusFiltro(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#053d1e] shadow-xs"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#053d1e] shadow-xs font-medium"
           >
             <option value="TODOS">Todos os Status</option>
             <option value="PRE_RESERVA">Pré-reserva</option>
             <option value="RESERVADO">Reservado</option>
-            <option value="HOSPEDADO">Hospedado (Check-in)</option>
-            <option value="CONCLUIDA">Concluída (Check-out)</option>
+            <option value="HOSPEDADO">Hospedado</option>
+            <option value="CREDITO">⏸️ Suspensas (Crédito)</option>
+            <option value="CONCLUIDA">Concluída</option>
             <option value="CANCELADA">Cancelada</option>
           </select>
         </div>
@@ -611,30 +627,28 @@ export const PaginaReservasAnteriores: React.FC = () => {
           <select
             value={quartoFiltro}
             onChange={(e) => setQuartoFiltro(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#053d1e] shadow-xs"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#053d1e] shadow-xs font-medium"
           >
             <option value="TODOS">Todos os Quartos</option>
             {quartos.map((q) => (
-              <option key={q.quartoid} value={q.numero || q.codigoidentificador}>
-                Quarto {q.codigoidentificador || q.numero} - {q.categoria}
+              <option key={q.quartoid} value={q.quartoid}>
+                Quarto #{q.codigoidentificador || q.numero} ({q.categoria})
               </option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Tabela da Lista Geral de Reservas */}
-      <div className="rounded-2xl border border-[#c1c9bf] bg-white overflow-hidden shadow-xs">
+      {/* Tabela de Listagem de Reservas */}
+      <div className="bg-white border border-[#c1c9bf] rounded-2xl shadow-xs overflow-hidden">
         {reservasFiltradas.length === 0 ? (
-          <div className="p-12 text-center">
-            <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <div className="p-12 text-center text-slate-500">
+            <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h3 className="text-sm font-bold text-slate-800 font-['Manrope']">
               Nenhuma reserva encontrada
             </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              {busca || quartoFiltro !== 'TODOS' || statusFiltro !== 'TODOS'
-                ? 'Tente alterar os termos da busca ou os filtros aplicados.'
-                : 'As reservas cadastradas aparecerão nesta lista.'}
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+              Nenhum registro corresponde aos filtros selecionados.
             </p>
           </div>
         ) : (
@@ -659,6 +673,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
                   const totalConsumos = consumosR.reduce((acc, curr) => acc + (curr.valortotal || 0), 0);
                   const totalGastoCalculado = (r.valortotal || 0) + totalConsumos;
                   const numDiarias = calcularDiarias(r.dataentrada, r.datasaida);
+                  const ehCredito = r.statusreserva === 'CREDITO';
 
                   return (
                     <tr key={r.reservaid} className="hover:bg-slate-50/80 transition-colors">
@@ -715,20 +730,33 @@ export const PaginaReservasAnteriores: React.FC = () => {
                       {/* Status */}
                       <td className="py-3.5 px-4">
                         <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full border ${statusBadgeStyle(r.statusreserva)}`}>
-                          {r.statusreserva}
+                          {ehCredito ? `⏸️ Crédito (${formatarMoeda(r.valorpago)})` : r.statusreserva}
                         </span>
                       </td>
 
                       {/* Ação */}
                       <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setReservaSelecionada(r)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-2xs cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-emerald-300" />
-                          <span>Conferir Reserva</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {ehCredito && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemarcar(r)}
+                              title="Remarcar esta reserva utilizando o crédito já pago"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-amber-950 font-bold text-xs transition-all cursor-pointer shadow-2xs"
+                            >
+                              <CalendarDays className="w-3.5 h-3.5" />
+                              <span>Remarcar</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setReservaSelecionada(r)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-2xs cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-emerald-300" />
+                            <span>Conferir</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -739,7 +767,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de Conferência Geral da Reserva */}
+      {/* Modal Detalhes & Conferência de Reserva */}
       <ModalDetalhesReserva
         aberto={Boolean(reservaSelecionada)}
         reserva={reservaSelecionada}
@@ -748,6 +776,7 @@ export const PaginaReservasAnteriores: React.FC = () => {
         consumos={consumosExtras}
         pagamentos={pagamentos}
         onFechar={() => setReservaSelecionada(null)}
+        onRemarcar={handleRemarcar}
       />
     </div>
   );

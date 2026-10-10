@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
-import { Quarto, Hospede } from '../tipos';
+import { ModalAcoesReserva } from '../componentes/mapa-reservas/ModalAcoesReserva';
+import { ModalTrocaQuarto } from '../componentes/reservas/ModalTrocaQuarto';
+import { Quarto, Hospede, Reserva } from '../tipos';
 import { formatarData } from '../utilitarios/formatadores';
 
 const hoje = new Date();
@@ -28,9 +30,6 @@ const addDias = (data: Date, dias: number) => {
 };
 
 const isDataPassada = (_data: string) => {
-  // TEMPORÁRIO PARA TESTES COM DADOS REAIS: Desativado a pedido do usuário
-  // const hoje = new Date().toISOString().slice(0, 10);
-  // return data < hoje;
   return false;
 };
 
@@ -52,6 +51,7 @@ const coresStatusReserva: Record<string, string> = {
   HOSPEDADO: 'bg-[#4CAF50] text-white',
   CONCLUIDA: 'bg-[#BDBDBD] text-[#424242]',
   CANCELADA: 'bg-[#E53935] text-white',
+  CREDITO: 'bg-amber-600 text-white',
 };
 
 const nomesStatusReserva: Record<string, string> = {
@@ -60,6 +60,7 @@ const nomesStatusReserva: Record<string, string> = {
   HOSPEDADO: 'Hospedado',
   CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
+  CREDITO: 'Crédito',
 };
 
 export const PaginaMapaReservas: React.FC = () => {
@@ -73,8 +74,9 @@ export const PaginaMapaReservas: React.FC = () => {
       return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
     });
   }, [quartos]);
+
   const [periodoInicio, setPeriodoInicio] = useState<Date>(periodoInicialPadrao);
-  const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE'>('TODOS');
+  const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE' | 'CREDITO'>('TODOS');
   const [busca, setBusca] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
   const [quartoSelecionado, setQuartoSelecionado] = useState<Quarto | null>(null);
@@ -84,6 +86,13 @@ export const PaginaMapaReservas: React.FC = () => {
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState(false);
   const [hospedeFnrhAviso, setHospedeFnrhAviso] = useState<{ nome: string; dataentrada?: string } | null>(null);
   const [modoDayUse, setModoDayUse] = useState(false);
+
+  // Modais de Ações de Reserva e Troca de Quarto
+  const [modalAcoesAberto, setModalAcoesAberto] = useState(false);
+  const [reservaSelecionadaAcoes, setReservaSelecionadaAcoes] = useState<Reserva | null>(null);
+
+  const [modalTrocaQuartoAberto, setModalTrocaQuartoAberto] = useState(false);
+  const [reservaTrocaQuarto, setReservaTrocaQuarto] = useState<Reserva | null>(null);
 
   const handleRecarregar = async () => {
     setCarregandoAtualizacao(true);
@@ -166,15 +175,15 @@ export const PaginaMapaReservas: React.FC = () => {
     return blocosMap;
   }, [quartosFisicos]);
 
-  // 🔥 DATA ATUAL DO SISTEMA
+  // DATA ATUAL DO SISTEMA
   const dataAtual = new Date().toISOString().slice(0, 10);
 
-  // 🔥 CALCULAR CHECK-INS DE HOJE (data atual)
+  // CALCULAR CHECK-INS DE HOJE
   const checkinsHoje = useMemo(() => {
     return reservas.filter((reserva) => {
-      // Reservas que têm data de entrada igual à data atual
       return reserva.dataentrada === dataAtual &&
         reserva.statusreserva !== 'CANCELADA' &&
+        reserva.statusreserva !== 'CREDITO' &&
         reserva.statusreserva !== 'CONCLUIDA';
     }).map((reserva) => {
       const hospede = hospedeMap.get(Number(reserva.hospedeid));
@@ -185,10 +194,9 @@ export const PaginaMapaReservas: React.FC = () => {
     });
   }, [reservas, dataAtual, hospedeMap]);
 
-  // 🔥 CALCULAR CHECK-OUTS DE HOJE
+  // CALCULAR CHECK-OUTS DE HOJE
   const checkoutsHoje = useMemo(() => {
     return reservas.filter((reserva) => {
-      // Reservas que têm data de saída igual à data atual E estão hospedados
       return reserva.datasaida === dataAtual &&
         reserva.statusreserva === 'HOSPEDADO';
     }).map((reserva) => {
@@ -200,7 +208,7 @@ export const PaginaMapaReservas: React.FC = () => {
     });
   }, [reservas, dataAtual, hospedeMap]);
 
-  // 🔥 CALCULAR QUARTOS EM LIMPEZA (OCUPADOS COM CHECK-OUT HOJE)
+  // CALCULAR QUARTOS EM LIMPEZA
   const quartosEmLimpeza = useMemo(() => {
     const checkoutsHojeIds = checkoutsHoje.map(r => r.quartoid);
     return quartosFisicos.filter(q =>
@@ -209,18 +217,21 @@ export const PaginaMapaReservas: React.FC = () => {
     );
   }, [quartosFisicos, checkoutsHoje]);
 
-  // 🔥 CALCULAR QUARTOS PRONTOS (DISPONÍVEIS E NÃO EM MANUTENÇÃO)
+  // CALCULAR QUARTOS PRONTOS
   const quartosProntos = useMemo(() => {
     return quartosFisicos.filter(q =>
       q.status === 'DISPONIVEL' || q.status === 'RESERVADO'
     );
   }, [quartosFisicos]);
 
-  // Filtrar e enriquecer reservas
+  // Filtrar e enriquecer reservas (desconsidera reservas de Day Use, Canceladas e em Crédito no mapa físico)
   const reservasVisiveis = useMemo(() => {
     return reservas.filter((reserva) => {
-      // Day use não ocupa quarto e não deve aparecer no mapa de hospedagem.
-      if (String(reserva.tipoatendimento || '').toUpperCase() === 'DAY_USE') {
+      if (
+        String(reserva.tipoatendimento || '').toUpperCase() === 'DAY_USE' ||
+        reserva.statusreserva === 'CANCELADA' ||
+        reserva.statusreserva === 'CREDITO'
+      ) {
         return false;
       }
 
@@ -272,7 +283,6 @@ export const PaginaMapaReservas: React.FC = () => {
   const avancarPeriodo = () => setPeriodoInicio((prev) => addDias(prev, 7));
   const retrocederPeriodo = () => setPeriodoInicio((prev) => addDias(prev, -7));
 
-  // 🔥 FORMATAR MÊS/ANO DO PERÍODO
   const mesAnoTexto = useMemo(() => {
     const inicio = new Date(periodoInicio);
     const fim = addDias(periodoInicio, numeroDias - 1);
@@ -338,7 +348,7 @@ export const PaginaMapaReservas: React.FC = () => {
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
                 }}
-                title={quartoBloqueado ? `Quarto ${quarto.numero || quarto.codigoidentificador} em manutenção (bloqueado)` : undefined}
+                title={quartoBloqueado ? `Quarto ${quarto.numero || quarto.codigoidentificador} em manutenção` : undefined}
                 className={`transition-colors ${
                   quartoBloqueado
                     ? 'border-r border-[#d1d5db] bg-[#e5e7eb]/80 text-[#6b7280] cursor-not-allowed'
@@ -351,6 +361,7 @@ export const PaginaMapaReservas: React.FC = () => {
           })}
         </div>
 
+        {/* Blocos de Reservas Ativas no Grid */}
         <div className="pointer-events-none absolute inset-y-0 left-[180px] right-0 z-20">
           {reservasDoQuarto.map((reserva) => {
             const periodoInicioNormalizado = new Date(
@@ -370,14 +381,12 @@ export const PaginaMapaReservas: React.FC = () => {
               <button
                 key={String(reserva.reservaid)}
                 type="button"
-                disabled
                 onClick={() => {
-                  setQuartoSelecionado(quarto);
-                  setDataSelecionada(reserva.dataentrada);
-                  setModalAberto(true);
+                  setReservaSelecionadaAcoes(reserva);
+                  setModalAcoesAberto(true);
                 }}
                 aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${quarto.codigoidentificador || quarto.numero}`}
-                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm disabled:cursor-not-allowed ${coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'}`}
+                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm cursor-pointer hover:brightness-105 transition-all ${coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'}`}
                 style={{ left: `${startOffset * 80}px`, width: `${Math.max(duration * 80 - 4, 32)}px` }}
               >
                 <span className="flex min-w-0 items-center gap-1 truncate">
@@ -424,7 +433,7 @@ export const PaginaMapaReservas: React.FC = () => {
           <button
             type="button"
             onClick={() => setHospedeFnrhAviso(null)}
-            className="text-emerald-800 hover:text-emerald-950 font-bold px-3 py-1.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-100 transition-colors shrink-0"
+            className="text-emerald-800 hover:text-emerald-950 font-bold px-3 py-1.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-100 transition-colors shrink-0 cursor-pointer"
           >
             Dispensar
           </button>
@@ -450,227 +459,155 @@ export const PaginaMapaReservas: React.FC = () => {
               <Sun className="h-4 w-4 text-amber-300" />
               <span>+ Criar Day Use</span>
             </button>
+
             <button
               type="button"
               onClick={handleRecarregar}
               disabled={carregandoAtualizacao}
-              title="Recarregar dados do banco"
-              className="flex items-center gap-1.5 rounded-full border border-[#c1c9bf] bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 rounded-full border border-[#c1c9bf] bg-white px-3 py-1.5 text-xs font-semibold text-[#191c1d] hover:bg-[#f3f4f6] transition-colors cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${carregandoAtualizacao ? 'animate-spin' : ''}`} />
-              <span>{carregandoAtualizacao ? 'Atualizando...' : 'Atualizar'}</span>
+              <RefreshCw className={`h-3.5 w-3.5 ${carregandoAtualizacao ? 'animate-spin' : ''}`} />
+              <span>Atualizar</span>
             </button>
-            <div className="rounded-full border border-[#c1c9bf] bg-[#e6f4ea] px-3 py-1.5 text-sm font-bold text-[#053d1e]">
-              Ocupação do período: {ocupacao}%
-            </div>
-            <div className="flex items-center gap-2 rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] p-1.5">
-              <button type="button" onClick={retrocederPeriodo} className="rounded-lg p-2 hover:bg-white">
-                <ChevronLeft className="h-4 w-4 text-[#191c1d]" />
+
+            <div className="flex items-center rounded-full border border-[#c1c9bf] bg-white p-1">
+              <button
+                type="button"
+                onClick={retrocederPeriodo}
+                className="rounded-full p-1 text-[#414941] hover:bg-[#f3f4f6] cursor-pointer"
+                title="Período anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
               </button>
-              <div className="min-w-[240px] text-center">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#717971]">
-                  {mesAnoTexto}
-                </div>
-                <div className="text-sm font-bold text-[#191c1d]">
-                  {formatarData(periodoInicio.toISOString().slice(0, 10))} à {formatarData(addDias(periodoInicio, numeroDias - 1).toISOString().slice(0, 10))}
-                </div>
-              </div>
-              <button type="button" onClick={avancarPeriodo} className="rounded-lg p-2 hover:bg-white">
-                <ChevronRight className="h-4 w-4 text-[#191c1d]" />
+              <span className="px-3 text-xs font-bold text-[#191c1d]">{mesAnoTexto}</span>
+              <button
+                type="button"
+                onClick={avancarPeriodo}
+                className="rounded-full p-1 text-[#414941] hover:bg-[#f3f4f6] cursor-pointer"
+                title="Próximo período"
+              >
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
         </div>
 
-        <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#717971]" />
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#717971]" />
             <input
               type="text"
+              placeholder="Buscar por hóspede, quarto ou código da reserva..."
               value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-              placeholder="Buscar reservas, hóspedes, quartos..."
-              className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] py-2 pl-9 pr-3 text-sm text-[#191c1d] placeholder:text-[#717971] focus:border-[#053d1e] focus:outline-none"
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] py-2 pl-9 pr-4 text-xs font-medium text-[#191c1d] outline-none focus:border-[#053d1e]"
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {[
-              { label: 'Todos', value: 'TODOS' },
-              { label: 'Pré-reserva', value: 'PRE_RESERVA' },
-              { label: 'Reservado', value: 'RESERVADO' },
-              { label: 'Hospedado', value: 'HOSPEDADO' },
-              { label: 'Concluída', value: 'CONCLUIDA' },
-              { label: 'Cancelada', value: 'CANCELADA' },
-              { label: 'Day Use', value: 'DAY_USE' },
-            ].map((item) => (
+          <div className="flex flex-wrap items-center gap-2">
+            {(['TODOS', 'PRE_RESERVA', 'RESERVADO', 'HOSPEDADO', 'CREDITO', 'CONCLUIDA', 'CANCELADA'] as const).map((status) => (
               <button
-                key={item.value}
+                key={status}
                 type="button"
-                onClick={() => setFiltroStatus(item.value as any)}
-                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${filtroStatus === item.value
-                  ? 'border-[#053d1e] bg-[#053d1e] text-white shadow-sm'
-                  : 'border-[#c1c9bf] bg-white text-[#191c1d] hover:bg-[#f8f9fa]'
-                  }`}
+                onClick={() => setFiltroStatus(status)}
+                className={`rounded-full px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
+                  filtroStatus === status
+                    ? 'bg-[#053d1e] text-white'
+                    : 'bg-[#f8f9fa] text-[#414941] border border-[#c1c9bf] hover:bg-[#e6f4ea]'
+                }`}
               >
-                {item.label}
+                {status === 'TODOS' ? 'Todos' : nomesStatusReserva[status] || status}
               </button>
             ))}
           </div>
         </div>
       </div>
 
+      {/* Grid Principal do Mapa de Reservas */}
       <div className="overflow-x-auto rounded-2xl border border-[#c1c9bf] bg-white shadow-sm">
-        <div className="min-w-[1200px]">
-          <div className="grid" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
-            <div className="flex items-center justify-between border-r border-b border-[#c1c9bf] bg-[#f8f9fa] px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-[#191c1d]">
+        <div className="min-w-[1140px]">
+          {/* Cabeçalho de Datas */}
+          <div className="grid border-b border-[#c1c9bf] bg-[#f8f9fa]" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
+            <div className="sticky left-0 z-30 flex items-center justify-between border-r border-[#c1c9bf] bg-[#f8f9fa] px-3 py-2 font-bold text-xs text-[#191c1d] shadow-[2px_0_4px_rgba(0,0,0,0.03)]">
               <span>ACOMODAÇÃO</span>
-              <span className="rounded-full bg-[#e6f4ea] px-1.5 py-0.5 text-[9px] font-bold text-[#053d1e]">{quartosFisicos.length} Quartos</span>
+              <span className="text-[10px] text-[#717971]">{quartosFisicos.length} Quartos</span>
             </div>
 
             {datasVisiveis.map((data) => {
-              const fimSemana = [0, 6].includes(data.getDay());
+              const iso = data.toISOString().slice(0, 10);
+              const ehHoje = iso === dataAtual;
+
               return (
                 <div
-                  key={data.toISOString()}
-                  className={`border-b border-r border-[#e5e7eb] px-2 py-3 text-center text-[10px] font-bold uppercase ${fimSemana ? 'bg-[#f5f7f6] text-[#053d1e]' : 'bg-white text-[#191c1d]'
-                    }`}
+                  key={iso}
+                  className={`flex flex-col items-center justify-center border-r border-[#e5e7eb] py-2 ${
+                    ehHoje ? 'bg-[#e6f4ea] text-[#053d1e] font-extrabold' : 'text-[#414941]'
+                  }`}
                 >
-                  <div>{formatarDiaSemana(data)}</div>
-                  <div className="mt-1 text-base font-black">{data.getDate()}</div>
-                  <div className="text-[9px] font-semibold opacity-70">{formatarMesCurto(data)}</div>
+                  <span className="text-[10px] font-semibold">{formatarDiaSemana(data)}</span>
+                  <span className="text-sm font-bold">{data.getDate()}</span>
+                  <span className="text-[9px] uppercase tracking-wider">{formatarMesCurto(data)}</span>
                 </div>
               );
             })}
-
-            {/* BLOCO B */}
-            <div className="col-span-full border-b border-[#e5e7eb] bg-[#FFE4E1] px-3 py-2 text-xs font-bold text-[#191c1d]">
-              <span className="uppercase tracking-wide">BLOCO B</span>
-              <span className="ml-2 font-medium text-[#717971]">| Suítes Standard Jardim</span>
-            </div>
-            {quartosPorBloco['B'].map(renderizarLinhaQuarto)}
-
-            {/* BLOCO C */}
-            <div className="col-span-full border-b border-[#e5e7eb] bg-[#FFE4E1] px-3 py-2 text-xs font-bold text-[#191c1d]">
-              <span className="uppercase tracking-wide">BLOCO C</span>
-              <span className="ml-2 font-medium text-[#717971]">| Chalés Rústicos Família</span>
-            </div>
-            {quartosPorBloco['C'].map(renderizarLinhaQuarto)}
-
-            {/* BLOCO D */}
-            <div className="col-span-full border-b border-[#e5e7eb] bg-[#FFE4E1] px-3 py-2 text-xs font-bold text-[#191c1d]">
-              <span className="uppercase tracking-wide">BLOCO D</span>
-              <span className="ml-2 font-medium text-[#717971]">| Suítes Master Vista Panorâmica</span>
-            </div>
-            {quartosPorBloco['D'].map(renderizarLinhaQuarto)}
           </div>
+
+          {/* Linhas por Bloco */}
+          {(['B', 'C', 'D'] as const).map((blocoKey) => {
+            const listaQuartosBloco = quartosPorBloco[blocoKey] || [];
+            if (listaQuartosBloco.length === 0) return null;
+
+            return (
+              <React.Fragment key={blocoKey}>
+                <div className="sticky left-0 z-10 border-y border-[#c1c9bf] bg-[#e6f4ea]/80 px-4 py-1.5 font-['Manrope'] text-xs font-bold text-[#053d1e] tracking-wide">
+                  BLOCO {blocoKey} — {listaQuartosBloco.length} Acomodações
+                </div>
+                {listaQuartosBloco.map(renderizarLinhaQuarto)}
+              </React.Fragment>
+            );
+          })}
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#c1c9bf] bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center justify-center gap-3 text-[11px] font-semibold text-[#191c1d]">
-          <span className="font-bold uppercase text-[#191c1d]">Legenda:</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#F4C542]" /> Pré-reserva</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#2196F3]" /> Reservado</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#4CAF50]" /> Hospedado</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#BDBDBD]" /> Concluída</span>
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#E53935]" /> Cancelada</span>          
-          <span className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm bg-[#e5e7eb] border border-[#9ca3af]" /> Manutenção (Bloqueado)</span>
-        </div>
-      </div>
-
-      {/* 🔥 CARDS DINÂMICOS COM DADOS REAIS */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Cards com Métricas do Hotel */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[#053d1e]">
-              <CalendarDays className="h-5 w-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#191c1d]">Entradas Hoje</span>
-            </div>
-            <span className="rounded-full bg-[#e6f4ea] px-2 py-1 text-[10px] font-bold text-[#053d1e]">
-              {checkinsHoje.length > 0 ? `${checkinsHoje.length} Check-ins` : 'Sem entradas'}
-            </span>
+          <span className="text-xs font-semibold text-[#717971]">Ocupação Geral</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{ocupacao}%</span>
+            <span className="text-xs font-semibold text-[#053d1e]">do período</span>
           </div>
-          <div className="mt-2">
-            {checkinsHoje.length > 0 ? (
-              <div className="space-y-1">
-                {checkinsHoje.slice(0, 3).map((res) => (
-                  <div key={res.reservaid} className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-[#191c1d]">{res.hospedenome}</span>
-                    <span className="text-[#717971]">Q{res.quartonumero}</span>
-                  </div>
-                ))}
-                {checkinsHoje.length > 3 && (
-                  <span className="text-[10px] text-[#717971]">+{checkinsHoje.length - 3} outros</span>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-[#717971]">Nenhum check-in agendado para hoje</p>
-            )}
+          <div className="mt-2 h-2 w-full rounded-full bg-[#f3f4f6]">
+            <div className="h-2 rounded-full bg-[#053d1e] transition-all duration-300" style={{ width: `${ocupacao}%` }} />
           </div>
         </div>
 
         <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[#053d1e]">
-              <ChevronRight className="h-5 w-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#191c1d]">Saídas Previstas</span>
-            </div>
-            <span className="rounded-full bg-[#dfeeff] px-2 py-1 text-[10px] font-bold text-[#1e3a8a]">
-              {checkoutsHoje.length > 0 ? `${checkoutsHoje.length} Saídas` : 'Sem saídas'}
-            </span>
-          </div>
-          <div className="mt-2">
-            {checkoutsHoje.length > 0 ? (
-              <div className="space-y-1">
-                {checkoutsHoje.slice(0, 3).map((res) => (
-                  <div key={res.reservaid} className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-[#191c1d]">{res.hospedenome}</span>
-                    <span className="text-[#717971]">Q{res.quartonumero}</span>
-                  </div>
-                ))}
-                {checkoutsHoje.length > 3 && (
-                  <span className="text-[10px] text-[#717971]">+{checkoutsHoje.length - 3} outros</span>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-[#717971]">Nenhum check-out agendado para hoje</p>
-            )}
+          <span className="text-xs font-semibold text-[#717971]">Check-ins de Hoje</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{checkinsHoje.length}</span>
+            <span className="text-xs text-[#717971]">previstos</span>
           </div>
         </div>
 
         <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-[#f472b6]">
-              <CircleDashed className="h-5 w-5" />
-              <span className="text-[10px] font-bold uppercase tracking-wide text-[#191c1d]">Governança</span>
-            </div>
-            <span className="rounded-full bg-[#fff3cd] px-2 py-1 text-[10px] font-bold text-[#7c5400]">
-              {checkoutsHoje.length > 0 ? `${quartosEmLimpeza.length} Em limpeza` : 'Limpo'}
-            </span>
+          <span className="text-xs font-semibold text-[#717971]">Check-outs de Hoje</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{checkoutsHoje.length}</span>
+            <span className="text-xs text-[#717971]">previstos</span>
           </div>
-          <div className="mt-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-[#191c1d]">
-                <span className="font-bold text-[#053d1e]">{quartosProntos.length}</span> Prontos
-              </span>
-              <span className="text-xs text-[#191c1d]">
-                <span className="font-bold text-[#dc2626]">{quartosEmLimpeza.length}</span> Em limpeza
-              </span>
-            </div>
-            <div className="mt-2 h-2 w-full rounded-full bg-[#f3f4f6]">
-              <div
-                className="h-2 rounded-full bg-[#053d1e] transition-all duration-300"
-                style={{ width: `${(quartosProntos.length / Math.max(quartosFisicos.length, 1)) * 100}%` }}
-              />
-            </div>
-            <p className="mt-1 text-[10px] text-[#717971]">
-              {Math.round((quartosProntos.length / Math.max(quartosFisicos.length, 1)) * 100)}% dos quartos disponíveis
-            </p>
+        </div>
+
+        <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
+          <span className="text-xs font-semibold text-[#717971]">Governança & Prontos</span>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-bold text-[#053d1e]">{quartosProntos.length}</span>
+            <span className="text-xs text-[#717971]">de {quartosFisicos.length} quartos</span>
           </div>
         </div>
       </div>
 
+      {/* Modais do Sistema */}
       <ModalReservaRapida
         aberto={modalAberto}
         quarto={quartoSelecionado}
@@ -683,25 +620,48 @@ export const PaginaMapaReservas: React.FC = () => {
           setModoDayUse(false);
         }}
         onSucesso={(mensagem) => {
-          // 1. Exibe a mensagem de sucesso
           setMensagemSucesso(mensagem);
-
-          // 2. Limpa o aviso superior de hóspede FNRH
           setHospedeFnrhAviso(null);
           if (typeof window !== 'undefined') {
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
-          
-          // 3. Fecha a modal e limpa os dados selecionados para a próxima reserva
           setModalAberto(false);
           setQuartoSelecionado(null);
           setDataSelecionada(null);
           setModoDayUse(false);
-          
-          // 4. Remove a mensagem de sucesso após 4 segundos
           window.setTimeout(() => setMensagemSucesso(null), 4000);
         }}
         onCarregandoChange={setCarregandoReserva}
+      />
+
+      <ModalAcoesReserva
+        aberto={modalAcoesAberto}
+        reserva={reservaSelecionadaAcoes}
+        onFechar={() => {
+          setModalAcoesAberto(false);
+          setReservaSelecionadaAcoes(null);
+        }}
+        onAbrirTrocaQuarto={(res) => {
+          setReservaTrocaQuarto(res);
+          setModalTrocaQuartoAberto(true);
+        }}
+        onSucesso={(mensagem) => {
+          setMensagemSucesso(mensagem);
+          window.setTimeout(() => setMensagemSucesso(null), 4000);
+        }}
+      />
+
+      <ModalTrocaQuarto
+        aberto={modalTrocaQuartoAberto}
+        reserva={reservaTrocaQuarto}
+        onFechar={() => {
+          setModalTrocaQuartoAberto(false);
+          setReservaTrocaQuarto(null);
+        }}
+        onSucesso={(mensagem) => {
+          setMensagemSucesso(mensagem);
+          window.setTimeout(() => setMensagemSucesso(null), 4000);
+        }}
       />
 
       {carregandoReserva && (

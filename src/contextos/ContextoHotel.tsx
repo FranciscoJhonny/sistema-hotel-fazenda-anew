@@ -27,7 +27,7 @@ interface ContextoHotelType {
   consumosExtras: ConsumoExtra[];
   pacotes: Pacote[];
   configuracoes: ConfiguracaoSistema;
-  pagamentos: Pagamento[]; // <-- ADICIONADO
+  pagamentos: Pagamento[];
   usuarioAtual: Usuario;
   usuarios: Usuario[];
   paginaAtual: PaginaNavegacao;
@@ -51,6 +51,8 @@ interface ContextoHotelType {
   criarReserva: (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number }) => Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }>;
   atualizarReserva: (id: number | string, dados: Partial<Reserva>) => Promise<{ sucesso: boolean; mensagem: string }>;
   cancelarReserva: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
+  suspenderReservaComCredito: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
+  trocarQuartoReserva: (reservaId: number | string, novoQuartoId: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckin: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>) => Promise<{ sucesso: boolean; mensagem: string }>;
   criarConsumoExtra: (consumo: Omit<ConsumoExtra, 'consumoid' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'>) => Promise<{ sucesso: boolean; mensagem: string; consumo?: ConsumoExtra }>;
@@ -98,7 +100,7 @@ const normalizarStatusReserva = (status: unknown): StatusReserva => {
   const statusNormalizado = String(status || '').toUpperCase();
   if (statusNormalizado === 'CONFIRMADA') return 'RESERVADO';
   if (statusNormalizado === 'FINALIZADA') return 'CONCLUIDA';
-  if (['PRE_RESERVA', 'RESERVADO', 'HOSPEDADO', 'CONCLUIDA', 'CANCELADA'].includes(statusNormalizado)) {
+  if (['PRE_RESERVA', 'RESERVADO', 'HOSPEDADO', 'CONCLUIDA', 'CANCELADA', 'CREDITO'].includes(statusNormalizado)) {
     return statusNormalizado as StatusReserva;
   }
   return 'PRE_RESERVA';
@@ -114,7 +116,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [consumosExtras, setConsumosExtras] = useState<ConsumoExtra[]>([]);
   const [pacotes, setPacotes] = useState<Pacote[]>([]);
-  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]); // <-- ADICIONADO
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [configuracoes, setConfiguracoes] = useState<ConfiguracaoSistema>(configuracaoPadrao);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
 
@@ -200,7 +202,6 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       await recarregarDados();
       const usuarioSalvo = authService.getUsuarioLogado();
       if (usuarioSalvo && usuarioSalvo.email) {
-        // Validação no Supabase para garantir que o usuário ainda existe e está ativo
         const client = supabaseService.getClient();
         if (client) {
           const { data: usuarioDb } = await client
@@ -223,7 +224,6 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
             return;
           }
         }
-        // Se o usuário não existe no banco ou está inativo, limpa a sessão e força tela de login
         await authService.logout();
       }
       setAutenticado(false);
@@ -278,33 +278,44 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const navegarPara = (pagina: PaginaNavegacao) => {
     setPaginaAtual(pagina);
     recarregarDados();
-    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const trocarUsuario = (usuarioId: number | string) => {
-    const usr = usuarios.find((u) => String(u.usuarioid) === String(usuarioId));
-    if (usr) setUsuarioAtual(usr);
-  };
-
-  const obterQuartoPorId = (quartoId: number | string) => quartos.find((q) => String(q.quartoid) === String(quartoId));
-  const obterQuartoPorNumero = (numero: string) => quartos.find((q) => q.numero?.toUpperCase() === numero.toUpperCase());
-
-  const atualizarStatusQuarto = async (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => {
-    const client = supabaseService.getClient();
-    const agora = new Date().toISOString();
-    setQuartos(prev => prev.map(q => String(q.quartoid) === String(quartoId) ? { ...q, status: novoStatus, descricao: motivoBloqueio, dataoperacao: agora, naturezaoperacao: 'UPDATE' } : q) as Quarto[]);
-    if (client) {
-      await client.from('quarto').update({ status: novoStatus, descricao: motivoBloqueio, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' }).eq('quartoid', quartoId);
+    const usuarioEncontrado = usuarios.find((u) => String(u.usuarioid) === String(usuarioId));
+    if (usuarioEncontrado) {
+      setUsuarioAtual(usuarioEncontrado);
+      authService.salvarSessaoLocal(usuarioEncontrado);
+      recarregarDados();
     }
   };
 
-  const criarQuarto = async (dados: Omit<Quarto, 'quartoid' | 'valordiariapadrao' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'> & { ativo?: boolean }): Promise<{ sucesso: boolean; mensagem: string; quarto?: Quarto }> => {
+  const atualizarStatusQuarto = async (quartoId: number | string, novoStatus: StatusQuarto, motivoBloqueio?: string) => {
     const client = supabaseService.getClient();
+    const dadosAtualizacao: any = {
+      status: novoStatus,
+      dataoperacao: new Date().toISOString(),
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
+
+    if (motivoBloqueio && novoStatus === 'MANUTENCAO') {
+      dadosAtualizacao.descricao = motivoBloqueio;
+    }
+
+    if (client) {
+      await client.from('quarto').update(dadosAtualizacao).eq('quartoid', quartoId);
+    }
+    setQuartos((prev) => prev.map((q) => (String(q.quartoid) === String(quartoId) ? { ...q, ...dadosAtualizacao } : q)));
+  };
+
+  const criarQuarto = async (dados: Omit<Quarto, 'quartoid' | 'valordiariapadrao' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'> & { ativo?: boolean }) => {
+    const client = supabaseService.getClient();
+    if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
+
     const agora = new Date().toISOString();
-    const novoQuarto: Quarto = {
+    const dadosInserir = {
       ...dados,
-      quartoid: 0,
-      valordiariapadrao: 0,
+      status: dados.status || 'DISPONIVEL',
       ativo: dados.ativo ?? true,
       usuarioinclusao: usuarioAtual?.usuarioid,
       datainclusao: agora,
@@ -313,94 +324,108 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       naturezaoperacao: 'INSERT',
     };
 
-    if (client) {
-      const { quartoid: _quartoid, ...dadosParaBanco } = novoQuarto;
-      const { data, error } = await client.from('quarto').insert(dadosParaBanco).select().single();
-      if (error) return { sucesso: false, mensagem: `Erro ao cadastrar quarto: ${error.message}` };
-      if (data) Object.assign(novoQuarto, normalizarQuartoDoBanco(data));
-    }
+    const { data, error } = await client.from('quarto').insert(dadosInserir).select().single();
+    if (error || !data) return { sucesso: false, mensagem: error?.message || 'Erro ao criar quarto.' };
 
-    setQuartos((prev) => [...prev, novoQuarto].sort((a, b) => Number(a.quartoid) - Number(b.quartoid)));
-    return { sucesso: true, mensagem: 'Quarto cadastrado com sucesso.', quarto: novoQuarto };
+    const novoQuarto = normalizarQuartoDoBanco(data);
+    setQuartos((prev) => [novoQuarto, ...prev]);
+    return { sucesso: true, mensagem: `Quarto ${novoQuarto.numero} criado!`, quarto: novoQuarto };
   };
 
-  const editarQuarto = async (id: number | string, dados: Partial<Quarto>): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const quarto = quartos.find((item) => String(item.quartoid) === String(id));
-    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
+  const editarQuarto = async (id: number | string, dados: Partial<Quarto>) => {
+    const client = supabaseService.getClient();
+    if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
 
-    const dadosAtualizados = {
+    const agora = new Date().toISOString();
+    const dadosAtualizar = {
       ...dados,
-      dataoperacao: new Date().toISOString(),
+      dataoperacao: agora,
       usuariooperacao: usuarioAtual?.usuarioid,
       naturezaoperacao: 'UPDATE',
     };
-    const client = supabaseService.getClient();
-    if (client) {
-      const { quartoid: _quartoid, datainclusao: _datainclusao, ...dadosParaBanco } = dadosAtualizados as Partial<Quarto>;
-      const { error } = await client.from('quarto').update(dadosParaBanco).eq('quartoid', id);
-      if (error) return { sucesso: false, mensagem: `Erro ao atualizar quarto: ${error.message}` };
-    }
 
-    setQuartos((prev) => prev.map((item) => String(item.quartoid) === String(id) ? { ...item, ...dadosAtualizados } as Quarto : item));
-    return { sucesso: true, mensagem: 'Quarto atualizado com sucesso.' };
+    const { error } = await client.from('quarto').update(dadosAtualizar).eq('quartoid', id);
+    if (error) return { sucesso: false, mensagem: error.message };
+
+    setQuartos((prev) => prev.map((q) => (String(q.quartoid) === String(id) ? { ...q, ...dadosAtualizar } : q)));
+    return { sucesso: true, mensagem: 'Quarto atualizado com sucesso!' };
   };
 
-  const excluirQuarto = async (id: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const quarto = quartos.find((item) => String(item.quartoid) === String(id));
-    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
-    const possuiReservaAtiva = reservas.some((reserva) => String(reserva.quartoid) === String(id) && ['PRE_RESERVA', 'RESERVADO', 'HOSPEDADO'].includes(reserva.statusreserva));
-    if (possuiReservaAtiva) return { sucesso: false, mensagem: 'Não é possível excluir um quarto com reserva ativa.' };
-
-    const dadosAtualizados = { ativo: false, dataoperacao: new Date().toISOString(), usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'DELETE' };
+  const excluirQuarto = async (id: number | string) => {
     const client = supabaseService.getClient();
-    if (client) {
-      const { error } = await client.from('quarto').update(dadosAtualizados).eq('quartoid', id);
-      if (error) return { sucesso: false, mensagem: `Erro ao excluir quarto: ${error.message}` };
-    }
-    setQuartos((prev) => prev.filter((item) => String(item.quartoid) !== String(id)));
-    return { sucesso: true, mensagem: 'Quarto excluído com sucesso.' };
+    if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
+
+    const { error } = await client.from('quarto').update({ ativo: false, dataoperacao: new Date().toISOString(), naturezaoperacao: 'DELETE' }).eq('quartoid', id);
+    if (error) return { sucesso: false, mensagem: error.message };
+
+    setQuartos((prev) => prev.filter((q) => String(q.quartoid) !== String(id)));
+    return { sucesso: true, mensagem: 'Quarto excluído com sucesso!' };
   };
+
+  const obterQuartoPorId = (quartoId: number | string) => quartos.find((q) => String(q.quartoid) === String(quartoId));
+  const obterQuartoPorNumero = (numero: string) => quartos.find((q) => q.numero === numero || q.codigoidentificador === numero);
 
   const verificarDisponibilidade = (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => {
     return calcularDisponibilidadeQuartos(quartos, reservas, dataEntrada, dataSaida, reservaIdIgnorar);
   };
 
-  const criarReserva = async (dados: any): Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }> => {
+  const criarReserva = async (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number }) => {
     const client = supabaseService.getClient();
-    if (!client) return { sucesso: false, mensagem: 'Sem conexão com o banco.' };
+    if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
 
-    const conflito = verificarConflitoQuarto(dados.quartoid, dados.dataentrada, dados.datasaida, reservas, undefined, dados.tipoatendimento);
-    if (conflito.temConflito) return { sucesso: false, mensagem: conflito.motivo || 'Conflito de datas.' };
+    const eDayUse = String(novaReserva.tipoatendimento || '').toUpperCase() === 'DAY_USE';
+    const quartoDayUse = quartos.find(
+      (q) => String(q.codigoidentificador || '').toUpperCase() === 'DAY_USE' || String(q.numero || '').toUpperCase() === 'DU'
+    );
+    const quartoFisicoFallback = quartos[0];
 
-    const quarto = obterQuartoPorId(dados.quartoid);
-    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado.' };
-    if (quarto.status === 'MANUTENCAO') return { sucesso: false, mensagem: `Quarto ${quarto.numero} em manutenção.` };
+    const quarto = eDayUse
+      ? (quartoDayUse || quartoFisicoFallback)
+      : (quartos.find((q) => String(q.quartoid) === String(novaReserva.quartoid)) || quartoFisicoFallback);
+
+    if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado para realizar a reserva.' };
+
+    if (!eDayUse) {
+      const conflitos = verificarConflitoQuarto(quartos, reservas, quarto.quartoid, novaReserva.dataentrada, novaReserva.datasaida);
+      if (conflitos.temConflito) {
+        return { sucesso: false, mensagem: `Conflito de datas: O quarto ${quarto.numero} já possui reserva confirmada para o período.` };
+      }
+    }
 
     const agora = new Date().toISOString();
-    const valorTotal = Number(dados.valortotal || 0);
-    const valorPago = Number(dados.valorpago || 0);
-    let statusInicial: StatusReserva = dados.statusreserva || 'RESERVADO';
+    const dataReserva = agora.slice(0, 10);
+    const valorPago = Number(novaReserva.valorpago || 0);
+    const valorTotal = Number(novaReserva.valortotal || 0);
 
-    const maiorNumeroCodigo = reservas.reduce((maior, reserva) => {
-      const correspondencia = String(reserva.codigo || '').match(/^#RES-(\d+)$/i);
-      const numero = correspondencia ? Number(correspondencia[1]) : 0;
-      return Number.isFinite(numero) ? Math.max(maior, numero) : maior;
-    }, 0);
-    const proximoCodigo = `#RES-${String(maiorNumeroCodigo + 1).padStart(3, '0')}`;
+    let statusInicial: StatusReserva = novaReserva.statusreserva || 'PRE_RESERVA';
+    if (!novaReserva.statusreserva) {
+      if (valorPago >= valorTotal && valorTotal > 0) statusInicial = 'RESERVADO';
+      else if (valorPago > 0) statusInicial = 'PRE_RESERVA';
+    }
 
-    // Data da reserva (hoje)
-    const dataReserva = agora.slice(0, 10); // YYYY-MM-DD
-
-    const novaReserva: Reserva = {
-      ...dados,
-      reservaid: 0,
-      codigo: proximoCodigo,
-      quartonumero: quarto.numero,
-      quartocodigo: quarto.codigoidentificador,
-      quartocategoria: quarto.categoria,
+    const reservaParaInserir = {
+      codigo: novaReserva.codigo || `RES-${Date.now().toString().slice(-6)}`,
+      hospedeid: novaReserva.hospedeid,
+      quartoid: eDayUse ? (quartoDayUse ? quartoDayUse.quartoid : 17) : quarto.quartoid,
+      adultos: novaReserva.adultos || 1,
+      criancas: novaReserva.criancas || 0,
+      dataentrada: novaReserva.dataentrada,
+      datasaida: novaReserva.datasaida,
+      horarioprevistochegada: novaReserva.horarioprevistochegada || '14:00',
+      tipoatendimento: eDayUse ? 'DAY_USE' : (novaReserva.tipoatendimento || 'HOSPEDAGEM'),
+      pacoteid: novaReserva.pacoteid || null,
+      valortotal: valorTotal,
+      valorpago: valorPago,
+      saldo: valorTotal - valorPago,
+      statuspagamento: valorPago >= valorTotal && valorTotal > 0 ? 'PAGO' : valorPago > 0 ? 'PARCIAL' : 'PENDENTE',
+      formapagamento: novaReserva.formapagamento || 'PIX',
+      observacoes: novaReserva.observacoes || '',
+      quartonumero: eDayUse ? 'DU' : quarto.numero,
+      quartocodigo: eDayUse ? 'DAY_USE' : quarto.codigoidentificador,
+      quartocategoria: eDayUse ? 'Day Use' : quarto.categoria,
       statusreserva: statusInicial,
       ativo: true,
-      datareserva: dataReserva, // NOVO CAMPO
+      datareserva: dataReserva,
       usuarioinclusao: usuarioAtual?.usuarioid,
       datainclusao: agora,
       usuariooperacao: usuarioAtual?.usuarioid,
@@ -409,30 +434,30 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const dadosParaBanco = {
-      codigo: novaReserva.codigo,
-      hospedeid: novaReserva.hospedeid,
-      quartoid: novaReserva.quartoid,
-      adultos: novaReserva.adultos,
-      criancas: novaReserva.criancas,
-      dataentrada: novaReserva.dataentrada,
-      datasaida: novaReserva.datasaida,
-      horarioprevistochegada: novaReserva.horarioprevistochegada,
-      tipoatendimento: novaReserva.tipoatendimento,
-      pacoteid: novaReserva.pacoteid,
-      statusreserva: novaReserva.statusreserva,
-      valortotal: novaReserva.valortotal,
-      valorpago: novaReserva.valorpago,
-      saldo: novaReserva.saldo,
-      statuspagamento: novaReserva.statuspagamento,
-      formapagamento: novaReserva.formapagamento,
-      observacoes: novaReserva.observacoes,
-      ativo: novaReserva.ativo,
-      usuarioinclusao: novaReserva.usuarioinclusao,
-      datainclusao: novaReserva.datainclusao,
-      usuariooperacao: novaReserva.usuariooperacao,
-      dataoperacao: novaReserva.dataoperacao,
-      naturezaoperacao: novaReserva.naturezaoperacao,
-      datareserva: dataReserva, // NOVO CAMPO NO BANCO
+      codigo: reservaParaInserir.codigo,
+      hospedeid: reservaParaInserir.hospedeid,
+      quartoid: reservaParaInserir.quartoid,
+      adultos: reservaParaInserir.adultos,
+      criancas: reservaParaInserir.criancas,
+      dataentrada: reservaParaInserir.dataentrada,
+      datasaida: reservaParaInserir.datasaida,
+      horarioprevistochegada: reservaParaInserir.horarioprevistochegada,
+      tipoatendimento: reservaParaInserir.tipoatendimento,
+      pacoteid: reservaParaInserir.pacoteid,
+      statusreserva: reservaParaInserir.statusreserva,
+      valortotal: reservaParaInserir.valortotal,
+      valorpago: reservaParaInserir.valorpago,
+      saldo: reservaParaInserir.saldo,
+      statuspagamento: reservaParaInserir.statuspagamento,
+      formapagamento: reservaParaInserir.formapagamento,
+      observacoes: reservaParaInserir.observacoes,
+      ativo: reservaParaInserir.ativo,
+      usuarioinclusao: reservaParaInserir.usuarioinclusao,
+      datainclusao: reservaParaInserir.datainclusao,
+      usuariooperacao: reservaParaInserir.usuariooperacao,
+      dataoperacao: reservaParaInserir.dataoperacao,
+      naturezaoperacao: reservaParaInserir.naturezaoperacao,
+      datareserva: dataReserva,
     };
 
     const { data, error } = await client.from('reserva').insert(dadosParaBanco).select().single();
@@ -442,7 +467,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       const { data: novoPagamento } = await client.from('pagamento').insert({
         reservaid: data.reservaid,
         valor: valorPago,
-        formapagamento: novaReserva.formapagamento || 'PIX',
+        formapagamento: reservaParaInserir.formapagamento || 'PIX',
         status: 'PAGO',
         datapagamento: agora,
         tipolancamento: 'SINAL_RESERVA',
@@ -459,11 +484,10 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }
 
-    // Vincula a reserva ao cadastro FNRH se houver pré-cadastro
-    const idCadastroFnrh = dados.cadastroid ? Number(dados.cadastroid) : null;
+    const idCadastroFnrh = novaReserva.cadastroid ? Number(novaReserva.cadastroid) : null;
     try {
       if (idCadastroFnrh) {
-        const { error: errFnrh } = await client
+        await client
           .from('cadastro_fnrh')
           .update({
             status: 'RESERVA_CRIADA',
@@ -473,19 +497,6 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
             naturezaoperacao: 'UPDATE',
           })
           .eq('cadastroid', idCadastroFnrh);
-
-        if (errFnrh) {
-          console.warn('[ContextoHotel] Falha ao atualizar status RESERVA_CRIADA, atualizando apenas reservaid:', errFnrh);
-          await client
-            .from('cadastro_fnrh')
-            .update({
-              reservaid: data.reservaid,
-              dataoperacao: agora,
-              usuariooperacao: usuarioAtual?.usuarioid,
-              naturezaoperacao: 'UPDATE',
-            })
-            .eq('cadastroid', idCadastroFnrh);
-        }
 
         await client
           .from('acompanhante')
@@ -503,66 +514,13 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           .update({ reservaid: data.reservaid })
           .eq('cadastroid', idCadastroFnrh)
           .is('reservaid', null);
-      } else if (dados.hospedeid) {
-        // Se não foi passado o ID direto, busca se esse hóspede tem FNRH liberada aguardando reserva
-        const { data: cFnrh } = await client
-          .from('cadastro_fnrh')
-          .select('cadastroid')
-          .eq('hospedeid', dados.hospedeid)
-          .in('status', ['LIBERADA_PARA_RESERVA', 'AGUARDANDO_PAGAMENTO'])
-          .order('cadastroid', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (cFnrh?.cadastroid) {
-          const { error: errFnrh2 } = await client
-            .from('cadastro_fnrh')
-            .update({
-              status: 'RESERVA_CRIADA',
-              reservaid: data.reservaid,
-              dataoperacao: agora,
-              usuariooperacao: usuarioAtual?.usuarioid,
-              naturezaoperacao: 'UPDATE',
-            })
-            .eq('cadastroid', cFnrh.cadastroid);
-
-          if (errFnrh2) {
-            console.warn('[ContextoHotel] Falha ao atualizar status RESERVA_CRIADA no cFnrh, atualizando apenas reservaid:', errFnrh2);
-            await client
-              .from('cadastro_fnrh')
-              .update({
-                reservaid: data.reservaid,
-                dataoperacao: agora,
-                usuariooperacao: usuarioAtual?.usuarioid,
-                naturezaoperacao: 'UPDATE',
-              })
-              .eq('cadastroid', cFnrh.cadastroid);
-          }
-
-          await client
-            .from('acompanhante')
-            .update({
-              reservaid: data.reservaid,
-              dataoperacao: agora,
-              usuariooperacao: usuarioAtual?.usuarioid,
-              naturezaoperacao: 'UPDATE',
-            })
-            .eq('cadastroid', cFnrh.cadastroid)
-            .is('reservaid', null);
-
-          await client
-            .from('cadastro_fnrh_acompanhante')
-            .update({ reservaid: data.reservaid })
-            .eq('cadastroid', cFnrh.cadastroid)
-            .is('reservaid', null);
-        }
       }
     } catch (eFnrh) {
       console.warn('[ContextoHotel] Aviso ao vincular reserva ao cadastro FNRH:', eFnrh);
     }
 
     const reservaSalva = {
-      ...novaReserva,
+      ...reservaParaInserir,
       ...data,
       quartonumero: quarto.numero,
       quartocodigo: quarto.codigoidentificador,
@@ -571,7 +529,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setReservas(prev => [reservaSalva, ...prev]);
 
-    if (String(dados.tipoatendimento || '').toUpperCase() !== 'DAY_USE') {
+    if (!eDayUse) {
       await atualizarStatusQuarto(quarto.quartoid, statusInicial === 'HOSPEDADO' ? 'OCUPADO' : 'RESERVADO');
     }
 
@@ -615,6 +573,105 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     return { sucesso: true, mensagem: `Reserva ${reserva.codigo} cancelada.` };
   };
 
+  const suspenderReservaComCredito = async (id: number | string, motivo?: string): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const client = supabaseService.getClient();
+    const reserva = reservas.find((r) => String(r.reservaid) === String(id));
+    if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
+
+    const agora = new Date().toISOString();
+    const valorCredito = Number(reserva.valorpago || 0);
+    const obsAtualizada = motivo
+      ? `${reserva.observacoes || ''} [Suspensa com Crédito: ${motivo}]`
+      : `${reserva.observacoes || ''} [Suspensa com Crédito de R$ ${valorCredito.toFixed(2)}]`;
+
+    const dadosAtualizados = {
+      statusreserva: 'CREDITO' as StatusReserva,
+      observacoes: obsAtualizada,
+      dataoperacao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
+
+    if (client) await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
+    setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
+
+    // Desvincula e libera o quarto físico
+    if (reserva.quartoid && (reserva.statusreserva === 'RESERVADO' || reserva.statusreserva === 'PRE_RESERVA' || reserva.statusreserva === 'HOSPEDADO')) {
+      await atualizarStatusQuarto(reserva.quartoid, 'DISPONIVEL');
+    }
+
+    await recarregarDados();
+
+    return {
+      sucesso: true,
+      mensagem: `Reserva ${reserva.codigo} suspensa com sucesso! Crédito de R$ ${valorCredito.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} mantido para o hóspede.`,
+    };
+  };
+
+  const trocarQuartoReserva = async (
+    reservaId: number | string,
+    novoQuartoId: number | string,
+    motivo?: string
+  ): Promise<{ sucesso: boolean; mensagem: string }> => {
+    const client = supabaseService.getClient();
+    const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
+    if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
+
+    const novoQuarto = quartos.find((q) => Number(q.quartoid) === Number(novoQuartoId));
+    if (!novoQuarto) return { sucesso: false, mensagem: 'Novo quarto selecionado não encontrado.' };
+
+    const quartoAnterior = quartos.find((q) => Number(q.quartoid) === Number(reserva.quartoid));
+
+    const agora = new Date().toISOString();
+    const dataHoraStr = new Date().toLocaleString('pt-BR');
+    const nomeQuartoAnt = quartoAnterior ? (quartoAnterior.codigoidentificador || quartoAnterior.numero) : 'N/A';
+    const nomeQuartoNovo = novoQuarto.codigoidentificador || novoQuarto.numero;
+
+    const obsNova = `${reserva.observacoes || ''} [Troca de Quarto em ${dataHoraStr}: Quarto #${nomeQuartoAnt} -> Quarto #${nomeQuartoNovo}${motivo ? ' (' + motivo + ')' : ''}]`;
+
+    const dadosAtualizacaoReserva = {
+      quartoid: novoQuarto.quartoid,
+      quartonumero: novoQuarto.numero,
+      quartocodigo: novoQuarto.codigoidentificador,
+      quartocategoria: novoQuarto.categoria,
+      observacoes: obsNova,
+      dataoperacao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
+
+    if (client) {
+      await client.from('reserva').update(dadosAtualizacaoReserva).eq('reservaid', reservaId);
+    }
+
+    setReservas((prev) =>
+      prev.map((r) => (String(r.reservaid) === String(reservaId) ? { ...r, ...dadosAtualizacaoReserva } : r))
+    );
+
+    const estaHospedado = reserva.statusreserva === 'HOSPEDADO';
+
+    if (estaHospedado) {
+      if (quartoAnterior) {
+        await atualizarStatusQuarto(quartoAnterior.quartoid, 'A_LIMPAR');
+      }
+      await atualizarStatusQuarto(novoQuarto.quartoid, 'OCUPADO');
+    } else {
+      if (quartoAnterior && quartoAnterior.status === 'RESERVADO') {
+        await atualizarStatusQuarto(quartoAnterior.quartoid, 'DISPONIVEL');
+      }
+      if (reserva.statusreserva === 'RESERVADO') {
+        await atualizarStatusQuarto(novoQuarto.quartoid, 'RESERVADO');
+      }
+    }
+
+    await recarregarDados();
+
+    return {
+      sucesso: true,
+      mensagem: `Troca de quarto realizada com sucesso! Quarto alterado de #${nomeQuartoAnt} para #${nomeQuartoNovo}.`,
+    };
+  };
+
   const realizarCheckin = async (reservaId: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
     const client = supabaseService.getClient();
     const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
@@ -638,195 +695,227 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const pagamentosConfirmados = pagamentosInput.filter((pagamento) => Number(pagamento.valor) > 0);
 
     if (client && pagamentosConfirmados.length > 0) {
-      const registros = pagamentosConfirmados.map((pagamento) => ({
-        ...pagamento, reservaid: reservaId, status: 'PAGO', datapagamento: agora, ativo: true,
-        usuarioinclusao: usuarioAtual?.usuarioid, datainclusao: agora, usuariooperacao: usuarioAtual?.usuarioid,
-        dataoperacao: agora, naturezaoperacao: 'INSERT',
+      const novosPagamentos = pagamentosConfirmados.map((pagamento) => ({
+        reservaid: Number(reservaId),
+        valor: Number(pagamento.valor),
+        formapagamento: pagamento.formapagamento,
+        status: 'PAGO' as const,
+        datapagamento: agora,
+        tipolancamento: pagamento.tipolancamento,
+        ativo: true,
+        usuarioinclusao: usuarioAtual?.usuarioid,
+        datainclusao: agora,
+        usuariooperacao: usuarioAtual?.usuarioid,
+        dataoperacao: agora,
+        naturezaoperacao: 'INSERT',
       }));
-      const { error: erroPagamento } = await client.from('pagamento').insert(registros);
-      if (erroPagamento) return { sucesso: false, mensagem: `Erro ao registrar pagamento: ${erroPagamento.message}` };
+
+      const { data: pagamentosSalvos, error: erroPagamentos } = await client
+        .from('pagamento')
+        .insert(novosPagamentos)
+        .select();
+
+      if (erroPagamentos) {
+        return { sucesso: false, mensagem: `Erro ao registrar pagamentos do check-out: ${erroPagamentos.message}` };
+      }
+
+      if (pagamentosSalvos) {
+        setPagamentos((prev) => [...(pagamentosSalvos as Pagamento[]), ...prev]);
+      }
     }
 
-    const totalConsumos = consumosExtras.filter((consumo) => String(consumo.reservaid) === String(reservaId) && consumo.ativo).reduce((total, consumo) => total + Number(consumo.valortotal || 0), 0);
-    const valorPagoFinal = reserva.valorpago + pagamentosConfirmados.reduce((total, pagamento) => total + Number(pagamento.valor), 0);
-
+    const totalPagoAteAgora = Number(reserva.valorpago || 0) + pagamentosConfirmados.reduce((acc, p) => acc + Number(p.valor), 0);
+    const novoSaldo = Math.max(0, Number(reserva.valortotal || 0) - totalPagoAteAgora);
     const dadosReserva = {
-      statusreserva: 'CONCLUIDA' as StatusReserva, valorpago: valorPagoFinal,
-      saldo: Math.max(0, reserva.valortotal + totalConsumos - valorPagoFinal), statuspagamento: 'PAGO' as const,
-      checkoutrealizadoem: agora, checkoutusuario: usuarioAtual?.usuarioid, dataoperacao: agora, naturezaoperacao: 'UPDATE'
+      statusreserva: 'CONCLUIDA' as StatusReserva,
+      valorpago: totalPagoAteAgora,
+      saldo: novoSaldo,
+      statuspagamento: novoSaldo <= 0 ? ('PAGO' as const) : ('PARCIAL' as const),
+      checkoutrealizadoem: agora,
+      checkoutusuario: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'UPDATE',
     };
 
     if (client) await client.from('reserva').update(dadosReserva).eq('reservaid', reservaId);
     setReservas(prev => prev.map(r => String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r) as Reserva[]);
     await atualizarStatusQuarto(reserva.quartoid, 'A_LIMPAR');
-
-    return { sucesso: true, mensagem: `Check-out do Quarto ${reserva.quartonumero} finalizado!` };
+    return { sucesso: true, mensagem: `Check-out de ${reserva.hospedenome} realizado!` };
   };
 
-  const criarConsumoExtra = async (dados: Omit<ConsumoExtra, 'consumoid' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'>): Promise<{ sucesso: boolean; mensagem: string; consumo?: ConsumoExtra }> => {
+  const criarConsumoExtra = async (consumo: Omit<ConsumoExtra, 'consumoid' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'>) => {
     const client = supabaseService.getClient();
-    const produto = produtos.find((item) => String(item.produtoid) === String(dados.produtoid));
-    if (!produto) return { sucesso: false, mensagem: 'Produto não encontrado.' };
-    if (dados.quantidade <= 0) return { sucesso: false, mensagem: 'A quantidade deve ser maior que zero.' };
-    if (produto.estoque < dados.quantidade) return { sucesso: false, mensagem: 'Estoque insuficiente.' };
+    if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
 
     const agora = new Date().toISOString();
-    const consumo: ConsumoExtra = {
-      ...dados, consumoid: Date.now(), produtoid: produto.produtoid, produtonome: produto.nome,
-      valorunitario: produto.preco, valortotal: Number((dados.quantidade * produto.preco).toFixed(2)),
-      ativo: true, datainclusao: agora, dataoperacao: agora, usuarioinclusao: usuarioAtual?.usuarioid,
-      usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'INSERT',
+    const dadosInserir = {
+      ...consumo,
+      ativo: true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT',
+    };
+
+    const { data, error } = await client.from('consumo_extra').insert(dadosInserir).select().single();
+    if (error || !data) return { sucesso: false, mensagem: error?.message || 'Erro ao lançar consumo.' };
+
+    setConsumosExtras((prev) => [data as ConsumoExtra, ...prev]);
+    return { sucesso: true, mensagem: 'Consumo registrado!', consumo: data as ConsumoExtra };
+  };
+
+  const excluirConsumoExtra = async (consumoId: number | string) => {
+    const client = supabaseService.getClient();
+    if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
+
+    const { error } = await client.from('consumo_extra').update({ ativo: false, dataoperacao: new Date().toISOString(), naturezaoperacao: 'DELETE' }).eq('consumoid', consumoId);
+    if (error) return { sucesso: false, mensagem: error.message };
+
+    setConsumosExtras((prev) => prev.filter((c) => String(c.consumoid) !== String(consumoId)));
+    return { sucesso: true, mensagem: 'Consumo removido!' };
+  };
+
+  const cadastrarHospede = async (dados: Omit<Hospede, 'hospedeid' | 'datainclusao' | 'dataoperacao' | 'ativo'>): Promise<Hospede> => {
+    const client = supabaseService.getClient();
+    const agora = new Date().toISOString();
+    const dadosInserir = {
+      ...dados,
+      ativo: true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT',
     };
 
     if (client) {
-      const { data, error } = await client.from('consumo_extra').insert({
-        reservaid: consumo.reservaid, produtoid: consumo.produtoid, quantidade: consumo.quantidade,
-        valorunitario: consumo.valorunitario, valortotal: consumo.valortotal, dataconsumo: consumo.dataconsumo,
-        categoria: consumo.categoria, descricao: consumo.descricao, ativo: consumo.ativo,
-        usuarioinclusao: consumo.usuarioinclusao, datainclusao: consumo.datainclusao,
-      }).select().single();
-
-      if (error) return { sucesso: false, mensagem: `Erro ao lançar consumo: ${error.message}` };
-      if (data) consumo.consumoid = data.consumoid;
-      await atualizarEstoqueProduto(produto.produtoid, -dados.quantidade);
-    }
-    setConsumosExtras((prev) => [consumo, ...prev]);
-    return { sucesso: true, mensagem: 'Consumo lançado com sucesso.', consumo };
-  };
-
-  const excluirConsumoExtra = async (consumoId: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const consumo = consumosExtras.find((item) => String(item.consumoid) === String(consumoId));
-    if (!consumo) return { sucesso: false, mensagem: 'Consumo não encontrado.' };
-    const client = supabaseService.getClient();
-    if (client) {
-      const { error } = await client.from('consumo_extra').update({ ativo: false }).eq('consumoid', consumoId);
-      if (error) return { sucesso: false, mensagem: `Erro ao excluir consumo: ${error.message}` };
-      if (consumo.produtoid) await atualizarEstoqueProduto(consumo.produtoid, consumo.quantidade);
-    }
-    setConsumosExtras((prev) => prev.filter((item) => String(item.consumoid) !== String(consumoId)));
-    return { sucesso: true, mensagem: 'Consumo excluído com sucesso.' };
-  };
-
-  const cadastrarHospede = async (dados: any): Promise<Hospede> => {
-    const client = supabaseService.getClient();
-    const agora = new Date().toISOString();
-    const novo: Hospede = { ...dados, hospedeid: Date.now(), ativo: true, usuarioinclusao: usuarioAtual?.usuarioid, datainclusao: agora, usuariooperacao: usuarioAtual?.usuarioid, dataoperacao: agora, naturezaoperacao: 'INSERT' };
-    if (client) {
-      const { hospedeid: _discardId, ...dadosParaBanco } = novo;
-      const { data, error } = await client.from('hospede').insert(dadosParaBanco).select().single();
-      if (error) {
-        console.error('Erro ao cadastrar hóspede no Supabase:', error);
-      }
-      if (data) { setHospedes(prev => [data as Hospede, ...prev]); return data as Hospede; }
-    }
-    setHospedes(prev => [novo, ...prev]);
-    return novo;
-  };
-
-  const editarHospede = async (id: number | string, dados: Partial<Hospede>): Promise<void> => {
-    const client = supabaseService.getClient();
-    const agora = new Date().toISOString();
-    const dadosAtualizados = { ...dados, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
-    if (client) {
-      const { hospedeid: _discardId, ...dadosParaBanco } = dadosAtualizados;
-      const { error } = await client.from('hospede').update(dadosParaBanco).eq('hospedeid', id);
-      if (error) {
-        console.error('Erro ao editar hóspede no Supabase:', error);
+      const { data } = await client.from('hospede').insert(dadosInserir).select().single();
+      if (data) {
+        setHospedes((prev) => [data as Hospede, ...prev]);
+        return data as Hospede;
       }
     }
-    setHospedes(prev => prev.map(h => String(h.hospedeid) === String(id) ? { ...h, ...dadosAtualizados } : h) as Hospede[]);
+
+    const hospedeMock = { ...dadosInserir, hospedeid: Date.now() } as Hospede;
+    setHospedes((prev) => [hospedeMock, ...prev]);
+    return hospedeMock;
+  };
+
+  const editarHospede = async (id: number | string, dados: Partial<Hospede>) => {
+    const client = supabaseService.getClient();
+    const agora = new Date().toISOString();
+    const dadosAtualizar = {
+      ...dados,
+      dataoperacao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      naturezaoperacao: 'UPDATE',
+    };
+
+    if (client) await client.from('hospede').update(dadosAtualizar).eq('hospedeid', id);
+    setHospedes((prev) => prev.map((h) => (String(h.hospedeid) === String(id) ? { ...h, ...dadosAtualizar } : h)));
   };
 
   const excluirHospede = async (id: number | string): Promise<boolean> => {
     const client = supabaseService.getClient();
-    const temReservaAtiva = reservas.some(r => String(r.hospedeid) === String(id) && ['RESERVADO', 'PRE_RESERVA', 'HOSPEDADO'].includes(r.statusreserva));
-    if (temReservaAtiva) return false;
-    if (client) await client.from('hospede').delete().eq('hospedeid', id);
-    setHospedes(prev => prev.filter(h => String(h.hospedeid) !== String(id)));
+    if (client) {
+      const { error } = await client.from('hospede').update({ ativo: false, dataoperacao: new Date().toISOString(), naturezaoperacao: 'DELETE' }).eq('hospedeid', id);
+      if (error) return false;
+    }
+    setHospedes((prev) => prev.filter((h) => String(h.hospedeid) !== String(id)));
     return true;
   };
 
-
-  const atualizarEstoqueProduto = async (produtoId: number | string, delta: number): Promise<void> => {
+  const atualizarEstoqueProduto = async (produtoId: number | string, quantidadeDelta: number) => {
     const client = supabaseService.getClient();
-    const produto = produtos.find(p => String(p.produtoid) === String(produtoId));
+    const produto = produtos.find((p) => String(p.produtoid) === String(produtoId));
     if (!produto) return;
-    const novoEstoque = Math.max(0, Number(produto.estoque) + Number(delta));
-    const agora = new Date().toISOString();
-    const dadosAtualizados = { estoque: novoEstoque, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
-    if (client) await client.from('produto').update(dadosAtualizados).eq('produtoid', produtoId);
-    setProdutos(prev => prev.map(p => String(p.produtoid) === String(produtoId) ? { ...p, ...dadosAtualizados } : p) as Produto[]);
+
+    const novoEstoque = Math.max(0, produto.estoqueatual + quantidadeDelta);
+    const dadosAtualizar = { estoqueatual: novoEstoque, dataoperacao: new Date().toISOString(), usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+
+    if (client) await client.from('produto').update(dadosAtualizar).eq('produtoid', produtoId);
+    setProdutos((prev) => prev.map((p) => (String(p.produtoid) === String(produtoId) ? { ...p, ...dadosAtualizar } : p)));
   };
 
-  const criarProduto = async (dados: Omit<Produto, 'produtoid' | 'datainclusao' | 'dataoperacao' | 'ativo'> & { ativo?: boolean }): Promise<Produto> => {
-    const agora = new Date().toISOString();
-    const produto: Produto = { ...dados, produtoid: 0, ativo: dados.ativo ?? true, datainclusao: agora, dataoperacao: agora, usuarioinclusao: usuarioAtual?.usuarioid, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'INSERT' };
+  const criarProduto = async (dados: Omit<Produto, 'produtoid' | 'datainclusao' | 'dataoperacao' | 'ativo'> & { ativo?: boolean }) => {
     const client = supabaseService.getClient();
-    if (client) {
-      const { produtoid: _produtoid, ...dadosParaBanco } = produto;
-      const { data, error } = await client.from('produto').insert(dadosParaBanco).select().single();
-      if (error) throw new Error(`Erro ao cadastrar produto: ${error.message}`);
-      if (data) Object.assign(produto, data);
-    }
-    setProdutos((prev) => [produto, ...prev]);
-    return produto;
-  };
-
-  const editarProduto = async (id: number | string, dados: Partial<Produto>): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const client = supabaseService.getClient();
-    const atualizado = { ...dados, dataoperacao: new Date().toISOString(), usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
-    if (client) {
-      const { error } = await client.from('produto').update(atualizado).eq('produtoid', id);
-      if (error) return { sucesso: false, mensagem: `Erro ao atualizar produto: ${error.message}` };
-    }
-    setProdutos((prev) => prev.map((produto) => String(produto.produtoid) === String(id) ? { ...produto, ...atualizado } as Produto : produto));
-    return { sucesso: true, mensagem: 'Produto atualizado com sucesso.' };
-  };
-
-  const excluirProduto = async (id: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const client = supabaseService.getClient();
-    if (client) {
-      const { error } = await client.from('produto').update({ ativo: false, dataoperacao: new Date().toISOString(), naturezaoperacao: 'UPDATE' }).eq('produtoid', id);
-      if (error) return { sucesso: false, mensagem: `Erro ao inativar produto: ${error.message}` };
-    }
-    setProdutos((prev) => prev.filter((produto) => String(produto.produtoid) !== String(id)));
-    return { sucesso: true, mensagem: 'Produto inativado com sucesso.' };
-  };
-
-  const registrarVenda = async (dados: Partial<Venda> & { itens: Venda['itens'] }): Promise<Venda> => {
     const agora = new Date().toISOString();
-    const codigo = `#VEN-${Date.now()}`;
-    const venda: Venda = {
-      vendaid: 0,
-      codigo,
-      tipo: dados.tipo || 'LOJA',
-      hospedenome: dados.hospedenome,
-      valortotal: Number(dados.valortotal || 0),
-      formapagamento: dados.formapagamento || 'PIX',
-      statuspagamento: dados.statuspagamento || 'PAGO',
-      datahora: agora,
-      itens: dados.itens,
-      ativo: true,
-      datainclusao: agora,
-      dataoperacao: agora,
+    const dadosInserir = {
+      ...dados,
+      ativo: dados.ativo ?? true,
       usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
       usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
       naturezaoperacao: 'INSERT',
     };
-    const client = supabaseService.getClient();
+
     if (client) {
-      const { itens: _itens, vendaid: _vendaid, ...dadosVenda } = venda;
-      const { data, error } = await client.from('venda').insert(dadosVenda).select().single();
-      if (error) throw new Error(`Erro ao registrar venda: ${error.message}`);
-      if (data) Object.assign(venda, data);
+      const { data } = await client.from('produto').insert(dadosInserir).select().single();
+      if (data) {
+        setProdutos((prev) => [data as Produto, ...prev]);
+        return data as Produto;
+      }
     }
-    await Promise.all(venda.itens.map((item) => atualizarEstoqueProduto(item.produtoid || 0, -item.quantidade)));
-    return venda;
+
+    const produtoMock = { ...dadosInserir, produtoid: Date.now() } as Produto;
+    setProdutos((prev) => [produtoMock, ...prev]);
+    return produtoMock;
   };
 
-  const salvarConfiguracoes = async (novas: Partial<ConfiguracaoSistema>): Promise<void> => {
+  const editarProduto = async (id: number | string, dados: Partial<Produto>) => {
     const client = supabaseService.getClient();
-    setConfiguracoes(prev => {
+    const agora = new Date().toISOString();
+    const dadosAtualizar = { ...dados, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+
+    if (client) await client.from('produto').update(dadosAtualizar).eq('produtoid', id);
+    setProdutos((prev) => prev.map((p) => (String(p.produtoid) === String(id) ? { ...p, ...dadosAtualizar } : p)));
+    return { sucesso: true, mensagem: 'Produto atualizado com sucesso!' };
+  };
+
+  const excluirProduto = async (id: number | string) => {
+    const client = supabaseService.getClient();
+    if (client) {
+      const { error } = await client.from('produto').update({ ativo: false, dataoperacao: new Date().toISOString(), naturezaoperacao: 'DELETE' }).eq('produtoid', id);
+      if (error) return { sucesso: false, mensagem: error.message };
+    }
+    setProdutos((prev) => prev.filter((p) => String(p.produtoid) !== String(id)));
+    return { sucesso: true, mensagem: 'Produto excluído com sucesso!' };
+  };
+
+  const registrarVenda = async (dados: Partial<Venda> & { itens: Venda['itens'] }) => {
+    const client = supabaseService.getClient();
+    const agora = new Date().toISOString();
+    const dadosVenda = {
+      ...dados,
+      statuspagamento: dados.statuspagamento || 'PAGO',
+      ativo: true,
+      usuarioinclusao: usuarioAtual?.usuarioid,
+      datainclusao: agora,
+      usuariooperacao: usuarioAtual?.usuarioid,
+      dataoperacao: agora,
+      naturezaoperacao: 'INSERT',
+    };
+
+    let vendaCriada: Venda;
+    if (client) {
+      const { data } = await client.from('venda').insert(dadosVenda).select().single();
+      vendaCriada = (data as Venda) || ({ ...dadosVenda, vendaid: Date.now() } as Venda);
+    } else {
+      vendaCriada = { ...dadosVenda, vendaid: Date.now() } as Venda;
+    }
+
+    for (const item of dados.itens) {
+      await atualizarEstoqueProduto(item.produtoid, -item.quantidade);
+    }
+
+    return vendaCriada;
+  };
+
+  const salvarConfiguracoes = async (novas: Partial<ConfiguracaoSistema>) => {
+    const client = supabaseService.getClient();
+    setConfiguracoes((prev) => {
       const atualizado = { ...prev, ...novas };
       if (client) client.from('configuracao').upsert(atualizado);
       return atualizado;
@@ -847,6 +936,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,
       criarQuarto, editarQuarto, excluirQuarto,
       verificarDisponibilidade, criarReserva, atualizarReserva, cancelarReserva,
+      suspenderReservaComCredito, trocarQuartoReserva,
       realizarCheckin, realizarCheckout, criarConsumoExtra, excluirConsumoExtra,
       cadastrarHospede, editarHospede, excluirHospede, atualizarEstoqueProduto,
       criarProduto, editarProduto, excluirProduto, registrarVenda, salvarConfiguracoes, restaurarDadosPadrao,

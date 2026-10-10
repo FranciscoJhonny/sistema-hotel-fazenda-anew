@@ -19,7 +19,8 @@ export type StatusReserva =
   | 'RESERVADO'
   | 'HOSPEDADO' 
   | 'CONCLUIDA'
-  | 'CANCELADA';
+  | 'CANCELADA'
+  | 'CREDITO';
 
 export type TipoAtendimento = 'HOSPEDAGEM' | 'DAY_USE' | 'ALMOCO';
 
@@ -58,44 +59,43 @@ export interface EntidadeAuditavel {
 // 1. Perfil
 // =============================================================================
 export interface Perfil extends EntidadeAuditavel {
-  perfilid: number | string;
+  perfilid: number;
+  nome: string;
   descricao: string;
 }
 
 // =============================================================================
-// 2. Usuario
+// 2. Usuário
 // =============================================================================
 export interface Usuario extends EntidadeAuditavel {
-  usuarioid: number | string;
-  perfilid: number | string;
+  usuarioid: number;
+  perfilid: number;
   nome: string;
   email: string;
   senha?: string;
-  tokenrecuperacaosenha?: string;
-  datarecuperacaosenha?: string;
   perfil?: PerfilUsuario;
-  avatarurl?: string;
 }
 
 // =============================================================================
 // 3. Quarto
 // =============================================================================
 export interface Quarto extends EntidadeAuditavel {
-  quartoid: number | string;
-  numero: string; // "B1", "B2", "C4", "D3", etc.
-  codigoidentificador: string; // "B1", "B2", etc.
-  bloco: BlocoQuarto;
-  categoria: CategoriaQuarto;
+  quartoid: number;
+  numero: string;
+  codigoidentificador: string;
+  bloco: string;
+  categoria: string;
   quantidadecamascasal: number;
   quantidadecamassolteiro: number;
-  capacidadeadultos?: number;
+  capacidadeadultos: number;
   capacidadecriancas: number;
   valordiariapadrao: number;
   status: StatusQuarto;
-  descricao?: string; // MotivoBloqueio agora é descricao
-  comodidades?: string; // text no banco, não array
-  ativo: boolean;
-  reservaatualid?: number | string;
+  descricao?: string;
+  comodidades?: string;
+  
+  // Relações em memória / ViewModel para telas
+  reservaatualid?: number;
   hospedeatualnome?: string;
   dataentradaatual?: string;
   datasaidaatual?: string;
@@ -104,200 +104,275 @@ export interface Quarto extends EntidadeAuditavel {
 }
 
 // =============================================================================
-// 4. Hospede
+// 4. Hóspede
 // =============================================================================
 export interface Hospede extends EntidadeAuditavel {
-  hospedeid: number | string;
+  hospedeid: number;
   nomecompleto: string;
   cpf: string;
-  rg?: string | null;
-  passaporte?: string | null;
-  datanascimento?: string | null;
-  nacionalidade?: string | null;
-  sexo?: 'M' | 'F' | string | null;
+  rg?: string;
+  passaporte?: string;
+  datanascimento?: string;
+  nacionalidade?: string;
+  sexo?: string;
   telefone: string;
-  whatsapp?: string | null;
-  email?: string | null;
-  endereco?: string | null;
-  numero?: string | null;
-  cidade?: string | null;
-  estado?: string | null;
-  cep?: string | null;
-  profissao?: string | null;
-  proximodestino?: string | null;
-  ultimaprocedencia?: string | null;
-  cpfresponsavelmenor?: string | null;
-  alergias_restricoes?: string | null;
-  solicitacoes_especiais?: string | null;
-  observacoes?: string | null;
+  whatsapp?: string;
+  email?: string;
+  endereco?: string;
+  numero?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  profissao?: string;
+  proximodestino?: string;
+  ultimaprocedencia?: string;
+  cpfresponsavelmenor?: string;
+  alergias_restricoes?: string;
+  solicitacoes_especiais?: string;
   declaracao_aceita?: boolean;
-  data_declaracao?: string | null;
-  assinatura_url?: string | null;
+  data_declaracao?: string;
+  assinatura_url?: string;
 }
 
 // =============================================================================
-// 5. Pacote
+// 5. Acompanhante
+// =============================================================================
+export interface Acompanhante extends EntidadeAuditavel {
+  acompanhanteid: number;
+  hospedeid: number;
+  reservaid?: number;
+  cadastroid?: number;
+  nomecompleto: string;
+  documento?: string;
+  datanascimento?: string;
+  menoridade: boolean;
+  cpfresponsavel?: string;
+  autorizacao_url?: string;
+  autorizacao_validada?: boolean;
+  observacoes?: string;
+}
+
+// =============================================================================
+// 6. Cadastro FNRH (Pré-cadastro do Cliente)
+// =============================================================================
+export interface CadastroFnrh extends EntidadeAuditavel {
+  cadastroid: number;
+  status: 'PENDENTE' | 'AGUARDANDO_PAGAMENTO' | 'LIBERADA_PARA_RESERVA' | 'RESERVA_CRIADA' | 'CANCELADA';
+  token_acesso?: string;
+  token_expira_em?: string;
+  hospedeid?: number | null;
+  reservaid?: number | null;
+  nomecompleto: string;
+  cpf?: string;
+  rg?: string;
+  passaporte?: string;
+  datanascimento?: string;
+  nacionalidade?: string;
+  sexo?: string;
+  telefone: string;
+  email?: string;
+  endereco?: string;
+  numero?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  profissao?: string;
+  proximodestino?: string;
+  ultimaprocedencia?: string;
+  cpfresponsavelmenor?: string;
+  dataentrada?: string;
+  horarioprevistochegada?: string;
+  datasaida?: string;
+  horarioprevistasaida?: string;
+  motivoviagem?: string;
+  transporte?: string;
+  placa?: string;
+  modelocor?: string;
+  numerohospedes: number;
+  adultos: number;
+  criancas: number;
+  forma_pagamento?: string;
+  valor_sinal: number;
+  comprovante_url?: string;
+  pagamento_confirmado_em?: string;
+  pagamento_confirmado_por?: number | null;
+  alergias_restricoes?: string;
+  solicitacoes_especiais?: string;
+  declaracao_aceita: boolean;
+  data_declaracao?: string;
+  assinatura_url?: string;
+
+  // Lista de acompanhantes vinculados
+  acompanhantes?: CadastroFnrhAcompanhante[];
+}
+
+export interface CadastroFnrhAcompanhante {
+  acompanhanteid: number;
+  cadastroid: number;
+  reservaid?: number | null;
+  nomecompleto: string;
+  documento?: string;
+  datanascimento?: string;
+  menoridade: boolean;
+  cpfresponsavel?: string;
+  autorizacao_url?: string;
+  autorizacao_validada?: boolean;
+  observacoes?: string;
+  datainclusao?: string;
+}
+
+// =============================================================================
+// 7. Pacote Promocional / Feriado
 // =============================================================================
 export interface Pacote extends EntidadeAuditavel {
-  pacoteid: number | string;
+  pacoteid: number;
   nome: string;
   descricao?: string;
-  datainicio?: string | null;
-  datafim?: string | null;
+  datainicio?: string;
+  datafim?: string;
   valor: number;
   adultosinclusos: number;
   criancasinclusas: number;
   quantidadedias: number;
-  incluicafemanha?: boolean;
   incluialmoco?: boolean;
   incluijantar?: boolean;
+  incluicafemanha?: boolean;
   incluipasseios?: boolean;
-  tipopacote?: 'HOSPEDAGEM' | 'DAY_USE' | 'FERIADO' | 'EVENTO' | string;
+  tipopacote?: 'HOSPEDAGEM' | 'FERIADO' | 'DAY_USE' | 'EVENTO';
 }
 
 // =============================================================================
-// 6. Reserva
+// 8. Reserva
 // =============================================================================
 export interface Reserva extends EntidadeAuditavel {
   reservaid: number;
-  codigo: string; // ex: "#49281"
-  hospedeid: number | string;
-  hospedenome: string;
-  hospedetelefone?: string;
-  hospedeemail?: string;
-  quartoid: number | string;
-  quartonumero: string;
-  quartocodigo: string; // ex: "B1", "C4"
-  quartocategoria?: string;
+  codigo: string;
+  hospedeid: number;
+  quartoid: number;
+  datareserva?: string;
+  dataentrada: string;
+  datasaida: string;
+  horarioprevistochegada?: string;
+  tipoatendimento?: TipoAtendimento;
+  pacoteid?: number;
+  statusreserva: StatusReserva;
   adultos: number;
   criancas: number;
-  dataentrada: string; // YYYY-MM-DD
-  datasaida: string ; // YYYY-MM-DD
-  horarioprevistochegada?: string; // ex: "14:00"
-  horarioprevistosaida?: string; // ex: "12:00"
-  tipoatendimento: TipoAtendimento;
-  pacoteid?: number | string;
-  pacotename?: string;
-  statusreserva: StatusReserva;
   valortotal: number;
   valorpago: number;
   saldo: number;
   statuspagamento: StatusPagamento;
-  formapagamento: FormaPagamento;
+  formapagamento?: FormaPagamento;
   observacoes?: string;
+
+  // Campos ViewModel / Joins
+  quartonumero?: string;
+  quartocodigo?: string;
+  quartocategoria?: string;
+  hospedenome?: string;
+  hospedetelefone?: string;
+  hospedeemail?: string;
   checkinrealizadoem?: string;
   checkinusuario?: number | string;
   checkoutrealizadoem?: string;
   checkoutusuario?: number | string;
-  datareserva?: string;
 }
 
 // =============================================================================
-// 7. Pagamento
-// =============================================================================
-export interface Pagamento extends EntidadeAuditavel {
-  pagamentoid: number | string;
-  reservaid: number | string;
-  valor: number;
-  formapagamento: FormaPagamento;
-  status: string;
-  datapagamento: string;
-  comprovanteurl?: string;
-  observacoes?: string;
-  tipolancamento: TipoLancamentoPagamento;
-}
-
-// =============================================================================
-// 8. Produto
+// 9. Produto (Bar / Lojinha / Consumo)
 // =============================================================================
 export interface Produto extends EntidadeAuditavel {
-  produtoid: number | string;
+  produtoid: number;
   nome: string;
+  categoria: 'LOJINHA' | 'BAR' | 'RESTAURANTE' | 'SERVICO';
+  valor: number;
+  estoqueatual: number;
+  estoqueminimo?: number;
+  codigo_barras?: string;
+  imagem_url?: string;
   descricao?: string;
-  categoria: string;
-  preco: number;
-  estoque: number;
 }
 
-export type CategoriaProduto = 'LOJINHA' | 'BAR' | string;
-
+// =============================================================================
+// 10. Consumo Extra
+// =============================================================================
 export interface ConsumoExtra extends EntidadeAuditavel {
-  consumoid: number | string;
-  reservaid: number | string;
-  produtoid?: number | string;
-  produtonome?: string;
+  consumoid: number;
+  reservaid: number;
+  produtoid?: number;
+  descricao: string;
   quantidade: number;
   valorunitario: number;
   valortotal: number;
-  dataconsumo: string;
-  categoria: CategoriaProduto;
-  descricao?: string;
+  categoria: string;
+  data_consumo?: string;
 }
 
 // =============================================================================
-// 9. Venda
+// 11. Venda Direta
 // =============================================================================
+export interface VendaItem {
+  produtoid: number;
+  nome: string;
+  quantidade: number;
+  valorunitario: number;
+  valortotal: number;
+}
+
 export interface Venda extends EntidadeAuditavel {
-  vendaid: number | string;
-  codigo: string;
-  tipo: TipoVenda;
-  reservaid?: number | string;
-  quartonumero?: string;
-  hospedenome?: string;
+  vendaid: number;
+  tipovenda: TipoVenda;
+  hospedeid?: number;
+  reservaid?: number;
   valortotal: number;
   formapagamento: FormaPagamento;
   statuspagamento: StatusPagamento;
-  usuarioresponsavel?: number | string;
-  datahora: string;
-  itens: ItemVenda[];
+  observacoes?: string;
+  itens: VendaItem[];
 }
 
 // =============================================================================
-// 10. ItemVenda
+// 12. Pagamento
 // =============================================================================
-export interface ItemVenda extends Partial<EntidadeAuditavel> {
-  itemvendaid?: number | string;
-  vendaid?: number | string;
-  produtoid?: number | string;
-  produtonome: string;
-  quantidade: number;
-  precounitario: number;
-  subtotal: number;
+export interface Pagamento extends EntidadeAuditavel {
+  pagamentoid: number;
+  reservaid: number;
+  valor: number;
+  datapagamento: string;
+  formapagamento: FormaPagamento;
+  status: StatusPagamento;
+  comprovanteurl?: string;
+  tipolancamento?: TipoLancamentoPagamento;
 }
 
 // =============================================================================
-// 11. Configuracao
+// 13. Configuração do Sistema
 // =============================================================================
-export interface Configuracao extends EntidadeAuditavel {
-  configuracaoid: number | string;
-  chave: string;
-  valor: string;
-  descricao?: string;
-}
-
-// Configurações do Sistema em Memória / App
 export interface ConfiguracaoSistema {
-  checkintime: string; // "09:00"
-  checkouttime: string; // "15:00"
+  checkintime: string;
+  checkouttime: string;
   hotelnome: string;
   hotellocalizacao: string;
   telefonehotel: string;
   emailhotel: string;
   taxaservicopercentual: number;
-  supabaseurl?: string;
-  supabaseanonkey?: string;
+  supabaseurl: string;
+  supabaseanonkey: string;
   modoofflineativo: boolean;
-  criancaidadelimitegratis?: number; // 5
-  criancaidadelimitemeia?: number; // 11
-  criancaidadeintegral?: number; // 12
-  criancaporcentagemmeiadiaria?: number; // 50
-  criancaDescontogratuis?: number; // 100
-  capacidademaximaadultosporquarto?: number; // 4
-  capacidademaximacriancasporquarto?: number; // 3
-  formapagamentopadrao?: string; // 'PIX'
-  porcentagementradaminima?: number; // 30
+  criancaidadelimitegratis: number;
+  criancaidadelimitemeia: number;
+  criancaidadeintegral: number;
+  criancaporcentagemmeiadiaria: number;
+  criancaDescontogratuis: number;
+  capacidademaximaadultosporquarto: number;
+  capacidademaximacriancasporquarto: number;
+  formapagamentopadrao: FormaPagamento;
+  porcentagementradaminima: number;
 }
 
+// =============================================================================
+// 14. Navegação Principal
+// =============================================================================
 export type PaginaNavegacao = 
   | 'login'
   | 'dashboard'
@@ -316,92 +391,3 @@ export type PaginaNavegacao =
   | 'pacotes'
   | 'usuarios'
   | 'configuracoes';
-
-// =============================================================================
-// 12. Cadastro FNRH (Ficha Nacional de Registro de Hóspedes)
-// =============================================================================
-export type StatusCadastroFnrh = 
-  | 'AGUARDANDO_PAGAMENTO'
-  | 'LIBERADA_PARA_RESERVA'
-  | 'RESERVA_CRIADA'
-  | 'CANCELADA';
-
-export interface CadastroFnrhAcompanhante {
-  acompanhanteid?: number;
-  cadastroid: number;
-  reservaid?: number | null;
-  nomecompleto: string;
-  documento?: string;
-  datanascimento?: string;
-  menoridade: boolean;
-  cpfresponsavel?: string;
-  autorizacao_url?: string;
-  autorizacao_validada?: boolean;
-  observacoes?: string;
-  datainclusao?: string;
-}
-
-export interface CadastroFnrh {
-  cadastroid: number;
-  status: StatusCadastroFnrh;
-  token_acesso: string;
-  token_expira_em: string;
-  hospedeid?: number | null;
-  reservaid?: number | null;
-
-  // Titular
-  nomecompleto?: string;
-  cpf?: string;
-  rg?: string;
-  passaporte?: string;
-  datanascimento?: string;
-  nacionalidade?: string;
-  sexo?: 'M' | 'F' | string;
-  telefone?: string;
-  email?: string;
-  endereco?: string;
-  numero?: string;
-  cidade?: string;
-  estado?: string;
-  cep?: string;
-  profissao?: string;
-  proximodestino?: string;
-  ultimaprocedencia?: string;
-  cpfresponsavelmenor?: string;
-
-  // Hospedagem
-  dataentrada?: string;
-  horarioprevistochegada?: string;
-  datasaida?: string;
-  horarioprevistasaida?: string;
-  motivoviagem?: string;
-  transporte?: string;
-  placa?: string;
-  modelocor?: string;
-  numerohospedes: number;
-  adultos: number;
-  criancas: number;
-
-  // Pagamento
-  forma_pagamento?: string;
-  valor_sinal: number;
-  comprovante_url?: string;
-  pagamento_confirmado_em?: string;
-  pagamento_confirmado_por?: number | null;
-
-  // Observações e FNRH
-  alergias_restricoes?: string;
-  solicitacoes_especiais?: string;
-  declaracao_aceita: boolean;
-  data_declaracao?: string;
-  assinatura_url?: string;
-
-  // Auditoria
-  datainclusao: string;
-  dataoperacao?: string;
-  usuariooperacao?: number | null;
-  naturezaoperacao?: string;
-
-  // Acompanhantes carregados em conjunto
-  acompanhantes?: CadastroFnrhAcompanhante[];
-}

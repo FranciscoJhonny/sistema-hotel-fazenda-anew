@@ -8,18 +8,20 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
+  PauseCircle,
+  CalendarDays
 } from 'lucide-react';
 import React, { useState } from 'react';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { ModalCadastroHospede } from '../componentes/hospedes/ModalCadastroHospede';
 import { useHotel } from '../contextos/ContextoHotel';
-import { Hospede } from '../tipos';
-import { formatarCpf, formatarTelefone } from '../utilitarios/formatadores';
+import { Hospede, Reserva } from '../tipos';
+import { formatarCpf, formatarTelefone, formatarMoeda } from '../utilitarios/formatadores';
 
 const ITENS_POR_PAGINA = 10;
 
 export const PaginaHospedes: React.FC = () => {
-  const { hospedes, cadastrarHospede, editarHospede, excluirHospede, reservas } = useHotel();
+  const { hospedes, cadastrarHospede, editarHospede, excluirHospede, reservas, navegarPara } = useHotel();
 
   const [busca, setBusca] = useState<string>('');
   const [paginaAtual, setPaginaAtual] = useState<number>(1);
@@ -64,6 +66,17 @@ export const PaginaHospedes: React.FC = () => {
     setModalNovoAberto(true);
   };
 
+  const handleRemarcarReserva = (hospede: Hospede, reservaCredito?: Reserva) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('fnrh_reserva_preenchimento', JSON.stringify({
+        nomecompleto: hospede.nomecompleto,
+        hospedeid: hospede.hospedeid,
+        valorpago: reservaCredito ? Number(reservaCredito.valorpago || 0) : 0,
+      }));
+    }
+    navegarPara('mapa-reservas');
+  };
+
   const handleSalvarHospede = async (
     dados: Omit<Hospede, 'hospedeid' | 'datainclusao' | 'dataoperacao' | 'ativo'>,
     hospedeId?: number | string
@@ -99,40 +112,41 @@ export const PaginaHospedes: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-['Manrope'] text-xl font-bold text-[#191c1d]">
-              Cadastro de Hóspedes & Clientes
+              Gestão de Hóspedes
             </h1>
             <span className="text-xs font-bold text-[#053d1e] bg-[#e6f4ea] px-2.5 py-0.5 rounded-full border border-[#b8f0c2]">
               {hospedes.length} Cadastrados
             </span>
           </div>
           <p className="text-xs text-[#717971] mt-1">
-            Histórico de estadias, preferências alimentares e contatos dos visitantes da Fazenda Anew.
+            Cadastro de hóspedes titulares, preferências, restrições e controle de estadias.
           </p>
         </div>
 
         <button
+          type="button"
           onClick={handleAbrirCriacao}
-          className="px-4 py-2 text-xs font-bold bg-[#053d1e] hover:bg-[#225533] text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+          className="px-4 py-2 text-xs font-bold bg-[#053d1e] hover:bg-[#1d502f] text-white rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span> Novo Hóspede</span>
+          <span>Novo Hóspede</span>
         </button>
       </div>
 
       {feedback && (
-        <div className="bg-[#b8f0c2] text-[#00210d] px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-[#92c89d] shadow-xs">
-          <CheckCircle2 className="w-5 h-5 text-[#053d1e] shrink-0" />
+        <div className="bg-[#b8f0c2] text-[#00210d] px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-[#92c89d]">
+          <CheckCircle2 className="w-4 h-4 text-[#053d1e]" />
           <span>{feedback}</span>
         </div>
       )}
 
       {/* Busca */}
-      <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 shadow-xs">
-        <div className="relative">
+      <div className="bg-white border border-[#c1c9bf] rounded-xl p-3 shadow-xs flex items-center gap-3">
+        <div className="relative flex-1">
           <Search className="w-4 h-4 text-[#717971] absolute left-3 top-2.5 pointer-events-none" />
           <input
             type="text"
-            placeholder="Buscar por nome, CPF, telefone ou cidade..."
+            placeholder="Buscar hóspede por nome, CPF, telefone ou cidade..."
             value={busca}
             onChange={(e) => {
               setBusca(e.target.value);
@@ -143,10 +157,10 @@ export const PaginaHospedes: React.FC = () => {
         </div>
       </div>
 
-      {/* Tabela de Hóspedes no padrão Data Grid */}
-      <div className="bg-white rounded-2xl border border-[#c1c9bf] shadow-2xs overflow-hidden">
-        {hospedesFiltrados.length === 0 ? (
-          <div className="p-12 text-center">
+      {/* Tabela de Hóspedes */}
+      <div className="bg-white border border-[#c1c9bf] rounded-2xl shadow-xs overflow-hidden">
+        {hospedesPaginados.length === 0 ? (
+          <div className="p-12 text-center text-slate-500">
             <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h3 className="text-sm font-bold text-slate-800 font-['Manrope']">
               Nenhum hóspede encontrado
@@ -166,7 +180,7 @@ export const PaginaHospedes: React.FC = () => {
                   <th className="py-3 px-4">Hóspede Titular</th>
                   <th className="py-3 px-4">Contato / WhatsApp</th>
                   <th className="py-3 px-4">Localização</th>
-                  <th className="py-3 px-4">Estadias</th>
+                  <th className="py-3 px-4">Estadias / Crédito</th>
                   <th className="py-3 px-4 text-right">Ações</th>
                 </tr>
               </thead>
@@ -174,6 +188,13 @@ export const PaginaHospedes: React.FC = () => {
                 {hospedesPaginados.map((h) => {
                   const reservasDoHospede = reservas.filter(
                     (r) => String(r.hospedeid) === String(h.hospedeid)
+                  );
+                  const reservasCredito = reservasDoHospede.filter(
+                    (r) => r.statusreserva === 'CREDITO'
+                  );
+                  const totalCredito = reservasCredito.reduce(
+                    (acc, r) => acc + Number(r.valorpago || 0),
+                    0
                   );
 
                   return (
@@ -227,7 +248,7 @@ export const PaginaHospedes: React.FC = () => {
                               type="button"
                               onClick={() => handleAbrirWhatsApp(h)}
                               title="Abrir no WhatsApp com mensagem pronta"
-                              className="p-1 rounded-md bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-colors"
+                              className="p-1 rounded-md bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-colors cursor-pointer"
                             >
                               <Send className="w-3 h-3" />
                             </button>
@@ -251,11 +272,31 @@ export const PaginaHospedes: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Estadias */}
+                      {/* Estadias e Crédito Ativo */}
                       <td className="py-3 px-4">
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#e6f4ea] text-[#137333] border border-[#b8f0c2] inline-block">
-                          {reservasDoHospede.length} estadia{reservasDoHospede.length !== 1 ? 's' : ''}
-                        </span>
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#e6f4ea] text-[#137333] border border-[#b8f0c2] inline-block">
+                            {reservasDoHospede.length} estadia{reservasDoHospede.length !== 1 ? 's' : ''}
+                          </span>
+
+                          {totalCredito > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1">
+                                <PauseCircle className="w-3 h-3 text-amber-700 shrink-0" />
+                                <span>Crédito Ativo: {formatarMoeda(totalCredito)}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemarcarReserva(h, reservasCredito[0])}
+                                title="Remarcar reserva utilizando o crédito ativo do hóspede"
+                                className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[#053d1e] text-white hover:bg-[#1d502f] transition-all cursor-pointer shadow-2xs flex items-center gap-1"
+                              >
+                                <CalendarDays className="w-3 h-3 text-amber-300" />
+                                <span>Remarcar Reserva</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Ações */}
@@ -290,80 +331,34 @@ export const PaginaHospedes: React.FC = () => {
         )}
 
         {/* Paginação */}
-        {hospedesFiltrados.length > 0 && (
-          <div className="bg-slate-50/80 border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-            <div>
-              <span>
-                Mostrando <strong className="text-slate-800">{indiceInicial + 1}</strong> a{' '}
-                <strong className="text-slate-800">
-                  {Math.min(indiceInicial + ITENS_POR_PAGINA, hospedesFiltrados.length)}
-                </strong>{' '}
-                de <strong className="text-slate-800">{hospedesFiltrados.length}</strong> hóspedes
-              </span>
+        {totalPaginas > 1 && (
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex items-center justify-between text-xs text-slate-600">
+            <span>
+              Mostrando página <strong>{paginaAtual}</strong> de <strong>{totalPaginas}</strong>
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPaginaAtual((p) => Math.max(1, p - 1))}
+                disabled={paginaAtual === 1}
+                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaginaAtual((p) => Math.min(totalPaginas, p + 1))}
+                disabled={paginaAtual === totalPaginas}
+                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-
-            {totalPaginas > 1 && (
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setPaginaAtual((p) => Math.max(p - 1, 1))}
-                  disabled={paginaAtual === 1}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-semibold flex items-center gap-1 transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Anterior</span>
-                </button>
-
-                {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((numPagina) => {
-                  if (
-                    numPagina === 1 ||
-                    numPagina === totalPaginas ||
-                    Math.abs(numPagina - paginaAtual) <= 1
-                  ) {
-                    return (
-                      <button
-                        key={numPagina}
-                        type="button"
-                        onClick={() => setPaginaAtual(numPagina)}
-                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
-                          paginaAtual === numPagina
-                            ? 'bg-[#053d1e] text-white shadow-xs'
-                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {numPagina}
-                      </button>
-                    );
-                  }
-                  if (
-                    numPagina === paginaAtual - 2 ||
-                    numPagina === paginaAtual + 2
-                  ) {
-                    return (
-                      <span key={numPagina} className="px-1 text-slate-400 font-bold">
-                        ...
-                      </span>
-                    );
-                  }
-                  return null;
-                })}
-
-                <button
-                  type="button"
-                  onClick={() => setPaginaAtual((p) => Math.min(p + 1, totalPaginas))}
-                  disabled={paginaAtual === totalPaginas}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed font-semibold flex items-center gap-1 transition-colors"
-                >
-                  <span>Próximo</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* Modal Criar / Editar Hóspede com Campos Completos FNRH */}
+      {/* Modal Cadastro / Edição */}
       <ModalCadastroHospede
         aberto={modalNovoAberto}
         hospedeEdicao={hospedeEdicao}
@@ -371,15 +366,15 @@ export const PaginaHospedes: React.FC = () => {
         onSalvar={handleSalvarHospede}
       />
 
-      {/* Modal Confirmar Exclusão */}
+      {/* Modal Confirmação de Exclusão */}
       <ModalConfirmacao
-        aberto={!!hospedeExcluir}
-        titulo="Excluir Cadastro"
-        mensagem={`Tem certeza que deseja remover o cadastro de ${hospedeExcluir?.nomecompleto}?`}
+        aberto={Boolean(hospedeExcluir)}
+        titulo="Excluir Hóspede"
+        mensagem={`Tem certeza de que deseja excluir o cadastro de "${hospedeExcluir?.nomecompleto}"?`}
         tipo="perigo"
         textoConfirmar="Sim, Excluir"
-        onConfirmar={handleConfirmarExclusao}
         onCancelar={() => setHospedeExcluir(null)}
+        onConfirmar={handleConfirmarExclusao}
       />
     </div>
   );
