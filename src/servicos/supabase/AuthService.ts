@@ -98,17 +98,29 @@ export class AuthService implements IAuthService {
 
   // 🔥 NOVO MÉTODO PARA MAPEAR USUÁRIO COM PERFIL
   private mapearUsuario(data: any): Usuario {
-    // Mapear o perfil
+    // Mapear o perfil com segurança
     let perfil: PerfilUsuario = 'RECEPCAO';
-    const idPerfil = Number(data.perfilid || data.PerfilId || data.perfil_id || 0);
+    const idPerfil = Number(data.perfilid || data.PerfilId || data.perfil_id || (data.perfil && typeof data.perfil === 'object' ? data.perfil.perfilid : 0) || 0);
 
+    const perfilObjeto = typeof data.perfil === 'object' ? data.perfil : {};
+    const perfilBruto = data.perfilnome || data.tipoperfil || data.cargo || perfilObjeto.nome || perfilObjeto.descricao || (typeof data.perfil === 'string' ? data.perfil : '') || data.Perfil || '';
+    const descricaoPerfil = String(perfilBruto).toUpperCase();
     const perfilString = (data.perfil || data.Perfil || data.cargo || '').toString().toUpperCase();
 
-    if (descricaoPerfil.includes('DIRETORIA') || descricaoPerfil.includes('EXECUTIVO') || perfilString.includes('DIRETORIA') || perfilString.includes('EXECUTIVO') || idPerfil === 4 || idPerfil === 6) {
+    if (
+      descricaoPerfil.includes('DIRETORIA') ||
+      descricaoPerfil.includes('EXECUTIVO') ||
+      perfilString.includes('DIRETORIA') ||
+      perfilString.includes('EXECUTIVO') ||
+      idPerfil === 4 ||
+      idPerfil === 6
+    ) {
       perfil = 'DIRETORIA';
     } else if (descricaoPerfil.includes('MASTER') || idPerfil === 1) {
       perfil = 'MASTER';
     } else if (descricaoPerfil.includes('ADMIN') || descricaoPerfil.includes('ADMINISTRADOR') || idPerfil === 2) {
+      perfil = 'ADMIN';
+    } else if (descricaoPerfil.includes('GERENTE') || idPerfil === 7) {
       perfil = 'ADMIN';
     } else if (descricaoPerfil.includes('VENDAS') || descricaoPerfil.includes('VENDEDOR') || idPerfil === 5) {
       perfil = 'VENDAS';
@@ -118,7 +130,7 @@ export class AuthService implements IAuthService {
 
     return {
       usuarioid: Number(data.usuarioid || data.UsuarioId || data.id || 0),
-      perfilid: idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : 3),
+      perfilid: idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : perfil === 'DIRETORIA' ? 4 : 3),
       nome: data.nome || data.Nome || data.nome_completo || 'Usuário',
       email: data.email || data.Email || '',
       senha: '',
