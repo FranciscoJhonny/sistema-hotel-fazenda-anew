@@ -32,7 +32,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     cadastro?.valor_sinal ? String(cadastro.valor_sinal) : ''
   );
   const [formaPagamento, setFormaPagamento] = useState<string>(
-    cadastro?.forma_pagamento || 'PIX'
+    cadastro?.forma_pagamento && cadastro.forma_pagamento !== 'CHECKOUT' ? cadastro.forma_pagamento : 'PIX'
   );
   const [comprovante, setComprovante] = useState<string>('');
   const [carregando, setCarregando] = useState(false);
@@ -42,7 +42,8 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     if (cadastro) {
       setSemSinal(false);
       setValorSinal(cadastro.valor_sinal > 0 ? String(cadastro.valor_sinal) : '');
-      setFormaPagamento(cadastro.forma_pagamento || 'PIX');
+      const fp = cadastro.forma_pagamento && cadastro.forma_pagamento !== 'CHECKOUT' ? cadastro.forma_pagamento : 'PIX';
+      setFormaPagamento(fp);
       setComprovante(cadastro.comprovante_url || '');
       setErro(null);
     }
@@ -76,12 +77,14 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
 
     setCarregando(true);
 
+    const fpEnvio = !formaPagamento || formaPagamento === 'CHECKOUT' ? 'DINHEIRO' : formaPagamento;
+
     const res = await FnrhService.confirmarSinalFnrh({
       cadastroid: cadastro.cadastroid,
       valorSinal: semSinal ? 0 : valorNumerico,
-      formaPagamento: semSinal ? 'CHECKOUT' : formaPagamento,
+      formaPagamento: fpEnvio,
       usuarioId: usuarioAtual?.usuarioid,
-      comprovanteUrl: semSinal ? 'Sem sinal antecipado (pagamento no check-out)' : (comprovante || undefined),
+      comprovanteUrl: semSinal ? 'Sem sinal (pagamento 100% no check-out)' : (comprovante || undefined),
     });
 
     if (!res.sucesso) {
@@ -203,7 +206,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
             </label>
             <select
               disabled={semSinal}
-              value={semSinal ? 'CHECKOUT' : formaPagamento}
+              value={formaPagamento === 'CHECKOUT' ? 'DINHEIRO' : formaPagamento}
               onChange={(e) => setFormaPagamento(e.target.value)}
               className={`w-full px-3 py-2 rounded-xl border text-xs outline-none transition-all ${
                 semSinal
@@ -211,18 +214,12 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
                   : 'border-[#c1c9bf] bg-white font-medium focus:border-[#053d1e]'
               }`}
             >
-              {semSinal ? (
-                <option value="CHECKOUT">Pagamento no Check-out</option>
-              ) : (
-                <>
-                  <option value="PIX">PIX</option>
-                  <option value="CARTAO_CREDITO">Cartão de Crédito</option>
-                  <option value="CARTAO_DEBITO">Cartão de Débito</option>
-                  <option value="TRANSFERENCIA">Transferência Bancária</option>
-                  <option value="DINHEIRO">Dinheiro</option>
-                  <option value="VOUCHER">Voucher</option>
-                </>
-              )}
+              <option value="PIX">PIX</option>
+              <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+              <option value="CARTAO_DEBITO">Cartão de Débito</option>
+              <option value="TRANSFERENCIA">Transferência Bancária</option>
+              <option value="DINHEIRO">Dinheiro</option>
+              <option value="VOUCHER">Voucher</option>
             </select>
           </div>
 
