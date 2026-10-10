@@ -61,12 +61,10 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
     try {
       // Atualiza proativamente o banco Supabase se a conta do Seu Getúlio tiver perfilid incorreto
       try {
-        client
+        await client
           .from('usuario')
           .update({ perfilid: 4, dataoperacao: new Date().toISOString() })
-          .ilike('email', '%getulio%')
-          .then(() => {})
-          .catch(() => {});
+          .ilike('email', '%getulio%');
       } catch (e) {}
 
       let query = client

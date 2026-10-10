@@ -92,7 +92,7 @@ export class AuthService implements IAuthService {
       // Atualiza no banco de dados se for o usuário Getúlio
       if (emailNormalizado.includes('getulio')) {
         try {
-          client.from('usuario').update({ perfilid: 4 }).ilike('email', '%getulio%').then(() => {}).catch(() => {});
+          await client.from('usuario').update({ perfilid: 4 }).ilike('email', '%getulio%');
         } catch (e) {}
       }
 
