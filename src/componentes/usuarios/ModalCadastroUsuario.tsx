@@ -7,7 +7,6 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  CheckCircle2,
   AlertCircle,
   Loader2,
   Save,
@@ -35,7 +34,7 @@ export const ModalCadastroUsuario: React.FC<ModalCadastroUsuarioProps> = ({
 }) => {
   const [nome, setNome] = useState<string>('');
   const [email, setEmail] = useState<string>('');
-  const [perfilid, setPerfilid] = useState<number>(2); // Padrão: 2 (RECEPCAO)
+  const [perfilid, setPerfilid] = useState<number | string>(2); // Padrão: 2 (RECEPCAO)
   const [senha, setSenha] = useState<string>('');
   const [confirmarSenha, setConfirmarSenha] = useState<string>('');
   const [mostrarSenha, setMostrarSenha] = useState<boolean>(false);
@@ -48,7 +47,11 @@ export const ModalCadastroUsuario: React.FC<ModalCadastroUsuarioProps> = ({
     if (usuarioEdicao) {
       setNome(usuarioEdicao.nome || '');
       setEmail(usuarioEdicao.email || '');
-      setPerfilid(Number(usuarioEdicao.perfilid || 2));
+      if (usuarioEdicao.perfil === 'DIRETORIA' || Number(usuarioEdicao.perfilid) === 4) {
+        setPerfilid('DIRETORIA');
+      } else {
+        setPerfilid(Number(usuarioEdicao.perfilid || 2));
+      }
       setAtivo(usuarioEdicao.ativo !== undefined ? Boolean(usuarioEdicao.ativo) : true);
       setSenha('');
       setConfirmarSenha('');
@@ -103,11 +106,19 @@ export const ModalCadastroUsuario: React.FC<ModalCadastroUsuarioProps> = ({
 
     try {
       setSalvando(true);
+
+      let perfilIdFinal = 2;
+      if (perfilid === 'DIRETORIA' || Number(perfilid) === 4) {
+        perfilIdFinal = 4;
+      } else {
+        perfilIdFinal = Number(perfilid) || 2;
+      }
+
       await onSalvar({
         nome: nome.trim(),
         email: email.trim().toLowerCase(),
         senha: senha.trim() || undefined,
-        perfilid: Number(perfilid),
+        perfilid: perfilIdFinal,
         ativo,
       });
     } catch (err: any) {
@@ -131,7 +142,7 @@ export const ModalCadastroUsuario: React.FC<ModalCadastroUsuarioProps> = ({
               <ShieldCheck className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="font-['Manrope'] text-lg font-bold">
+              <h2 className="font-[#Manrope] text-lg font-bold">
                 {usuarioEdicao ? 'Editar Usuário' : 'Novo Usuário do Sistema'}
               </h2>
               <p className="text-xs text-white/80">
@@ -203,11 +214,19 @@ export const ModalCadastroUsuario: React.FC<ModalCadastroUsuarioProps> = ({
             </label>
             <select
               value={perfilid}
-              onChange={(e) => setPerfilid(Number(e.target.value))}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'DIRETORIA') {
+                  setPerfilid('DIRETORIA');
+                } else {
+                  setPerfilid(Number(val));
+                }
+              }}
               className="w-full px-3 py-2 text-xs bg-[#f8f9fa] border border-[#c1c9bf] rounded-xl focus:outline-none focus:border-[#053d1e] focus:bg-white transition-colors font-medium text-[#191c1d]"
             >
               <option value={1}>👑 MASTER (Dono do Sistema - Acesso Supremo & Usuários)</option>
               <option value={2}>🛡️ Administrador (Gerente da Fazenda / Hotel)</option>
+              <option value="DIRETORIA">👔 DIRETORIA (Visão Executiva / Seu Getúlio)</option>
               <option value={3}>🛎️ Recepção (Check-in, Check-out, Quartos e Produtos)</option>
               <option value={5}>💼 Vendas (Day-Use, Almoço, Lojinha e Reservas)</option>
             </select>
@@ -313,4 +332,3 @@ export const ModalCadastroUsuario: React.FC<ModalCadastroUsuarioProps> = ({
     </div>
   );
 };
-

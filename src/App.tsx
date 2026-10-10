@@ -50,8 +50,8 @@ const ConteudoPrincipal: React.FC = () => {
     return null;
   }
 
-  // Trava de permissão: Perfil diferente de MASTER (Dono) tentando acessar a Gestão de Usuários
-  if (paginaAtual === 'usuarios' && usuarioAtual?.perfil !== 'MASTER') {
+  // Trava de permissão: Perfil diferente de MASTER ou ADMIN tentando acessar a Gestão de Usuários
+  if (paginaAtual === 'usuarios' && usuarioAtual?.perfil !== 'MASTER' && usuarioAtual?.perfil !== 'ADMIN') {
     const destino = usuarioAtual?.perfil === 'RECEPCAO' ? 'checkin' : usuarioAtual?.perfil === 'DIRETORIA' || usuarioAtual?.perfil === 'EXECUTIVO' ? 'dashboard-executivo' : 'dashboard';
     navegarPara(destino);
     return null;

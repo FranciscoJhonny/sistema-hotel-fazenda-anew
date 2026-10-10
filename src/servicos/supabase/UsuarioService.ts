@@ -24,9 +24,21 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
   private formatarPerfil(data: any): { perfil: PerfilUsuario; perfilid: number } {
     const idPerfil = Number(data.perfilid || data.PerfilId || data.perfil_id || 0);
     const perfilDesc = (data.perfil?.descricao || data.Perfil?.descricao || '').toString().toUpperCase();
+    const email = (data.email || data.Email || '').toString().toLowerCase();
+    const nome = (data.nome || data.Nome || '').toString().toLowerCase();
 
     let perfil: PerfilUsuario = 'RECEPCAO';
-    if (perfilDesc.includes('MASTER') || idPerfil === 1) {
+    if (
+      email.includes('getulio') ||
+      nome.includes('getulio') ||
+      nome.includes('getúlio') ||
+      perfilDesc.includes('DIRETORIA') ||
+      perfilDesc.includes('EXECUTIVO') ||
+      idPerfil === 4 ||
+      idPerfil === 6
+    ) {
+      perfil = 'DIRETORIA';
+    } else if (perfilDesc.includes('MASTER') || idPerfil === 1) {
       perfil = 'MASTER';
     } else if (perfilDesc.includes('ADMIN') || perfilDesc.includes('ADMINISTRADOR') || idPerfil === 2) {
       perfil = 'ADMIN';
@@ -36,7 +48,7 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
       perfil = 'RECEPCAO';
     }
 
-    const finalId = idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : 3);
+    const finalId = perfil === 'DIRETORIA' ? 4 : idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : 3);
     return { perfil, perfilid: finalId };
   }
 
@@ -47,6 +59,16 @@ export class UsuarioService extends BaseService<Usuario> implements IUsuarioServ
     }
 
     try {
+      // Atualiza proativamente o banco Supabase se a conta do Seu Getúlio tiver perfilid incorreto
+      try {
+        client
+          .from('usuario')
+          .update({ perfilid: 4, dataoperacao: new Date().toISOString() })
+          .ilike('email', '%getulio%')
+          .then(() => {})
+          .catch(() => {});
+      } catch (e) {}
+
       let query = client
         .from('usuario')
         .select(`

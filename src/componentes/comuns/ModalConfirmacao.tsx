@@ -1,15 +1,18 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle, X, Info } from 'lucide-react';
 
-interface ModalConfirmacaoProps {
+export interface ModalConfirmacaoProps {
   aberto: boolean;
   titulo: string;
   mensagem: string;
   tipo?: 'perigo' | 'aviso' | 'sucesso' | 'info';
   textoConfirmar?: string;
+  textoBotaoConfirmar?: string;
   textoCancelar?: string;
-  onConfirmar: () => void;
-  onCancelar: () => void;
+  corBotaoConfirmar?: string;
+  onConfirmar: () => void | Promise<void>;
+  onCancelar?: () => void;
+  onFechar?: () => void;
 }
 
 export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
@@ -17,12 +20,23 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
   titulo,
   mensagem,
   tipo = 'aviso',
-  textoConfirmar = 'Confirmar',
+  textoConfirmar,
+  textoBotaoConfirmar,
   textoCancelar = 'Cancelar',
+  corBotaoConfirmar,
   onConfirmar,
   onCancelar,
+  onFechar,
 }) => {
   if (!aberto) return null;
+
+  const handleFechar = onCancelar || onFechar || (() => {});
+  const textoBtnConfirmar = textoConfirmar || textoBotaoConfirmar || 'Confirmar';
+
+  let tipoEfetivo = tipo;
+  if (corBotaoConfirmar === 'vermelho') {
+    tipoEfetivo = 'perigo';
+  }
 
   const icones = {
     perigo: <AlertTriangle className="w-6 h-6 text-[#ba1a1a]" />,
@@ -46,14 +60,15 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
         aria-modal="true"
       >
         <button
-          onClick={onCancelar}
-          className="absolute top-4 right-4 text-[#414941] hover:text-[#191c1d] p-1 rounded-full hover:bg-[#f3f4f5] transition-colors"
+          type="button"
+          onClick={handleFechar}
+          className="absolute top-4 right-4 text-[#414941] hover:text-[#191c1d] p-1 rounded-full hover:bg-[#f3f4f5] transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="flex items-start gap-4">
-          <div className="p-3 rounded-full bg-[#f3f4f5] shrink-0">{icones[tipo]}</div>
+          <div className="p-3 rounded-full bg-[#f3f4f5] shrink-0">{icones[tipoEfetivo]}</div>
           <div className="flex-1">
             <h3 className="font-['Manrope'] text-lg font-bold text-[#191c1d]">{titulo}</h3>
             <p className="font-['Inter'] text-sm text-[#414941] mt-1 leading-relaxed">{mensagem}</p>
@@ -63,17 +78,17 @@ export const ModalConfirmacao: React.FC<ModalConfirmacaoProps> = ({
         <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-[#e1e3e4]">
           <button
             type="button"
-            onClick={onCancelar}
-            className="px-4 py-2 text-sm font-semibold text-[#414941] hover:bg-[#f3f4f5] rounded-lg border border-[#c1c9bf] transition-colors"
+            onClick={handleFechar}
+            className="px-4 py-2 text-sm font-semibold text-[#414941] hover:bg-[#f3f4f5] rounded-lg border border-[#c1c9bf] transition-colors cursor-pointer"
           >
             {textoCancelar}
           </button>
           <button
             type="button"
-            onClick={onConfirmar}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors shadow-xs ${coresBotao[tipo]}`}
+            onClick={() => onConfirmar()}
+            className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors shadow-xs cursor-pointer ${coresBotao[tipoEfetivo]}`}
           >
-            {textoConfirmar}
+            {textoBtnConfirmar}
           </button>
         </div>
       </div>

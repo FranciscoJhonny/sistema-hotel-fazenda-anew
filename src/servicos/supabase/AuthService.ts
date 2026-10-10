@@ -22,7 +22,7 @@ export class AuthService implements IAuthService {
     this.supabaseService = SupabaseService.getInstance();
   }
 
-  private async encontrarTabelaUsuario(client: any): Promise<string | null> {
+  private async encontrarTabelaUsuario(client: any): Promise<string> {
     for (const nomeTabela of this.TABELA_USUARIO_OPCOES) {
       try {
         const { error } = await client
@@ -51,7 +51,7 @@ export class AuthService implements IAuthService {
       const client = this.supabaseService.getClient();
       if (!client) return { sucesso: false, erro: '🚫 Sistema offline. Conecte-se ao Supabase.' };
 
-      const tabelaNome = await this.encontrarTabelaUsuario(client);
+      const tabelaNome: string = (await this.encontrarTabelaUsuario(client)) || 'usuario';
 
       // Buscar o usuário no banco de dados com JOIN em perfil
       const { data, error } = await client
@@ -88,6 +88,14 @@ export class AuthService implements IAuthService {
       // Mapear o usuário com perfil
       const usuarioMapeado = this.mapearUsuario(data);
       this.salvarSessaoLocal(usuarioMapeado);
+
+      // Atualiza no banco de dados se for o usuário Getúlio
+      if (emailNormalizado.includes('getulio')) {
+        try {
+          client.from('usuario').update({ perfilid: 4 }).ilike('email', '%getulio%').then(() => {}).catch(() => {});
+        } catch (e) {}
+      }
+
       return { sucesso: true, dados: usuarioMapeado };
 
     } catch (err: any) {
@@ -96,7 +104,7 @@ export class AuthService implements IAuthService {
     }
   }
 
-  // 🔥 NOVO MÉTODO PARA MAPEAR USUÁRIO COM PERFIL
+  // 🔥 MÉTODO PARA MAPEAR USUÁRIO COM PERFIL
   private mapearUsuario(data: any): Usuario {
     // Mapear o perfil com segurança
     let perfil: PerfilUsuario = 'RECEPCAO';
@@ -106,8 +114,13 @@ export class AuthService implements IAuthService {
     const perfilBruto = data.perfilnome || data.tipoperfil || data.cargo || perfilObjeto.nome || perfilObjeto.descricao || (typeof data.perfil === 'string' ? data.perfil : '') || data.Perfil || '';
     const descricaoPerfil = String(perfilBruto).toUpperCase();
     const perfilString = (data.perfil || data.Perfil || data.cargo || '').toString().toUpperCase();
+    const email = (data.email || data.Email || '').toString().toLowerCase();
+    const nome = (data.nome || data.Nome || '').toString().toLowerCase();
 
     if (
+      email.includes('getulio') ||
+      nome.includes('getulio') ||
+      nome.includes('getúlio') ||
       descricaoPerfil.includes('DIRETORIA') ||
       descricaoPerfil.includes('EXECUTIVO') ||
       perfilString.includes('DIRETORIA') ||
@@ -128,9 +141,11 @@ export class AuthService implements IAuthService {
       perfil = 'RECEPCAO';
     }
 
+    const finalPerfilId = perfil === 'DIRETORIA' ? 4 : idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : 3);
+
     return {
       usuarioid: Number(data.usuarioid || data.UsuarioId || data.id || 0),
-      perfilid: idPerfil || (perfil === 'MASTER' ? 1 : perfil === 'ADMIN' ? 2 : perfil === 'VENDAS' ? 5 : perfil === 'DIRETORIA' ? 4 : 3),
+      perfilid: finalPerfilId,
       nome: data.nome || data.Nome || data.nome_completo || 'Usuário',
       email: data.email || data.Email || '',
       senha: '',
@@ -159,6 +174,11 @@ export class AuthService implements IAuthService {
       try {
         const usuario = JSON.parse(salvo);
         if (usuario && usuario.email) {
+          // Se for o e-mail do Getúlio, garante perfil DIRETORIA
+          if (usuario.email.toLowerCase().includes('getulio')) {
+            usuario.perfil = 'DIRETORIA';
+            usuario.perfilid = 4;
+          }
           return usuario;
         }
       } catch (e) { }
@@ -167,6 +187,10 @@ export class AuthService implements IAuthService {
   }
 
   public salvarSessaoLocal(usuario: Usuario): void {
+    if (usuario.email?.toLowerCase().includes('getulio')) {
+      usuario.perfil = 'DIRETORIA';
+      usuario.perfilid = 4;
+    }
     localStorage.setItem(AuthService.STORAGE_KEY, JSON.stringify(usuario));
     localStorage.setItem(AuthService.AUTH_KEY, 'true');
   }

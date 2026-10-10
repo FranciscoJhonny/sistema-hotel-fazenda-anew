@@ -181,14 +181,14 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
   }[] = [
     {
       id: 'dashboard-executivo',
-      label: 'Visão Macro Financeira',
+      label: 'Dashboard Executivo',
       icone: <TrendingUp className="w-5 h-5" />,
     },
   ];
 
-  // Perfil DIRETORIA/EXECUTIVO visualiza exclusivamente a Visão Macro Financeira.
+  // Perfil DIRETORIA/EXECUTIVO visualiza exclusivamente o Dashboard Executivo.
   // Perfil RECEPCAO visualiza exclusivamente Check-in, Check-out, Produto e Quartos.
-  // O item 'usuarios' (Gestão de Usuários) é visível EXCLUSIVAMENTE para o perfil MASTER (Dono do Sistema).
+  // O item 'usuarios' (Gestão de Usuários) é visível EXCLUSIVAMENTE para perfis MASTER e ADMIN.
   const eDiretoria = usuarioAtual?.perfil === 'DIRETORIA' || usuarioAtual?.perfil === 'EXECUTIVO';
   const itensMenuBase = eDiretoria
     ? itensMenuDiretoria
@@ -198,7 +198,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
   const itensMenu = itensMenuBase.filter((item) => {
     if (item.id === 'usuarios') {
-      return usuarioAtual?.perfil === 'MASTER';
+      return usuarioAtual?.perfil === 'MASTER' || usuarioAtual?.perfil === 'ADMIN';
     }
     return true;
   });
@@ -277,7 +277,7 @@ export const BarraLateral: React.FC<BarraLateralProps> = ({
 
         {/* Rodapé do Sidebar */}
         <div className="px-4 mt-auto pt-4 border-t border-[#f3f4f6] space-y-1">
-          {usuarioAtual?.perfil !== 'RECEPCAO' && (
+          {!eDiretoria && usuarioAtual?.perfil !== 'RECEPCAO' && (
             <button
               onClick={() => handleNavegar('configuracoes')}
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#4b5563] hover:text-[#111827] hover:bg-[#f3f4f6] rounded-xl transition-colors cursor-pointer"
