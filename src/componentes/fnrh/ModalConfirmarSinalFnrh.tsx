@@ -5,7 +5,8 @@ import {
   CheckCircle2,
   AlertCircle,
   LoaderCircle,
-  DollarSign
+  Clock,
+  ShieldCheck
 } from 'lucide-react';
 import { CadastroFnrh } from '../../tipos';
 import { FnrhService } from '../../servicos/supabase/FnrhService';
@@ -26,6 +27,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
 }) => {
   const { usuarioAtual, recarregarDados } = useHotel();
 
+  const [semSinal, setSemSinal] = useState<boolean>(false);
   const [valorSinal, setValorSinal] = useState<string>(
     cadastro?.valor_sinal ? String(cadastro.valor_sinal) : ''
   );
@@ -38,6 +40,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
 
   React.useEffect(() => {
     if (cadastro) {
+      setSemSinal(false);
       setValorSinal(cadastro.valor_sinal > 0 ? String(cadastro.valor_sinal) : '');
       setFormaPagamento(cadastro.forma_pagamento || 'PIX');
       setComprovante(cadastro.comprovante_url || '');
@@ -47,33 +50,47 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
 
   if (!aberto || !cadastro) return null;
 
+  const handleToggleSemSinal = (marcado: boolean) => {
+    setSemSinal(marcado);
+    setErro(null);
+    if (marcado) {
+      setValorSinal('0,00');
+    } else {
+      setValorSinal(cadastro.valor_sinal > 0 ? String(cadastro.valor_sinal) : '');
+    }
+  };
+
   const handleConfirmar = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
 
-    const valorNumerico = parseFloat(valorSinal.replace(',', '.'));
-    if (isNaN(valorNumerico) || valorNumerico <= 0) {
-      setErro('Informe um valor de sinal válido maior que zero.');
-      return;
+    let valorNumerico = 0;
+
+    if (!semSinal) {
+      valorNumerico = parseFloat(valorSinal.replace(',', '.'));
+      if (isNaN(valorNumerico) || valorNumerico <= 0) {
+        setErro('Informe um valor de sinal válido maior que zero ou marque a opção de pagar no check-out.');
+        return;
+      }
     }
 
     setCarregando(true);
 
     const res = await FnrhService.confirmarSinalFnrh({
       cadastroid: cadastro.cadastroid,
-      valorSinal: valorNumerico,
-      formaPagamento,
+      valorSinal: semSinal ? 0 : valorNumerico,
+      formaPagamento: semSinal ? 'CHECKOUT' : formaPagamento,
       usuarioId: usuarioAtual?.usuarioid,
-      comprovanteUrl: comprovante || undefined,
+      comprovanteUrl: semSinal ? 'Sem sinal antecipado (pagamento no check-out)' : (comprovante || undefined),
     });
 
     if (!res.sucesso) {
       setCarregando(false);
-      setErro(res.mensagem || 'Não foi possível confirmar o sinal.');
+      setErro(res.mensagem || 'Não foi possível confirmar a liberação da reserva.');
       return;
     }
 
-    // Recarrega todos os hóspedes e dados para que o hóspede recém-confirmado apareça no mapa de reservas
+    // Recarrega todos os dados para sincronizar o mapa de reservas
     try {
       await recarregarDados();
     } catch (e) {
@@ -82,7 +99,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
       setCarregando(false);
     }
 
-    onSucesso(res.mensagem);
+    onSucesso(semSinal ? 'Cadastro liberado sem sinal (pagamento no check-out)!' : res.mensagem);
     onFechar();
   };
 
@@ -107,7 +124,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
           </div>
           <button
             onClick={onFechar}
-            className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -122,57 +139,101 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
             </div>
           )}
 
+          {/* CHECKBOX: Pagar tudo no Check-out */}
+          <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/70 transition-all">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={semSinal}
+                onChange={(e) => handleToggleSemSinal(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-amber-300 text-[#053d1e] focus:ring-[#053d1e] cursor-pointer"
+              />
+              <div className="text-xs">
+                <span className="font-bold text-amber-950 block">
+                  Não cobrar sinal agora (pagar 100% no check-out)
+                </span>
+                <span className="text-amber-800 text-[11px] block mt-0.5">
+                  Marque esta opção se o cliente foi autorizado a pagar o valor total apenas no momento da saída do hotel.
+                </span>
+              </div>
+            </label>
+          </div>
+
           <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3.5 text-xs text-emerald-900">
-            <p className="font-semibold">Ao confirmar o sinal:</p>
-            <ul className="list-disc list-inside mt-1 space-y-0.5 text-emerald-800">
+            <div className="flex items-center gap-1.5 font-bold mb-1">
+              <ShieldCheck className="w-4 h-4 text-[#053d1e]" />
+              <span>Ao confirmar a liberação:</span>
+            </div>
+            <ul className="list-disc list-inside space-y-0.5 text-emerald-800 text-[11px]">
               <li>O cadastro será marcado como <strong>Liberado para Reserva</strong>.</li>
-              <li>Os dados do titular e acompanhantes serão sincronizados para a base definitiva do hotel.</li>
-              <li>A atendente poderá criar a reserva oficial no mapa de ocupação.</li>
+              <li>Os dados do titular e acompanhantes serão sincronizados para o hotel.</li>
+              <li>A atendente poderá alocar o quarto diretamente no mapa de ocupação.</li>
             </ul>
           </div>
 
+          {/* Valor do Sinal */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Valor do Sinal Recebido (R$) *
+              Valor do Sinal Recebido (R$) {!semSinal && '*'}
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">R$</span>
+              <span className={`absolute left-3 top-2.5 text-xs font-bold ${semSinal ? 'text-slate-300' : 'text-slate-400'}`}>
+                R$
+              </span>
               <input
                 type="text"
-                required
+                disabled={semSinal}
+                required={!semSinal}
                 placeholder="0,00"
                 value={valorSinal}
                 onChange={(e) => setValorSinal(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-sm font-bold text-slate-800 outline-none focus:border-[#053d1e]"
+                className={`w-full pl-9 pr-3 py-2 rounded-xl border text-sm font-bold outline-none transition-all ${
+                  semSinal
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'border-[#c1c9bf] bg-white text-slate-800 focus:border-[#053d1e]'
+                }`}
               />
             </div>
           </div>
 
+          {/* Forma de Pagamento */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Forma de Pagamento do Sinal *
+              Forma de Pagamento do Sinal {!semSinal && '*'}
             </label>
             <select
-              value={formaPagamento}
+              disabled={semSinal}
+              value={semSinal ? 'CHECKOUT' : formaPagamento}
               onChange={(e) => setFormaPagamento(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e] bg-white font-medium"
+              className={`w-full px-3 py-2 rounded-xl border text-xs outline-none transition-all ${
+                semSinal
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-[#c1c9bf] bg-white font-medium focus:border-[#053d1e]'
+              }`}
             >
-              <option value="PIX">PIX</option>
-              <option value="VOUCHER">Voucher</option>
-              <option value="CARTAO_CREDITO">Cartão de Crédito</option>
-              <option value="CARTAO_DEBITO">Cartão de Débito</option>
-              <option value="TRANSFERENCIA">Transferência Bancária</option>
-              <option value="DINHEIRO">Dinheiro</option>
+              {semSinal ? (
+                <option value="CHECKOUT">Pagamento no Check-out</option>
+              ) : (
+                <>
+                  <option value="PIX">PIX</option>
+                  <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                  <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                  <option value="TRANSFERENCIA">Transferência Bancária</option>
+                  <option value="DINHEIRO">Dinheiro</option>
+                  <option value="VOUCHER">Voucher</option>
+                </>
+              )}
             </select>
           </div>
 
+          {/* Comprovante / Observação */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Comprovante / Código da Transação (opcional)
+              {semSinal ? 'Observação interna (opcional)' : 'Comprovante / Código da Transação (opcional)'}
             </label>
             <input
               type="text"
-              placeholder="Ex: Código PIX E12345678... ou anotação"
+              placeholder={semSinal ? 'Ex: Autorizado pelo gerente ou cliente corporativo' : 'Ex: Código PIX E12345678... ou anotação'}
               value={comprovante}
               onChange={(e) => setComprovante(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e]"
@@ -184,24 +245,33 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
             <button
               type="button"
               onClick={onFechar}
-              className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={carregando}
-              className="flex items-center gap-2 px-5 py-2 rounded-xl bg-emerald-700 text-xs font-bold text-white hover:bg-emerald-800 transition-all disabled:opacity-50 shadow-xs"
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white transition-all disabled:opacity-50 shadow-xs cursor-pointer ${
+                semSinal
+                  ? 'bg-amber-700 hover:bg-amber-800'
+                  : 'bg-emerald-700 hover:bg-emerald-800'
+              }`}
             >
               {carregando ? (
                 <>
                   <LoaderCircle className="w-4 h-4 animate-spin" />
-                  Confirmando...
+                  Liberando...
+                </>
+              ) : semSinal ? (
+                <>
+                  <Clock className="w-4 h-4" />
+                  Liberar sem Sinal (Pagar no Check-out)
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  Confirmar Pagamento
+                  Confirmar Pagamento do Sinal
                 </>
               )}
             </button>
@@ -211,4 +281,3 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     </div>
   );
 };
-
