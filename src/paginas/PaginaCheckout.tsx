@@ -22,6 +22,7 @@ import { useHotel } from '../contextos/ContextoHotel';
 import { FormaPagamento, Reserva } from '../tipos';
 import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
+import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 
 export type LinhaPagamento = {
   id: string;
@@ -69,6 +70,7 @@ export const PaginaCheckout: React.FC = () => {
   const [modalDividirAberta, setModalDividirAberta] = useState(false);
   const [tipoAlvoDivisao, setTipoAlvoDivisao] = useState<'TUDO' | 'HOSPEDAGEM' | 'CONSUMOS'>('TUDO');
   const [qtdPessoasDivisao, setQtdPessoasDivisao] = useState(2);
+  const [modalContaZeradaAberta, setModalContaZeradaAberta] = useState(false);
 
   // Estado de Processamento e Comprovante
   const [processandoCheckout, setProcessandoCheckout] = useState(false);
@@ -137,9 +139,9 @@ export const PaginaCheckout: React.FC = () => {
     setLinhasPagamento([
       {
         id: `pag-total-${Date.now()}`,
-        descricao: 'Conta Total (Hospedagem + Consumos)',
+        descricao: total <= 0 ? 'Conta Quitada na Reserva (R$ 0,00)' : 'Conta Total (Hospedagem + Consumos)',
         valor: total,
-        formaPagamento: 'PIX',
+        formaPagamento: (reserva.formapagamento as FormaPagamento) || 'PIX',
         parcelas: 1,
         tipoLancamento: 'SALDO_RESERVA',
       },
@@ -297,33 +299,41 @@ export const PaginaCheckout: React.FC = () => {
 
   // ================= EFETIVAÇÃO DO CHECKOUT ================= //
 
-  const handleProcessarCheckout = async (eLiquidacaoTotal: boolean) => {
+  const handleProcessarCheckout = async (eLiquidacaoTotal: boolean, bypassContaZerada: boolean = false) => {
     if (!reservaSelecionada) return;
     setFeedbackErro(null);
 
-    if (linhasPagamento.length === 0) {
-      setFeedbackErro('Adicione ao menos uma forma de pagamento.');
+    // Se o valor a cobrar da conta está zerado (100% quitado na reserva e sem consumos extras)
+    if (eLiquidacaoTotal && totalAcobrar <= 0.01 && !bypassContaZerada) {
+      setModalContaZeradaAberta(true);
       return;
     }
 
-    const existeInvalido = linhasPagamento.some((l) => Number(l.valor) <= 0);
-    if (existeInvalido) {
-      setFeedbackErro('Todos os lançamentos devem ter valor superior a R$ 0,00.');
-      return;
-    }
+    if (totalAcobrar > 0.01) {
+      if (linhasPagamento.length === 0) {
+        setFeedbackErro('Adicione ao menos uma forma de pagamento.');
+        return;
+      }
 
-    if (totalInformado > totalAcobrar + 0.01) {
-      setFeedbackErro(
-        `O total informado (${formatarMoeda(totalInformado)}) ultrapassa o valor da conta (${formatarMoeda(totalAcobrar)}).`
-      );
-      return;
-    }
+      const existeInvalido = linhasPagamento.some((l) => Number(l.valor) <= 0);
+      if (existeInvalido) {
+        setFeedbackErro('Todos os lançamentos devem ter valor superior a R$ 0,00.');
+        return;
+      }
 
-    if (eLiquidacaoTotal && Math.abs(saldoRestante) > 0.01) {
-      setFeedbackErro(
-        `Para finalizar o check-out e liberar o quarto, o valor total deve bater exatamente com a conta. Faltam ${formatarMoeda(saldoRestante)}.`
-      );
-      return;
+      if (totalInformado > totalAcobrar + 0.01) {
+        setFeedbackErro(
+          `O total informado (${formatarMoeda(totalInformado)}) ultrapassa o valor da conta (${formatarMoeda(totalAcobrar)}).`
+        );
+        return;
+      }
+
+      if (eLiquidacaoTotal && Math.abs(saldoRestante) > 0.01) {
+        setFeedbackErro(
+          `Para finalizar o check-out e liberar o quarto, o valor total deve bater exatamente com a conta. Faltam ${formatarMoeda(saldoRestante)}.`
+        );
+        return;
+      }
     }
 
     setProcessandoCheckout(true);
@@ -346,11 +356,13 @@ export const PaginaCheckout: React.FC = () => {
 
       if (eLiquidacaoTotal) {
         // LIQUIDAÇÃO TOTAL: Libera quarto e marca CONCLUIDA
-        const pagamentosParaSalvar = linhasPagamento.map((l) => ({
-          valor: Number(l.valor),
-          formapagamento: l.formaPagamento,
-          tipolancamento: l.tipoLancamento,
-        }));
+        const pagamentosParaSalvar = linhasPagamento
+          .filter((l) => Number(l.valor) > 0)
+          .map((l) => ({
+            valor: Number(l.valor),
+            formapagamento: l.formaPagamento,
+            tipolancamento: l.tipoLancamento,
+          }));
 
         const res = await realizarCheckout(reservaSelecionada.reservaid, pagamentosParaSalvar);
 
@@ -365,6 +377,7 @@ export const PaginaCheckout: React.FC = () => {
           setReservaSelecionada(null);
           setLinhasPagamento([]);
           setConsumosPendentes([]);
+          setModalContaZeradaAberta(false);
           setTimeout(() => setFeedbackSucesso(null), 4000);
         } else {
           setFeedbackErro(res.mensagem);
@@ -769,6 +782,16 @@ export const PaginaCheckout: React.FC = () => {
 
               {/* LISTA DINÂMICA DE PAGAMENTOS COM PARCELAMENTO EM ATÉ 3X */}
               <div className="space-y-3 border-t border-[#e1e3e4] pt-3">
+                {totalAcobrar <= 0.01 && (
+                  <div className="p-3 bg-[#e6f4ea] border border-[#b8f0c2] rounded-xl flex items-center gap-2.5 text-xs text-[#053d1e]">
+                    <CheckCircle2 className="w-5 h-5 text-[#053d1e] shrink-0" />
+                    <div>
+                      <p className="font-bold">Reserva 100% quitada antecipadamente</p>
+                      <p className="text-[11px] text-[#2d5a3c]">Não há saldo em aberto ou consumos pendentes. O valor a cobrar é de R$ 0,00.</p>
+                    </div>
+                  </div>
+                )}
+
                 {linhasPagamento.map((linha, index) => {
                   const valorLinha = Number(linha.valor) || 0;
                   const eCredito = linha.formaPagamento === 'CARTAO_CREDITO';
@@ -806,8 +829,8 @@ export const PaginaCheckout: React.FC = () => {
                           <input
                             type="number"
                             step="0.01"
-                            min="0.01"
-                            value={linha.valor || ''}
+                            min={totalAcobrar <= 0.01 ? "0" : "0.01"}
+                            value={linha.valor !== undefined && linha.valor !== null ? linha.valor : ''}
                             onChange={(e) => handleAtualizarLinha(linha.id, 'valor', parseFloat(e.target.value) || 0)}
                             className="w-full px-3 py-1.5 border border-[#c1c9bf] rounded-lg text-xs font-bold text-[#053d1e] bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e]"
                           />
@@ -904,7 +927,7 @@ export const PaginaCheckout: React.FC = () => {
                     className="w-full py-3.5 bg-[#166534] hover:bg-[#14532d] text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98"
                   >
                     {processandoCheckout ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
-                    <span>Liquidar Conta & Liberar Quarto</span>
+                    <span>{totalAcobrar <= 0.01 ? 'Concluir Check-out (Conta Zerada)' : 'Liquidar Conta & Liberar Quarto'}</span>
                   </button>
                 ) : totalInformado > 0 ? (
                   <button
@@ -1150,6 +1173,18 @@ export const PaginaCheckout: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Alerta / Confirmação de Check-out com Conta Zerada */}
+      <ModalConfirmacao
+        aberto={modalContaZeradaAberta}
+        titulo="Check-out com Valor Zerado"
+        mensagem={`O valor total a cobrar desta conta é R$ 0,00, pois as diárias já foram 100% quitadas na reserva e não constam consumos em aberto para ${reservaSelecionada?.hospedenome || 'o hóspede'}. Deseja continuar e concluir o check-out?`}
+        tipo="info"
+        textoConfirmar="Sim, Concluir Check-out"
+        textoCancelar="Voltar"
+        onConfirmar={() => handleProcessarCheckout(true, true)}
+        onCancelar={() => setModalContaZeradaAberta(false)}
+      />
 
       {/* Modal de Comprovante de Check-out */}
       {comprovanteCheckout && (
