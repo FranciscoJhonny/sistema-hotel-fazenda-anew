@@ -55,13 +55,23 @@ interface ContextoHotelType {
   trocarQuartoReserva: (reservaId: number | string, novoQuartoId: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckin: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>) => Promise<{ sucesso: boolean; mensagem: string }>;
-  criarConsumoExtra: (consumo: Omit<ConsumoExtra, 'consumoid' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'>) => Promise<{ sucesso: boolean; mensagem: string; consumo?: ConsumoExtra }>;
+  criarConsumoExtra: (consumo: {
+    reservaid: number;
+    produtoid?: number;
+    quantidade: number;
+    valorunitario: number;
+    valortotal: number;
+    categoria: string;
+    descricao: string;
+    dataconsumo?: string;
+    data_consumo?: string;
+  }) => Promise<{ sucesso: boolean; mensagem: string; consumo?: ConsumoExtra }>;
   excluirConsumoExtra: (consumoId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
   cadastrarHospede: (hospede: Omit<Hospede, 'hospedeid' | 'datainclusao' | 'dataoperacao' | 'ativo'>) => Promise<Hospede>;
   editarHospede: (id: number | string, dados: Partial<Hospede>) => Promise<void>;
   excluirHospede: (id: number | string) => Promise<boolean>;
   atualizarEstoqueProduto: (produtoId: number | string, quantidadeDelta: number) => Promise<void>;
-  criarProduto: (dados: Omit<Produto, 'produtoid' | 'datainclusao' | 'dataoperacao' | 'ativo'> & { ativo?: boolean }) => Promise<Produto>;
+  criarProduto: (dados: Partial<Produto> & { nome: string; categoria?: any; preco?: number; estoque?: number; ativo?: boolean }) => Promise<Produto>;
   editarProduto: (id: number | string, dados: Partial<Produto>) => Promise<{ sucesso: boolean; mensagem: string }>;
   excluirProduto: (id: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
   registrarVenda: (dados: Partial<Venda> & { itens: Venda['itens'] }) => Promise<Venda>;
@@ -175,7 +185,16 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (!hospedesResult.error && hospedesResult.data) setHospedes(hospedesResult.data as Hospede[]);
-      if (!produtosResult.error && produtosResult.data) setProdutos(produtosResult.data as Produto[]);
+      if (!produtosResult.error && produtosResult.data) {
+        const prods = produtosResult.data.map((p: any) => ({
+          ...p,
+          preco: Number(p.preco ?? p.valor ?? 0),
+          estoque: Number(p.estoque ?? p.estoqueatual ?? 0),
+          valor: Number(p.valor ?? p.preco ?? 0),
+          estoqueatual: Number(p.estoqueatual ?? p.estoque ?? 0),
+        }));
+        setProdutos(prods as Produto[]);
+      }
       if (!consumosResult.error && consumosResult.data) setConsumosExtras(consumosResult.data as ConsumoExtra[]);
       if (!pacotesResult.error && pacotesResult.data) setPacotes(pacotesResult.data as Pacote[]);
       if (!usuariosResult.error && usuariosResult.data) setUsuarios(usuariosResult.data as Usuario[]);
@@ -386,7 +405,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!quarto) return { sucesso: false, mensagem: 'Quarto não encontrado para realizar a reserva.' };
 
     if (!eDayUse) {
-      const conflitos = verificarConflitoQuarto(quartos, reservas, quarto.quartoid, novaReserva.dataentrada, novaReserva.datasaida);
+      const conflitos = verificarConflitoQuarto(quarto.quartoid, novaReserva.dataentrada, novaReserva.datasaida, reservas);
       if (conflitos.temConflito) {
         return { sucesso: false, mensagem: `Conflito de datas: O quarto ${quarto.numero} já possui reserva confirmada para o período.` };
       }
@@ -404,7 +423,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const reservaParaInserir = {
-      codigo: novaReserva.codigo || `RES-${Date.now().toString().slice(-6)}`,
+      codigo: (novaReserva as any).codigo || `RES-${Date.now().toString().slice(-6)}`,
       hospedeid: novaReserva.hospedeid,
       quartoid: eDayUse ? (quartoDayUse ? quartoDayUse.quartoid : 17) : quarto.quartoid,
       adultos: novaReserva.adultos || 1,
@@ -743,19 +762,33 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     return { sucesso: true, mensagem: `Check-out de ${reserva.hospedenome} realizado!` };
   };
 
-  const criarConsumoExtra = async (consumo: Omit<ConsumoExtra, 'consumoid' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'usuarioinclusao' | 'usuariooperacao' | 'naturezaoperacao'>) => {
+  const criarConsumoExtra = async (consumo: {
+    reservaid: number;
+    produtoid?: number;
+    quantidade: number;
+    valorunitario: number;
+    valortotal: number;
+    categoria: string;
+    descricao: string;
+    dataconsumo?: string;
+    data_consumo?: string;
+  }) => {
     const client = supabaseService.getClient();
     if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
 
     const agora = new Date().toISOString();
     const dadosInserir = {
-      ...consumo,
+      reservaid: Number(consumo.reservaid),
+      produtoid: consumo.produtoid ? Number(consumo.produtoid) : null,
+      quantidade: Number(consumo.quantidade),
+      valorunitario: Number(consumo.valorunitario),
+      valortotal: Number(consumo.valortotal),
+      dataconsumo: consumo.dataconsumo || consumo.data_consumo || agora,
+      categoria: consumo.categoria || 'OUTROS',
+      descricao: consumo.descricao || '',
       ativo: true,
-      usuarioinclusao: usuarioAtual?.usuarioid,
+      usuarioinclusao: usuarioAtual?.usuarioid || null,
       datainclusao: agora,
-      usuariooperacao: usuarioAtual?.usuarioid,
-      dataoperacao: agora,
-      naturezaoperacao: 'INSERT',
     };
 
     const { data, error } = await client.from('consumo_extra').insert(dadosInserir).select().single();
@@ -769,7 +802,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const client = supabaseService.getClient();
     if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
 
-    const { error } = await client.from('consumo_extra').update({ ativo: false, dataoperacao: new Date().toISOString(), naturezaoperacao: 'DELETE' }).eq('consumoid', consumoId);
+    const { error } = await client.from('consumo_extra').update({ ativo: false }).eq('consumoid', consumoId);
     if (error) return { sucesso: false, mensagem: error.message };
 
     setConsumosExtras((prev) => prev.filter((c) => String(c.consumoid) !== String(consumoId)));
@@ -831,18 +864,23 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const produto = produtos.find((p) => String(p.produtoid) === String(produtoId));
     if (!produto) return;
 
-    const novoEstoque = Math.max(0, produto.estoqueatual + quantidadeDelta);
-    const dadosAtualizar = { estoqueatual: novoEstoque, dataoperacao: new Date().toISOString(), usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+    const estoqueAtual = Number(produto.estoque ?? produto.estoqueatual ?? 0);
+    const novoEstoque = Math.max(0, estoqueAtual + quantidadeDelta);
+    const dadosAtualizar = { estoque: novoEstoque, dataoperacao: new Date().toISOString(), usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
 
     if (client) await client.from('produto').update(dadosAtualizar).eq('produtoid', produtoId);
-    setProdutos((prev) => prev.map((p) => (String(p.produtoid) === String(produtoId) ? { ...p, ...dadosAtualizar } : p)));
+    setProdutos((prev) => prev.map((p) => (String(p.produtoid) === String(produtoId) ? { ...p, estoque: novoEstoque, estoqueatual: novoEstoque } : p)));
   };
 
-  const criarProduto = async (dados: Omit<Produto, 'produtoid' | 'datainclusao' | 'dataoperacao' | 'ativo'> & { ativo?: boolean }) => {
+  const criarProduto = async (dados: Partial<Produto> & { nome: string; categoria?: any; preco?: number; estoque?: number; ativo?: boolean }) => {
     const client = supabaseService.getClient();
     const agora = new Date().toISOString();
+    const preco = Number(dados.preco ?? dados.valor ?? 0);
+    const estoque = Number(dados.estoque ?? dados.estoqueatual ?? 0);
     const dadosInserir = {
       ...dados,
+      preco,
+      estoque,
       ativo: dados.ativo ?? true,
       usuarioinclusao: usuarioAtual?.usuarioid,
       datainclusao: agora,
@@ -854,12 +892,13 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (client) {
       const { data } = await client.from('produto').insert(dadosInserir).select().single();
       if (data) {
-        setProdutos((prev) => [data as Produto, ...prev]);
-        return data as Produto;
+        const prodNormalizado = { ...data, preco, estoque, valor: preco, estoqueatual: estoque } as Produto;
+        setProdutos((prev) => [prodNormalizado, ...prev]);
+        return prodNormalizado;
       }
     }
 
-    const produtoMock = { ...dadosInserir, produtoid: Date.now() } as Produto;
+    const produtoMock = { ...dadosInserir, produtoid: Date.now(), preco, estoque, valor: preco, estoqueatual: estoque } as Produto;
     setProdutos((prev) => [produtoMock, ...prev]);
     return produtoMock;
   };
@@ -867,7 +906,9 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const editarProduto = async (id: number | string, dados: Partial<Produto>) => {
     const client = supabaseService.getClient();
     const agora = new Date().toISOString();
-    const dadosAtualizar = { ...dados, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+    const dadosAtualizar: any = { ...dados, dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE' };
+    if (dados.preco !== undefined) dadosAtualizar.preco = Number(dados.preco);
+    if (dados.estoque !== undefined) dadosAtualizar.estoque = Number(dados.estoque);
 
     if (client) await client.from('produto').update(dadosAtualizar).eq('produtoid', id);
     setProdutos((prev) => prev.map((p) => (String(p.produtoid) === String(id) ? { ...p, ...dadosAtualizar } : p)));

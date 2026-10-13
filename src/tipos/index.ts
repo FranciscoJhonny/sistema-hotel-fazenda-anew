@@ -32,7 +32,7 @@ export type FormaPagamento =
   | 'TRANSFERENCIA' 
   | 'OUTRO';
 
-export type StatusPagamento = 'PAGO' | 'PENDENTE' | 'PARCIAL';
+export type StatusPagamento = 'PAGO' | 'PENDENTE' | 'PARCIAL' | 'CONFIRMADO';
 
 export type TipoLancamentoPagamento =
   | 'SINAL_RESERVA'
@@ -42,6 +42,8 @@ export type TipoLancamentoPagamento =
 export type PerfilUsuario = 'MASTER' | 'ADMIN' | 'RECEPCAO' | 'VENDAS' | 'DIRETORIA' | 'EXECUTIVO';
 
 export type TipoVenda = 'LOJA' | 'ALMOCO' | 'DAY_USE' | 'CONSUMO_QUARTO';
+
+export type CategoriaProduto = 'LOJINHA' | 'BAR' | 'RESTAURANTE' | 'SERVICO' | 'FRIGOBAR';
 
 // =============================================================================
 // INTERFACES AUDITORIA
@@ -132,6 +134,7 @@ export interface Hospede extends EntidadeAuditavel {
   declaracao_aceita?: boolean;
   data_declaracao?: string;
   assinatura_url?: string;
+  observacoes?: string;
 }
 
 // =============================================================================
@@ -155,7 +158,7 @@ export interface Acompanhante extends EntidadeAuditavel {
 // =============================================================================
 // 6. Cadastro FNRH (Pré-cadastro do Cliente)
 // =============================================================================
-export interface CadastroFnrh extends EntidadeAuditavel {
+export interface CadastroFnrh {
   cadastroid: number;
   status: 'PENDENTE' | 'AGUARDANDO_PAGAMENTO' | 'LIBERADA_PARA_RESERVA' | 'RESERVA_CRIADA' | 'CANCELADA';
   token_acesso?: string;
@@ -204,6 +207,14 @@ export interface CadastroFnrh extends EntidadeAuditavel {
 
   // Lista de acompanhantes vinculados
   acompanhantes?: CadastroFnrhAcompanhante[];
+
+  // Auditoria
+  ativo?: boolean;
+  usuarioinclusao?: number | string;
+  datainclusao?: string;
+  usuariooperacao?: number | string;
+  dataoperacao?: string;
+  naturezaoperacao?: string;
 }
 
 export interface CadastroFnrhAcompanhante {
@@ -253,6 +264,7 @@ export interface Reserva extends EntidadeAuditavel {
   dataentrada: string;
   datasaida: string;
   horarioprevistochegada?: string;
+  horarioprevistosaida?: string;
   tipoatendimento?: TipoAtendimento;
   pacoteid?: number;
   statusreserva: StatusReserva;
@@ -276,6 +288,8 @@ export interface Reserva extends EntidadeAuditavel {
   checkinusuario?: number | string;
   checkoutrealizadoem?: string;
   checkoutusuario?: number | string;
+  hospedeatualnome?: string;
+  pacotename?: string;
 }
 
 // =============================================================================
@@ -284,9 +298,11 @@ export interface Reserva extends EntidadeAuditavel {
 export interface Produto extends EntidadeAuditavel {
   produtoid: number;
   nome: string;
-  categoria: 'LOJINHA' | 'BAR' | 'RESTAURANTE' | 'SERVICO';
-  valor: number;
-  estoqueatual: number;
+  categoria: CategoriaProduto | string;
+  preco: number;
+  estoque: number;
+  valor?: number;
+  estoqueatual?: number;
   estoqueminimo?: number;
   codigo_barras?: string;
   imagem_url?: string;
@@ -296,16 +312,24 @@ export interface Produto extends EntidadeAuditavel {
 // =============================================================================
 // 10. Consumo Extra
 // =============================================================================
-export interface ConsumoExtra extends EntidadeAuditavel {
+export interface ConsumoExtra {
   consumoid: number;
   reservaid: number;
   produtoid?: number;
+  produtonome?: string;
   descricao: string;
   quantidade: number;
   valorunitario: number;
   valortotal: number;
   categoria: string;
+  dataconsumo?: string;
   data_consumo?: string;
+  ativo: boolean;
+  usuarioinclusao?: number | string;
+  datainclusao?: string;
+  usuariooperacao?: number | string;
+  dataoperacao?: string;
+  naturezaoperacao?: string;
 }
 
 // =============================================================================
@@ -313,16 +337,24 @@ export interface ConsumoExtra extends EntidadeAuditavel {
 // =============================================================================
 export interface VendaItem {
   produtoid: number;
-  nome: string;
+  nome?: string;
+  produtonome?: string;
   quantidade: number;
-  valorunitario: number;
-  valortotal: number;
+  valorunitario?: number;
+  precounitario?: number;
+  valortotal?: number;
+  subtotal?: number;
 }
+
+export type ItemVenda = VendaItem;
 
 export interface Venda extends EntidadeAuditavel {
   vendaid: number;
+  codigo?: string;
+  tipo?: TipoVenda;
   tipovenda: TipoVenda;
   hospedeid?: number;
+  hospedenome?: string;
   reservaid?: number;
   valortotal: number;
   formapagamento: FormaPagamento;
@@ -348,6 +380,13 @@ export interface Pagamento extends EntidadeAuditavel {
 // =============================================================================
 // 13. Configuração do Sistema
 // =============================================================================
+export interface Configuracao extends EntidadeAuditavel {
+  configuracaoid?: number;
+  chave: string;
+  valor: string;
+  descricao?: string;
+}
+
 export interface ConfiguracaoSistema {
   checkintime: string;
   checkouttime: string;

@@ -61,7 +61,7 @@ export const PaginaProdutos: React.FC = () => {
     setFormulario({
       nome: produto.nome,
       descricao: produto.descricao || '',
-      categoria: produto.categoria || 'LOJINHA',
+      categoria: (produto.categoria as CategoriaProduto) || 'LOJINHA',
       preco: produto.preco,
       estoque: produto.estoque,
     });

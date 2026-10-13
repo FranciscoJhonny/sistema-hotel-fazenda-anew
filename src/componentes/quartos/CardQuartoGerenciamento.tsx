@@ -47,7 +47,6 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
   const horarioPrevisto = reservaExibicao?.horarioprevistochegada;  
 
   // Se estiver em manutenção, sobrescreve o status
-  const statusFinal = emManutencao ? 'MANUTENCAO' : status;
   const statusFinal = (emManutencao || String(quarto.status || '').toUpperCase() === 'MANUTENCAO') ? 'MANUTENCAO' : status;
 
   // Formatadores
@@ -103,9 +102,6 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
     },
     MANUTENCAO: {
       label: 'MANUTENÇÃO',
-      bgClass: 'bg-black text-white border border-black shadow-xs',
-      textClass: 'text-white',
-      borderClass: 'border-l-4 border-black',
       bgClass: 'bg-[#e5e7eb] text-[#374151] border border-[#d1d5db]',
       textClass: 'text-[#374151]',
       borderClass: 'border-l-4 border-gray-400',
@@ -238,8 +234,6 @@ export const CardQuartoGerenciamento: React.FC<CardQuartoGerenciamentoProps> = (
 
       {statusFinal === 'MANUTENCAO' && (
         <div className="flex flex-col items-center justify-center py-4 space-y-3">
-          <div className="bg-neutral-900 p-3 rounded-full shadow-xs">
-            <Wrench className="w-8 h-8 text-white" />
           <div className="bg-gray-100 p-3 rounded-full shadow-xs">
             <Wrench className="w-8 h-8 text-gray-500" />
           </div>
