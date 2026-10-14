@@ -124,7 +124,7 @@ export const PaginaFnrhAdmin: React.FC = () => {
   };
 
   const handleCopiarLink = async (cadastro: CadastroFnrh) => {
-    const link = gerarLinkPublicoFnrh(cadastro.token_acesso);
+    const link = gerarLinkPublicoFnrh(cadastro.token_acesso || '');
     try {
       await navigator.clipboard.writeText(link);
       setCopiadoId(cadastro.cadastroid);
@@ -143,7 +143,7 @@ export const PaginaFnrhAdmin: React.FC = () => {
   };
 
   const handleEnviarWhatsApp = (cadastro: CadastroFnrh) => {
-    const link = gerarLinkPublicoFnrh(cadastro.token_acesso);
+    const link = gerarLinkPublicoFnrh(cadastro.token_acesso || '');
     const numLimpo = (cadastro.telefone || '').replace(/\D/g, '');
     const saudacao = cadastro.nomecompleto ? `Olá ${cadastro.nomecompleto}!` : 'Olá!';
     const texto = `${saudacao} Tudo bem?
@@ -234,7 +234,7 @@ Qualquer dúvida, estamos à disposição!`;
     cadastros.forEach((c) => {
       const r = obterReservaDoCadastro(c);
       const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
-      const expirado = new Date(c.token_expira_em) < new Date();
+      const expirado = Boolean(c.token_expira_em && new Date(c.token_expira_em) < new Date());
       const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
 
       if (jaReserva) {
@@ -276,7 +276,7 @@ Qualquer dúvida, estamos à disposição!`;
         }
       }
 
-      const expirado = new Date(c.token_expira_em) < new Date();
+      const expirado = Boolean(c.token_expira_em && new Date(c.token_expira_em) < new Date());
       const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
       const r = obterReservaDoCadastro(c);
       const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
@@ -304,7 +304,7 @@ Qualquer dúvida, estamos à disposição!`;
 
   // Renderiza a tag de status visual
   const renderizarStatusBadge = (c: CadastroFnrh) => {
-    const expirado = new Date(c.token_expira_em) < new Date() && c.status === 'AGUARDANDO_PAGAMENTO';
+    const expirado = Boolean(c.token_expira_em && new Date(c.token_expira_em) < new Date() && c.status === 'AGUARDANDO_PAGAMENTO');
     const preenchido = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
     const r = obterReservaDoCadastro(c);
     const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
@@ -548,9 +548,9 @@ Qualquer dúvida, estamos à disposição!`;
               <tbody className="divide-y divide-slate-100">
                 {cadastrosFiltrados.map((item) => {
                   const preenchido = Boolean(item.nomecompleto && item.cpf && item.declaracao_aceita);
-                  const diasRestantes = Math.ceil(
-                    (new Date(item.token_expira_em).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-                  );
+                  const diasRestantes = item.token_expira_em
+                    ? Math.ceil((new Date(item.token_expira_em).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                    : 0;
                   const reservaVinculada = obterReservaDoCadastro(item);
                   const jaPossuiReserva = Boolean(
                     item.status === 'RESERVA_CRIADA' ||
@@ -588,7 +588,7 @@ Qualquer dúvida, estamos à disposição!`;
                           </button>
                         </div>
                         <span className="text-[10px] text-slate-400 block mt-0.5">
-                          Criado: {new Date(item.datainclusao).toLocaleDateString('pt-BR')}
+                          Criado: {item.datainclusao ? new Date(item.datainclusao).toLocaleDateString('pt-BR') : '-'}
                           {diasRestantes > 0
                             ? ` • ${diasRestantes}d restantes`
                             : ' • Expirado'}

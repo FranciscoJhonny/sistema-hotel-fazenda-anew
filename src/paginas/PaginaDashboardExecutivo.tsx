@@ -243,9 +243,9 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     if (!buscaTabela.trim()) return resumoAnaliticoReservas;
     const termo = buscaTabela.toLowerCase();
     return resumoAnaliticoReservas.filter(r =>
-      r.hospede.toLowerCase().includes(termo) ||
-      r.quarto.toLowerCase().includes(termo) ||
-      r.codigo.toLowerCase().includes(termo)
+      (r.hospede || '').toLowerCase().includes(termo) ||
+      (r.quarto || '').toLowerCase().includes(termo) ||
+      (r.codigo || '').toLowerCase().includes(termo)
     );
   }, [resumoAnaliticoReservas, buscaTabela]);
 

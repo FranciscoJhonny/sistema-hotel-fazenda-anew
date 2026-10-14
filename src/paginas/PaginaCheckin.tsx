@@ -34,9 +34,9 @@ console.log(dataSistema)
     if (!busca.trim()) return true;
     const termo = busca.toLowerCase();
     return (
-      r.hospedenome.toLowerCase().includes(termo) ||
-      r.codigo.toLowerCase().includes(termo) ||
-      r.quartonumero.includes(termo)
+      (r.hospedenome || '').toLowerCase().includes(termo) ||
+      (r.codigo || '').toLowerCase().includes(termo) ||
+      (r.quartonumero || '').includes(termo)
     );
   });
 

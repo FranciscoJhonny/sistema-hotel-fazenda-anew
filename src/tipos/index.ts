@@ -239,8 +239,8 @@ export interface Pacote extends EntidadeAuditavel {
   pacoteid: number;
   nome: string;
   descricao?: string;
-  datainicio?: string;
-  datafim?: string;
+  datainicio?: string | null;
+  datafim?: string | null;
   valor: number;
   adultosinclusos: number;
   criancasinclusas: number;
