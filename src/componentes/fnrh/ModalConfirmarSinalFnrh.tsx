@@ -12,7 +12,11 @@ import {
 import { CadastroFnrh, Pacote } from '../../tipos';
 import { FnrhService } from '../../servicos/supabase/FnrhService';
 import { useHotel } from '../../contextos/ContextoHotel';
-import { formatarMoeda } from '../../utilitarios/formatadores';
+import {
+  formatarMoeda,
+  aplicarMascaraMoeda,
+  desformatarMoeda
+} from '../../utilitarios/formatadores';
 
 interface ModalConfirmarSinalFnrhProps {
   aberto: boolean;
@@ -51,9 +55,9 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     if (cadastro) {
       setSemSinal(false);
       if (cadastro.valor_sinal > 0) {
-        setValorSinal(String(cadastro.valor_sinal));
+        setValorSinal(aplicarMascaraMoeda(cadastro.valor_sinal));
       } else if (sinalCalculado > 0) {
-        setValorSinal(sinalCalculado.toFixed(2).replace('.', ','));
+        setValorSinal(aplicarMascaraMoeda(sinalCalculado));
       } else {
         setValorSinal('');
       }
@@ -73,12 +77,12 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     setSemSinal(marcado);
     setErro(null);
     if (marcado) {
-      setValorSinal('0,00');
+      setValorSinal(aplicarMascaraMoeda(0));
     } else {
       if (cadastro.valor_sinal > 0) {
-        setValorSinal(String(cadastro.valor_sinal));
+        setValorSinal(aplicarMascaraMoeda(cadastro.valor_sinal));
       } else if (sinalCalculado > 0) {
-        setValorSinal(sinalCalculado.toFixed(2).replace('.', ','));
+        setValorSinal(aplicarMascaraMoeda(sinalCalculado));
       } else {
         setValorSinal('');
       }
@@ -92,7 +96,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     let valorNumerico = 0;
 
     if (!semSinal) {
-      valorNumerico = parseFloat(valorSinal.replace(',', '.'));
+      valorNumerico = desformatarMoeda(valorSinal);
       if (isNaN(valorNumerico) || valorNumerico <= 0) {
         setErro('Informe um valor de sinal válido maior que zero ou marque a opção de pagar no check-out.');
         return;
@@ -239,25 +243,23 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
               {!semSinal && sinalCalculado > 0 && (
                 <button
                   type="button"
-                  onClick={() => setValorSinal(sinalCalculado.toFixed(2).replace('.', ','))}
+                  onClick={() => setValorSinal(aplicarMascaraMoeda(sinalCalculado))}
                   className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer"
                 >
                   Usar 50% ({formatarMoeda(sinalCalculado)})
                 </button>
               )}
             </div>
-            <div className="relative">
-              <span className={`absolute left-3 top-2.5 text-xs font-bold ${semSinal ? 'text-slate-300' : 'text-slate-400'}`}>
-                R$
-              </span>
+            <div>
               <input
                 type="text"
+                inputMode="numeric"
                 disabled={semSinal}
                 required={!semSinal}
-                placeholder="0,00"
+                placeholder="R$ 0,00"
                 value={valorSinal}
-                onChange={(e) => setValorSinal(e.target.value)}
-                className={`w-full pl-9 pr-3 py-2 rounded-xl border text-sm font-bold outline-none transition-all ${
+                onChange={(e) => setValorSinal(aplicarMascaraMoeda(e.target.value))}
+                className={`w-full px-3.5 py-2 rounded-xl border text-sm font-bold outline-none transition-all ${
                   semSinal
                     ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
                     : 'border-[#c1c9bf] bg-white text-slate-800 focus:border-[#053d1e]'

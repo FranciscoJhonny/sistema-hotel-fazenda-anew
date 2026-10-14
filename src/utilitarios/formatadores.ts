@@ -5,6 +5,55 @@ export function formatarMoeda(valor: number): string {
   }).format(valor || 0);
 }
 
+/**
+ * Aplica máscara monetária brasileira (BRL) com preenchimento da direita para a esquerda.
+ * Conforme o usuário digita números, o valor avança das casas decimais para as inteiras:
+ * Ex: 3 -> R$ 0,03; 310100 -> R$ 3.101,00
+ */
+export function aplicarMascaraMoeda(valor: string | number): string {
+  if (valor === undefined || valor === null || valor === '') return '';
+
+  if (typeof valor === 'number') {
+    if (isNaN(valor)) return '';
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(valor);
+  }
+
+  const apenasDigitos = String(valor).replace(/\D/g, '');
+  if (!apenasDigitos) return '';
+
+  const digitosLimpos = apenasDigitos.replace(/^0+/, '');
+  if (!digitosLimpos) {
+    return '';
+  }
+
+  const centavos = parseInt(digitosLimpos, 10);
+  const valorDecimal = centavos / 100;
+
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(valorDecimal);
+}
+
+/**
+ * Converte a string com máscara monetária de volta para número float para persistência no banco.
+ * Ex: "R$ 1.125,00" -> 1125.00
+ */
+export function desformatarMoeda(valorFormatado: string | number): number {
+  if (typeof valorFormatado === 'number') {
+    return isNaN(valorFormatado) ? 0 : valorFormatado;
+  }
+  if (!valorFormatado) return 0;
+  const apenasDigitos = String(valorFormatado).replace(/\D/g, '');
+  if (!apenasDigitos) return 0;
+  const centavos = parseInt(apenasDigitos, 10);
+  const numero = centavos / 100;
+  return Number.isFinite(numero) ? Math.max(0, numero) : 0;
+}
+
 export function sanitizarValorMonetario(valor: string): string {
   const somenteNumeros = valor.replace(/[^\d,]/g, '');
   const [parteInteira, ...partesDecimais] = somenteNumeros.split(',');
