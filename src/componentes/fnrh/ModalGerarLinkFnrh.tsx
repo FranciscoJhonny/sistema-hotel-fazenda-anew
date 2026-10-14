@@ -9,7 +9,6 @@ import {
   User,
   Phone,
   Mail,
-  Users,
   Clock,
   Sparkles,
   LoaderCircle,
@@ -31,7 +30,7 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
   onFechar,
   onLinkCriado,
 }) => {
-  const { usuarioAtual, dataSistema } = useHotel();
+  const { usuarioAtual } = useHotel();
 
   // Campos do formulário de geração
   const [nome, setNome] = useState('');
@@ -97,7 +96,7 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
     }
 
     setLinkGerado(res.linkPublico);
-    setTokenGerado(res.cadastro.token_acesso);
+    setTokenGerado(res.cadastro.token_acesso || null);
     onLinkCriado(res.cadastro);
   };
 
@@ -443,4 +442,3 @@ Qualquer dúvida, estamos à disposição!`;
     </div>
   );
 };
-

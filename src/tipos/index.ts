@@ -196,6 +196,7 @@ export interface CadastroFnrh {
   criancas: number;
   forma_pagamento?: string;
   valor_sinal: number;
+  valor_total?: number;
   comprovante_url?: string;
   pagamento_confirmado_em?: string;
   pagamento_confirmado_por?: number | null;

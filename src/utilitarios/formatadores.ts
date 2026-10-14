@@ -150,3 +150,54 @@ export function calcularIdadeNumerica(dataNascimentoStr?: string): number {
   return Math.max(0, idade);
 }
 
+/**
+ * Calcula a idade exata com base em uma data de referência (ex: data de entrada da reserva).
+ */
+export function calcularIdadeNaData(dataNascimentoStr?: string, dataReferenciaStr?: string): number {
+  if (!dataNascimentoStr) return 0;
+
+  let dataNasc: Date;
+  const strNasc = dataNascimentoStr.slice(0, 10).trim();
+  if (strNasc.includes('/')) {
+    const partes = strNasc.split('/');
+    if (partes.length === 3) {
+      dataNasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
+    } else {
+      dataNasc = new Date(strNasc);
+    }
+  } else if (strNasc.includes('-')) {
+    const partes = strNasc.split('-');
+    if (partes.length === 3) {
+      dataNasc = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+    } else {
+      dataNasc = new Date(strNasc);
+    }
+  } else {
+    dataNasc = new Date(strNasc);
+  }
+
+  if (isNaN(dataNasc.getTime())) return 0;
+
+  let refDate = new Date();
+  if (dataReferenciaStr) {
+    const strRef = dataReferenciaStr.slice(0, 10).trim();
+    if (strRef.includes('/')) {
+      const p = strRef.split('/');
+      if (p.length === 3) {
+        refDate = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+      }
+    } else if (strRef.includes('-')) {
+      const p = strRef.split('-');
+      if (p.length === 3) {
+        refDate = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+      }
+    }
+  }
+
+  let idade = refDate.getFullYear() - dataNasc.getFullYear();
+  const m = refDate.getMonth() - dataNasc.getMonth();
+  if (m < 0 || (m === 0 && refDate.getDate() < dataNasc.getDate())) {
+    idade--;
+  }
+  return Math.max(0, idade);
+}

@@ -21,14 +21,16 @@ import {
   Plus,
   Trash2,
   LoaderCircle,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
-import { CadastroFnrh, Reserva } from '../../tipos';
+import { CadastroFnrh, Reserva, Pacote } from '../../tipos';
 import { FnrhService, gerarLinkPublicoFnrh } from '../../servicos/supabase/FnrhService';
 import {
   aplicarMascaraCpf,
   aplicarMascaraTelefone,
   calcularIdade,
+  calcularIdadeNaData,
   formatarCep,
   formatarCpf,
   formatarData,
@@ -41,22 +43,156 @@ interface ModalDetalhesFnrhProps {
   aberto: boolean;
   cadastro: CadastroFnrh | null;
   reservaVinculada?: Reserva | null;
+  valorTotalSugerido?: number;
+  pacoteSugerido?: Pacote | null;
   onFechar: () => void;
   onConfirmarSinal?: (cadastro: CadastroFnrh) => void;
   onCriarReserva?: (cadastro: CadastroFnrh) => void;
   onAtualizar?: () => void;
 }
 
+export interface TarifaIndividual {
+  tipo: 'INTEIRA' | 'MEIA' | 'GRATIS';
+  tipoTexto: string;
+  valor: number;
+  idade: number;
+  badgeClasse: string;
+}
+
+/**
+ * Calcula a tarifa individual com base na idade na data de entrada da estadia:
+ * - A partir de 12 anos: "Inteira (100%)"
+ * - De 6 a 11 anos: "Meia (50%)"
+ * - De 0 a 5 anos: "Grátis (Isento)"
+ */
+export const calcularTarifaHospede = (
+  dataNascimento?: string,
+  menoridade?: boolean,
+  dataEntradaStr?: string,
+  dataSaidaStr?: string,
+  pacotesLista: Pacote[] = []
+): TarifaIndividual => {
+  const dEntrada = (dataEntradaStr || '').slice(0, 10).trim();
+  const dSaida = (dataSaidaStr || '').slice(0, 10).trim();
+
+  let dias = 2; // Padrão se não informado: 2 dias (Final de Semana)
+  if (dEntrada && dSaida) {
+    if (dEntrada === dSaida) {
+      dias = 1; // Day Use
+    } else {
+      let d1: Date;
+      let d2: Date;
+      if (dEntrada.includes('/')) {
+        const p1 = dEntrada.split('/');
+        d1 = new Date(Number(p1[2]), Number(p1[1]) - 1, Number(p1[0]));
+      } else {
+        const p1 = dEntrada.split('-');
+        d1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
+      }
+      if (dSaida.includes('/')) {
+        const p2 = dSaida.split('/');
+        d2 = new Date(Number(p2[2]), Number(p2[1]) - 1, Number(p2[0]));
+      } else {
+        const p2 = dSaida.split('-');
+        d2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+      }
+      const diff = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+      dias = diff > 0 ? diff + 1 : 1;
+    }
+  }
+
+  // Preço oficial do pacote por pessoa/adulto
+  let valorBasePorPessoa = 550;
+  if (dias === 1) {
+    valorBasePorPessoa = 200;
+  } else if (dias === 2) {
+    valorBasePorPessoa = 550;
+  } else if (dias === 3) {
+    valorBasePorPessoa = 750;
+  } else if (dias === 4) {
+    valorBasePorPessoa = 950;
+  } else {
+    const pEncontrado = pacotesLista.find((p) => Number(p.quantidadedias) === dias);
+    if (pEncontrado?.valor) {
+      valorBasePorPessoa = Number(pEncontrado.valor);
+    } else {
+      valorBasePorPessoa = 950 + (dias - 4) * 200;
+    }
+  }
+
+  // Se houver pacote correspondente cadastrado no banco com valor ativo
+  const pacoteMatch = pacotesLista.find((p) => Number(p.quantidadedias) === dias);
+  if (pacoteMatch?.valor && Number(pacoteMatch.valor) > 0) {
+    valorBasePorPessoa = Number(pacoteMatch.valor);
+  }
+
+  // Idade na data de entrada da reserva
+  let idade = 30; // Padrão adulto se não informada e não menor
+  if (dataNascimento) {
+    idade = calcularIdadeNaData(dataNascimento, dEntrada);
+  } else if (menoridade) {
+    idade = 8;
+  }
+
+  if (dataNascimento) {
+    if (idade <= 5) {
+      return {
+        tipo: 'GRATIS',
+        tipoTexto: 'Grátis (Isento)',
+        valor: 0,
+        idade,
+        badgeClasse: 'bg-blue-50 text-blue-700 border-blue-200',
+      };
+    } else if (idade <= 11) {
+      return {
+        tipo: 'MEIA',
+        tipoTexto: 'Meia (50%)',
+        valor: valorBasePorPessoa * 0.5,
+        idade,
+        badgeClasse: 'bg-amber-50 text-amber-800 border-amber-300',
+      };
+    } else {
+      return {
+        tipo: 'INTEIRA',
+        tipoTexto: 'Inteira (100%)',
+        valor: valorBasePorPessoa,
+        idade,
+        badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+      };
+    }
+  }
+
+  if (menoridade) {
+    return {
+      tipo: 'MEIA',
+      tipoTexto: 'Meia (50%)',
+      valor: valorBasePorPessoa * 0.5,
+      idade: 8,
+      badgeClasse: 'bg-amber-50 text-amber-800 border-amber-300',
+    };
+  }
+
+  return {
+    tipo: 'INTEIRA',
+    tipoTexto: 'Inteira (100%)',
+    valor: valorBasePorPessoa,
+    idade,
+    badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+  };
+};
+
 export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   aberto,
   cadastro,
   reservaVinculada,
+  valorTotalSugerido,
+  pacoteSugerido,
   onFechar,
   onConfirmarSinal,
   onCriarReserva,
   onAtualizar,
 }) => {
-  const { usuarioAtual, recarregarDados } = useHotel();
+  const { usuarioAtual, recarregarDados, pacotes } = useHotel();
   const [copiado, setCopiado] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [dadosEditados, setDadosEditados] = useState<Partial<CadastroFnrh>>({});
@@ -87,10 +223,19 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
     reservaVinculada?.codigo ||
     (cadastro.reservaid ? `#${cadastro.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
 
-  const link = gerarLinkPublicoFnrh(cadastro.token_acesso);
-  const estaExpirado = new Date(cadastro.token_expira_em) < new Date() && cadastro.status === 'AGUARDANDO_PAGAMENTO';
+  const link = gerarLinkPublicoFnrh(cadastro.token_acesso || '');
+  const estaExpirado = new Date(cadastro.token_expira_em || '').getTime() < Date.now() && cadastro.status === 'AGUARDANDO_PAGAMENTO';
   const preenchido = Boolean(cadastro.nomecompleto && cadastro.cpf && cadastro.declaracao_aceita);
   const podeEditar = cadastro.status === 'AGUARDANDO_PAGAMENTO';
+
+  // Tarifa individual do Hóspede Titular
+  const tarifaTitular = calcularTarifaHospede(
+    dadosEditados.datanascimento || cadastro.datanascimento,
+    false,
+    dadosEditados.dataentrada || cadastro.dataentrada,
+    dadosEditados.datasaida || cadastro.datasaida,
+    pacotes
+  );
 
   const handleCopiar = async () => {
     try {
@@ -216,7 +361,7 @@ Qualquer dúvida estamos à disposição!`;
                 {badgeStatus()}
               </div>
               <p className="text-xs text-white/80">
-                Criado em: {new Date(cadastro.datainclusao).toLocaleString('pt-BR')} • Expira em: {new Date(cadastro.token_expira_em).toLocaleDateString('pt-BR')}
+                Criado em: {cadastro.datainclusao ? new Date(cadastro.datainclusao).toLocaleString('pt-BR') : '-'} • Expira em: {cadastro.token_expira_em ? new Date(cadastro.token_expira_em).toLocaleDateString('pt-BR') : '-'}
               </p>
             </div>
           </div>
@@ -500,6 +645,17 @@ Qualquer dúvida estamos à disposição!`;
                   <span className="text-slate-500 block">Profissão</span>
                   <span className="font-semibold text-slate-900">{dadosEditados.profissao || cadastro.profissao || '--'}</span>
                 </div>
+                <div>
+                  <span className="text-slate-500 block">Tarifa Individual (Titular)</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${tarifaTitular.badgeClasse}`}>
+                      {tarifaTitular.tipoTexto}
+                    </span>
+                    <span className="font-extrabold text-[#053d1e] font-['Manrope'] text-xs">
+                      {formatarMoeda(tarifaTitular.valor)}
+                    </span>
+                  </div>
+                </div>
                 <div className="lg:col-span-2">
                   <span className="text-slate-500 block">Endereço Residencial</span>
                   <span className="font-semibold text-slate-900">
@@ -640,12 +796,12 @@ Qualquer dúvida estamos à disposição!`;
             )}
           </section>
 
-          {/* Seção 3: Acompanhantes */}
+          {/* Seção 3: Acompanhantes e Tarifas Individuais */}
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-bold font-['Manrope'] text-[#053d1e] mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
               <span className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#053d1e]" />
-                Acompanhantes Cadastrados ({modoEdicao ? acompanhantesEditados.length : (cadastro.acompanhantes?.length || 0)})
+                Acompanhantes & Tarifas ({modoEdicao ? acompanhantesEditados.length : (cadastro.acompanhantes?.length || 0)})
               </span>
               {modoEdicao && (
                 <button
@@ -713,9 +869,32 @@ Qualquer dúvida estamos à disposição!`;
                         </div>
 
                         <div>
-                          <label className="text-slate-600 block font-semibold mb-1">Idade (Calculada)</label>
-                          <div className="w-full px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-900 flex items-center h-[32px]">
-                            {calcularIdade(acomp.datanascimento)}
+                          <label className="text-slate-600 block font-semibold mb-1">Tarifa / Idade Prevista</label>
+                          <div className="flex items-center justify-between gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#c1c9bf] h-[34px]">
+                            <span className="text-[11px] font-bold text-slate-700">
+                              {acomp.datanascimento ? calcularIdade(acomp.datanascimento) : '--'}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {(() => {
+                                const tarifaEd = calcularTarifaHospede(
+                                  acomp.datanascimento,
+                                  acomp.menoridade,
+                                  dadosEditados.dataentrada || cadastro.dataentrada,
+                                  dadosEditados.datasaida || cadastro.datasaida,
+                                  pacotes
+                                );
+                                return (
+                                  <>
+                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border ${tarifaEd.badgeClasse}`}>
+                                      {tarifaEd.tipoTexto}
+                                    </span>
+                                    <span className="font-extrabold text-[#053d1e] text-[11px] font-['Manrope']">
+                                      {formatarMoeda(tarifaEd.valor)}
+                                    </span>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           </div>
                         </div>
 
@@ -746,38 +925,99 @@ Qualquer dúvida estamos à disposição!`;
                   ))}
                 </div>
               )
-            ) : !cadastro.acompanhantes || cadastro.acompanhantes.length === 0 ? (
-              <p className="text-xs text-slate-500 italic">Nenhum acompanhante cadastrado.</p>
             ) : (
               <div className="space-y-2.5">
-                {cadastro.acompanhantes.map((acomp, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 text-xs grid grid-cols-1 sm:grid-cols-3 gap-2"
-                  >
+                {/* Card do Titular */}
+                {(dadosEditados.nomecompleto || cadastro.nomecompleto) && (
+                  <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40 text-xs grid grid-cols-1 sm:grid-cols-4 gap-3 items-center">
                     <div>
-                      <span className="text-slate-500 block">Nome do Acompanhante</span>
-                      <span className="font-semibold text-slate-900">{acomp.nomecompleto}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block">Documento / Nascimento</span>
-                      <span className="font-semibold text-slate-900">
-                        {acomp.documento || 'Sem doc.'} {acomp.datanascimento ? `• Nasc: ${formatarData(acomp.datanascimento)}` : ''}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block">Idade</span>
-                      <span className="font-semibold text-slate-900">
-                        {calcularIdade(acomp.datanascimento)}
-                      </span>
-                    </div>
-                    {acomp.observacoes && (
-                      <div className="sm:col-span-3 text-slate-600 bg-white p-2 rounded border border-slate-200">
-                        <span className="font-semibold">Obs:</span> {acomp.observacoes}
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#053d1e] text-white">
+                          Titular
+                        </span>
+                        <span className="text-slate-500 text-[11px]">Hóspede Principal</span>
                       </div>
-                    )}
+                      <span className="font-bold text-slate-900 block">{dadosEditados.nomecompleto || cadastro.nomecompleto}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[11px]">Documento / Nascimento</span>
+                      <span className="font-semibold text-slate-900 block">
+                        {(dadosEditados.cpf || cadastro.cpf) ? formatarCpf(String(dadosEditados.cpf || cadastro.cpf)) : 'CPF não informado'} {(dadosEditados.datanascimento || cadastro.datanascimento) ? `• ${formatarData(String(dadosEditados.datanascimento || cadastro.datanascimento))}` : ''}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[11px]">Idade</span>
+                      <span className="font-semibold text-slate-900 block">
+                        {(dadosEditados.datanascimento || cadastro.datanascimento) ? calcularIdade(String(dadosEditados.datanascimento || cadastro.datanascimento)) : 'Adulto'}
+                      </span>
+                    </div>
+                    <div className="sm:text-right">
+                      <span className="text-slate-500 block text-[11px] mb-0.5">Tarifa / Valor</span>
+                      <div className="flex sm:justify-end items-center gap-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${tarifaTitular.badgeClasse}`}>
+                          {tarifaTitular.tipoTexto}
+                        </span>
+                        <span className="font-extrabold text-[#053d1e] font-['Manrope'] text-xs">
+                          {formatarMoeda(tarifaTitular.valor)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                {/* Cards dos Acompanhantes */}
+                {cadastro.acompanhantes && cadastro.acompanhantes.length > 0 ? (
+                  cadastro.acompanhantes.map((acomp, idx) => {
+                    const tarifa = calcularTarifaHospede(
+                      acomp.datanascimento,
+                      acomp.menoridade,
+                      dadosEditados.dataentrada || cadastro.dataentrada,
+                      dadosEditados.datasaida || cadastro.datasaida,
+                      pacotes
+                    );
+                    return (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs grid grid-cols-1 sm:grid-cols-4 gap-3 items-center"
+                      >
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Nome do Acompanhante</span>
+                          <span className="font-bold text-slate-900 block">{acomp.nomecompleto}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Documento / Nascimento</span>
+                          <span className="font-semibold text-slate-900 block">
+                            {acomp.documento || 'Sem doc.'} {acomp.datanascimento ? `• ${formatarData(acomp.datanascimento)}` : ''}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[11px]">Idade</span>
+                          <span className="font-semibold text-slate-900 block">
+                            {acomp.datanascimento ? calcularIdade(acomp.datanascimento) : (acomp.menoridade ? 'Menor' : 'Adulto')}
+                          </span>
+                        </div>
+                        <div className="sm:text-right">
+                          <span className="text-slate-500 block text-[11px] mb-0.5">Tarifa / Valor</span>
+                          <div className="flex sm:justify-end items-center gap-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${tarifa.badgeClasse}`}>
+                              {tarifa.tipoTexto}
+                            </span>
+                            <span className="font-extrabold text-[#053d1e] font-['Manrope'] text-xs">
+                              {formatarMoeda(tarifa.valor)}
+                            </span>
+                          </div>
+                        </div>
+                        {acomp.observacoes && (
+                          <div className="sm:col-span-4 text-slate-600 bg-white p-2 rounded border border-slate-200 text-xs">
+                            <span className="font-semibold">Obs:</span> {acomp.observacoes}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs text-slate-500 italic mt-2">Nenhum acompanhante cadastrado para esta reserva.</p>
+                )}
               </div>
             )}
           </section>
@@ -839,22 +1079,38 @@ Qualquer dúvida estamos à disposição!`;
             </div>
           </section>
 
-          {/* Seção 5: Pagamento do Sinal (LEITURA APENAS) */}
+          {/* Seção 5: Pagamento do Sinal & Valores */}
           <section className="rounded-xl border border-slate-200 bg-white p-4">
             <h3 className="text-sm font-bold font-['Manrope'] text-[#053d1e] mb-3 flex items-center gap-2 border-b border-slate-100 pb-2">
               <CreditCard className="w-4 h-4 text-[#053d1e]" />
-              Informações do Sinal da Reserva (50%)
+              Informações Financeiras da Reserva
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <span className="text-slate-500 block">Total Previsto da Estadia</span>
+                <span className="font-extrabold text-[#053d1e] text-sm font-['Manrope']">
+                  {valorTotalSugerido && valorTotalSugerido > 0
+                    ? formatarMoeda(valorTotalSugerido)
+                    : (cadastro.valor_total ? formatarMoeda(cadastro.valor_total) : 'A calcular')}
+                </span>
+                {pacoteSugerido && (
+                  <span className="text-[10px] text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded font-medium border border-emerald-200 inline-flex items-center gap-1 mt-0.5">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    {pacoteSugerido.nome}
+                  </span>
+                )}
+              </div>
+              <div>
+                <span className="text-slate-500 block">Valor do Sinal (50%)</span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {cadastro.valor_sinal > 0
+                    ? formatarMoeda(cadastro.valor_sinal)
+                    : (valorTotalSugerido && valorTotalSugerido > 0 ? formatarMoeda(valorTotalSugerido * 0.5) : 'Pendente')}
+                </span>
+              </div>
               <div>
                 <span className="text-slate-500 block">Forma Prevista / Utilizada</span>
                 <span className="font-semibold text-slate-900">{cadastro.forma_pagamento || 'A definir (PIX sugerido)'}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 block">Valor do Sinal Registrado</span>
-                <span className="font-bold text-slate-900 text-sm">
-                  {cadastro.valor_sinal > 0 ? formatarMoeda(cadastro.valor_sinal) : 'R$ 0,00'}
-                </span>
               </div>
               <div>
                 <span className="text-slate-500 block">Status do Sinal</span>

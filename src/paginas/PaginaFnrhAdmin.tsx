@@ -13,26 +13,251 @@ import {
   Clock,
   CheckCircle2,
   RefreshCw,
-  Users,
-  FileText,
   Trash2,
   Edit2,
   XCircle,
-  ExternalLink,
-  ChevronRight,
   LoaderCircle
 } from 'lucide-react';
-import { CadastroFnrh, Reserva } from '../tipos';
+import { CadastroFnrh, Reserva, Pacote, Quarto } from '../tipos';
 import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/supabase/FnrhService';
 import { ModalGerarLinkFnrh } from '../componentes/fnrh/ModalGerarLinkFnrh';
 import { ModalDetalhesFnrh } from '../componentes/fnrh/ModalDetalhesFnrh';
 import { ModalConfirmarSinalFnrh } from '../componentes/fnrh/ModalConfirmarSinalFnrh';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { useHotel } from '../contextos/ContextoHotel';
-import { formatarCpf, formatarData, formatarMoeda, formatarTelefone, calcularIdadeNumerica } from '../utilitarios/formatadores';
+import {
+  formatarCpf,
+  formatarData,
+  formatarMoeda,
+  formatarTelefone,
+  calcularIdadeNumerica,
+  calcularIdadeNaData
+} from '../utilitarios/formatadores';
+
+export interface ValoresCalculadosReserva {
+  valorTotal: number;
+  valorSinal: number;
+  dias: number;
+  pacote: Pacote | null;
+  nomePacote: string;
+  detalhe: string;
+  qtdAdultos: number;
+  qtdCriancasMeia: number;
+  qtdCriancasGratis: number;
+  totalHospedesFisicos: number;
+}
+
+/**
+ * REGRA OFICIAL DE DIAS, PACOTES E CLASSIFICAÇÃO ETÁRIA:
+ * 1. Contagem de Dias de Lazer:
+ *    - Se dataEntrada === dataSaida: É DAY USE (1 dia, sem pernoite).
+ *    - Se dataEntrada != dataSaida: A quantidade de dias é dada por (diasNoites + 1). Exemplo:
+ *      * De 10/10 a 11/10 = 1 pernoite = 2 dias (entra 09h e sai 15h do dia seguinte).
+ *      * De 09/10 a 11/10 ou 10/10 a 12/10 = 2 pernoites = 3 dias.
+ *      * De 09/10 a 12/10 = 3 pernoites = 4 dias.
+ *
+ * 2. Identificação e Preços dos Pacotes (por pessoa/adulto):
+ *    - 1 dia (mesma data de entrada e saída):
+ *      -> Pacote: "Day Use" = R$ 200,00 por pessoa.
+ *    - 2 dias (ex: 10/10 a 11/10):
+ *      -> Pacote: "Final de Semana" = R$ 550,00 por pessoa.
+ *    - 3 dias (ex: 10/10 a 12/10 ou 09/10 a 11/10):
+ *      -> Pacote: "Final de Semana Estendido" = R$ 750,00 por pessoa.
+ *    - 4 dias (ex: 09/10 a 12/10):
+ *      -> Pacote: "Feriado Prolongado" = R$ 950,00 por pessoa.
+ *
+ * 3. Classificação Etária (calculada na data de entrada da reserva):
+ *    - 0 a 5 anos: Bebê / Criança Grátis (0% - isento de cobrança).
+ *    - 6 a 11 anos: Criança Pagante (Meia - 50% do valor do pacote).
+ *    - 12 anos ou mais: Considerado ADULTO (Integral - 100% do valor do pacote).
+ *
+ * 4. Fórmula de Cálculo:
+ *    Total = (Qtd Adultos [>= 12 anos] * ValorPacote) + (Qtd Crianças Meia [6 a 11 anos] * (ValorPacote * 0.5))
+ *    Sinal (50%) = Total / 2
+ */
+export const calcularValoresReserva = (
+  cadastro: CadastroFnrh,
+  pacotes: Pacote[] = [],
+  _quartos: Quarto[] = [],
+  configuracoes?: any
+): ValoresCalculadosReserva => {
+  const dataEntradaStr = (cadastro.dataentrada || '').slice(0, 10).trim();
+  const dataSaidaStr = (cadastro.datasaida || '').slice(0, 10).trim();
+
+  let dias = 2; // Padrão se não informado: 2 dias (Final de Semana)
+
+  if (dataEntradaStr && dataSaidaStr) {
+    if (dataEntradaStr === dataSaidaStr) {
+      dias = 1; // Day Use (1 dia, sem pernoite)
+    } else {
+      let d1: Date;
+      let d2: Date;
+      if (dataEntradaStr.includes('/')) {
+        const p1 = dataEntradaStr.split('/');
+        d1 = new Date(Number(p1[2]), Number(p1[1]) - 1, Number(p1[0]));
+      } else {
+        const p1 = dataEntradaStr.split('-');
+        d1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
+      }
+      if (dataSaidaStr.includes('/')) {
+        const p2 = dataSaidaStr.split('/');
+        d2 = new Date(Number(p2[2]), Number(p2[1]) - 1, Number(p2[0]));
+      } else {
+        const p2 = dataSaidaStr.split('-');
+        d2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+      }
+      const diffTime = d2.getTime() - d1.getTime();
+      const pernoites = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      dias = pernoites > 0 ? pernoites + 1 : 1;
+    }
+  }
+
+  // Identificação do pacote e preço oficial por pessoa (adulto)
+  let nomePacote = '';
+  let valorPorPessoa = 0;
+  let pacoteObjeto: Pacote | null = null;
+
+  if (dias === 1) {
+    nomePacote = 'Day Use';
+    valorPorPessoa = 200;
+    pacoteObjeto =
+      pacotes.find(
+        (p) =>
+          String(p.tipopacote || '').toUpperCase() === 'DAY_USE' ||
+          Number(p.quantidadedias) === 1 ||
+          (p.nome || '').toLowerCase().includes('day use')
+      ) || null;
+    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+  } else if (dias === 2) {
+    nomePacote = 'Final de Semana';
+    valorPorPessoa = 550;
+    pacoteObjeto =
+      pacotes.find(
+        (p) =>
+          Number(p.quantidadedias) === 2 ||
+          (p.nome || '').toLowerCase().includes('final de semana')
+      ) || null;
+    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+  } else if (dias === 3) {
+    nomePacote = 'Final de Semana Estendido';
+    valorPorPessoa = 750;
+    pacoteObjeto =
+      pacotes.find(
+        (p) =>
+          Number(p.quantidadedias) === 3 ||
+          (p.nome || '').toLowerCase().includes('estendido')
+      ) || null;
+    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+  } else if (dias === 4) {
+    nomePacote = 'Feriado Prolongado';
+    valorPorPessoa = 950;
+    pacoteObjeto =
+      pacotes.find(
+        (p) =>
+          Number(p.quantidadedias) === 4 ||
+          (p.nome || '').toLowerCase().includes('feriado')
+      ) || null;
+    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+  } else {
+    // Dias > 4
+    pacoteObjeto = pacotes.find((p) => Number(p.quantidadedias) === dias) || null;
+    if (pacoteObjeto?.valor) {
+      valorPorPessoa = Number(pacoteObjeto.valor);
+      nomePacote = pacoteObjeto.nome;
+    } else {
+      nomePacote = `${dias} Dias`;
+      valorPorPessoa = 950 + (dias - 4) * 200;
+    }
+  }
+
+  // Regras de idade oficiais calculadas na data de entrada da reserva:
+  // 0 a 5 anos: Grátis (0%)
+  // 6 a 11 anos: Criança Pagante Meia (50%)
+  // 12 anos ou mais: ADULTO (Integral 100%)
+  const idadeLimiteGratis = Number(
+    configuracoes?.criancaidadelimitegratis ?? configuracoes?.CriancaIdadeLimiteGratis ?? 5
+  );
+  const idadeLimiteMeia = Number(
+    configuracoes?.criancaidadelimitemeia ?? configuracoes?.CriancaIdadeLimiteMeia ?? 11
+  );
+  const porcentagemMeia = Number(
+    configuracoes?.criancaporcentagemmeiadiaria ?? configuracoes?.CriancaPorcentagemMeiaDiaria ?? 50
+  );
+
+  let acompAdultos = 0;
+  let criancasGratis = 0;
+  let criancasMeia = 0;
+
+  if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
+    cadastro.acompanhantes.forEach((a) => {
+      if (a.datanascimento) {
+        // Idade exata na data de entrada da reserva
+        const idade = calcularIdadeNaData(a.datanascimento, dataEntradaStr);
+        if (idade <= idadeLimiteGratis) {
+          // 0 a 5 anos: Bebê / Criança Grátis
+          criancasGratis++;
+        } else if (idade <= idadeLimiteMeia) {
+          // 6 a 11 anos: Criança Pagante (Meia)
+          criancasMeia++;
+        } else {
+          // 12 anos ou mais: Considerado ADULTO
+          acompAdultos++;
+        }
+      } else if (a.menoridade) {
+        criancasMeia++;
+      } else {
+        acompAdultos++;
+      }
+    });
+  }
+
+  // Titular é sempre 1 adulto + acompanhantes com 12 anos ou mais
+  // Se o cadastro tiver número maior declarado sem acompanhante detalhado, respeita o informado
+  const qtdAdultos = Math.max(1, Number(cadastro.adultos || 0), 1 + acompAdultos);
+  const qtdCriancasInformada = Number(cadastro.criancas || 0);
+  const totalCriancasAcomp = criancasGratis + criancasMeia;
+
+  // Se foram informadas mais crianças no cadastro do que acompanhantes detalhados, o excedente é meia
+  if (qtdCriancasInformada > totalCriancasAcomp) {
+    criancasMeia += (qtdCriancasInformada - totalCriancasAcomp);
+  }
+
+  // Capacidade física total de acomodação (adultos + crianças meia + bebês/grátis)
+  const totalHospedesFisicos = qtdAdultos + criancasMeia + criancasGratis;
+
+  // Fórmula oficial do pacote:
+  // Total = (Qtd Adultos [>= 12 anos] * ValorPacote) + (Qtd Crianças Meia [6 a 11 anos] * (ValorPacote * 0.5))
+  const valorAdultos = qtdAdultos * valorPorPessoa;
+  const valorCriancas = criancasMeia * ((valorPorPessoa * porcentagemMeia) / 100);
+
+  const valorTotal = valorAdultos + valorCriancas;
+  const valorSinal = valorTotal / 2;
+
+  return {
+    valorTotal,
+    valorSinal,
+    dias,
+    pacote: pacoteObjeto,
+    nomePacote,
+    detalhe: `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${valorCriancas > 0 ? ` + ${criancasMeia} cr x ${formatarMoeda((valorPorPessoa * porcentagemMeia) / 100)}` : ''}`,
+    qtdAdultos,
+    qtdCriancasMeia: criancasMeia,
+    qtdCriancasGratis: criancasGratis,
+    totalHospedesFisicos,
+  };
+};
 
 export const PaginaFnrhAdmin: React.FC = () => {
-  const { usuarioAtual, navegarPara, recarregarDados, reservas, hospedes } = useHotel();
+  const {
+    usuarioAtual,
+    navegarPara,
+    recarregarDados,
+    reservas,
+    hospedes,
+    pacotes,
+    quartos,
+    configuracoes,
+  } = useHotel();
 
   // Estados de dados
   const [cadastros, setCadastros] = useState<CadastroFnrh[]>([]);
@@ -56,20 +281,55 @@ export const PaginaFnrhAdmin: React.FC = () => {
   // Controle de cópia rápida
   const [copiadoId, setCopiadoId] = useState<number | null>(null);
 
+  // Localiza a reserva vinculada por reservaid, hospedeid ou CPF do titular
+  const obterReservaDoCadastro = (item: CadastroFnrh): Reserva | null => {
+    // 1. Pelo reservaid registrado diretamente no cadastro
+    if (item.reservaid) {
+      const r = reservas.find((res) => Number(res.reservaid) === Number(item.reservaid));
+      if (r) return r;
+    }
+    // 2. Pelo hospedeid vinculado na tabela public.hospede
+    if (item.hospedeid) {
+      const r = reservas.find(
+        (res) => Number(res.hospedeid) === Number(item.hospedeid) && res.statusreserva !== 'CANCELADA'
+      );
+      if (r) return r;
+    }
+    // 3. Pelo CPF do titular cadastrado
+    if (item.cpf) {
+      const cpfLimpo = item.cpf.replace(/\D/g, '');
+      if (cpfLimpo.length === 11) {
+        const hEncontrado = hospedes.find(
+          (h) => h.cpf && h.cpf.replace(/\D/g, '') === cpfLimpo
+        );
+        if (hEncontrado) {
+          const r = reservas.find(
+            (res) => Number(res.hospedeid) === Number(hEncontrado.hospedeid) && res.statusreserva !== 'CANCELADA'
+          );
+          if (r) return r;
+        }
+      }
+    }
+    return null;
+  };
+
   const handleIrParaReserva = async (cadastro: CadastroFnrh) => {
     setRedirecionandoReservaId(cadastro.cadastroid);
     try {
+      const dataEntradaRef = (cadastro.dataentrada || '').slice(0, 10).trim();
       const idadesCriancasCalculadas: number[] = [];
       if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
         cadastro.acompanhantes.forEach((a) => {
           if (a.datanascimento) {
-            const age = calcularIdadeNumerica(a.datanascimento);
-            if (age >= 0 && age <= 17) {
+            const age = calcularIdadeNaData(a.datanascimento, dataEntradaRef);
+            if (age >= 0 && age <= 11) {
               idadesCriancasCalculadas.push(age);
             }
           }
         });
       }
+
+      const valoresCalculados = calcularValoresReserva(cadastro, pacotes, quartos, configuracoes);
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(
@@ -82,10 +342,13 @@ export const PaginaFnrhAdmin: React.FC = () => {
             cpf: cadastro.cpf,
             dataentrada: cadastro.dataentrada,
             datasaida: cadastro.datasaida,
-            adultos: cadastro.adultos,
-            criancas: idadesCriancasCalculadas.length > 0 ? idadesCriancasCalculadas.length : cadastro.criancas,
+            adultos: valoresCalculados.qtdAdultos,
+            criancas: valoresCalculados.qtdCriancasMeia,
+            criancas_gratis: valoresCalculados.qtdCriancasGratis,
             idades_criancas: idadesCriancasCalculadas,
-            valor_sinal: cadastro.valor_sinal,
+            valor_sinal: cadastro.valor_sinal > 0 ? cadastro.valor_sinal : (cadastro.forma_pagamento === 'CHECKOUT' ? 0 : valoresCalculados.valorSinal),
+            valortotal: valoresCalculados.valorTotal,
+            pacoteid: valoresCalculados.pacote?.pacoteid,
           })
         );
       }
@@ -172,38 +435,6 @@ Qualquer dúvida, estamos à disposição!`;
     } else {
       setErro(res.mensagem);
     }
-  };
-
-  // Localiza a reserva vinculada por reservaid, hospedeid ou CPF do titular
-  const obterReservaDoCadastro = (item: CadastroFnrh): Reserva | null => {
-    // 1. Pelo reservaid registrado diretamente no cadastro
-    if (item.reservaid) {
-      const r = reservas.find((res) => Number(res.reservaid) === Number(item.reservaid));
-      if (r) return r;
-    }
-    // 2. Pelo hospedeid vinculado na tabela public.hospede
-    if (item.hospedeid) {
-      const r = reservas.find(
-        (res) => Number(res.hospedeid) === Number(item.hospedeid) && res.statusreserva !== 'CANCELADA'
-      );
-      if (r) return r;
-    }
-    // 3. Pelo CPF do titular cadastrado
-    if (item.cpf) {
-      const cpfLimpo = item.cpf.replace(/\D/g, '');
-      if (cpfLimpo.length === 11) {
-        const hEncontrado = hospedes.find(
-          (h) => h.cpf && h.cpf.replace(/\D/g, '') === cpfLimpo
-        );
-        if (hEncontrado) {
-          const r = reservas.find(
-            (res) => Number(res.hospedeid) === Number(hEncontrado.hospedeid) && res.statusreserva !== 'CANCELADA'
-          );
-          if (r) return r;
-        }
-      }
-    }
-    return null;
   };
 
   // Sincroniza em background o status no banco caso a reserva já exista no sistema
@@ -375,7 +606,7 @@ Qualquer dúvida, estamos à disposição!`;
             Links FNRH & Pré-Cadastros
           </h1>
           <p className="text-xs text-slate-600 mt-1">
-            Gere links seguros para o cliente preencher a FNRH online, confirme o sinal de 50% e transforme em reserva.
+            Gere links seguros para o cliente preencher a FNRH online, acompanhe o total previsto por pacote/diária e confirme o sinal de 50%.
           </p>
         </div>
 
@@ -540,14 +771,14 @@ Qualquer dúvida, estamos à disposição!`;
                   <th className="py-3 px-4">Hóspede Titular</th>
                   <th className="py-3 px-4">Contato / WhatsApp</th>
                   <th className="py-3 px-4">Estadia Prevista</th>
-                  <th className="py-3 px-4">Sinal (50%)</th>
+                  <th className="py-3 px-4 font-bold text-[#053d1e]">Total Previsto</th>
+                  <th className="py-3 px-4 font-bold text-[#053d1e]">Sinal (50%)</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {cadastrosFiltrados.map((item) => {
-                  const preenchido = Boolean(item.nomecompleto && item.cpf && item.declaracao_aceita);
                   const diasRestantes = item.token_expira_em
                     ? Math.ceil((new Date(item.token_expira_em).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
                     : 0;
@@ -560,6 +791,9 @@ Qualquer dúvida, estamos à disposição!`;
                   const codigoOuIdReserva =
                     reservaVinculada?.codigo ||
                     (item.reservaid ? `#${item.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
+
+                  // Cálculo dos valores da estadia e sinal conforme a Regra Oficial de Pacotes e Idade
+                  const valoresCalculados = calcularValoresReserva(item, pacotes, quartos, configuracoes);
 
                   return (
                     <tr
@@ -633,7 +867,7 @@ Qualquer dúvida, estamos à disposição!`;
                         )}
                       </td>
 
-                      {/* Estadia Prevista */}
+                      {/* Estadia Prevista: Badge padronizado de adultos (>=12 anos) e crianças que pagam meia (6-11 anos) */}
                       <td className="py-3 px-4">
                         {(item.dataentrada || item.datasaida) ? (
                           <div>
@@ -642,7 +876,14 @@ Qualquer dúvida, estamos à disposição!`;
                               {item.datasaida ? formatarData(item.datasaida) : '--'}
                             </span>
                             <span className="text-[11px] text-slate-500">
-                              {item.adultos} ad, {item.criancas} cr
+                              <span className="font-semibold text-slate-700">
+                                {valoresCalculados.qtdAdultos} ad, {valoresCalculados.qtdCriancasMeia} cr
+                              </span>
+                              {valoresCalculados.qtdCriancasGratis > 0 && (
+                                <span className="ml-1 text-slate-400">
+                                  (+{valoresCalculados.qtdCriancasGratis} grátis)
+                                </span>
+                              )}
                               {item.acompanhantes && item.acompanhantes.length > 0 && (
                                 <span className="ml-1 text-emerald-700 font-semibold">
                                   ({item.acompanhantes.length} acomp.)
@@ -655,20 +896,18 @@ Qualquer dúvida, estamos à disposição!`;
                         )}
                       </td>
 
-                      {/* Sinal (50%) */}
+                      {/* Total Previsto (Apenas valor em reais em negrito) */}
                       <td className="py-3 px-4">
-                        {item.valor_sinal > 0 ? (
-                          <div>
-                            <span className="font-bold text-slate-900 block">
-                              {formatarMoeda(item.valor_sinal)}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-semibold">
-                              {item.forma_pagamento || 'PIX'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">Pendente</span>
-                        )}
+                        <span className="font-extrabold text-[#053d1e] block font-['Manrope'] text-sm tracking-tight">
+                          {formatarMoeda(valoresCalculados.valorTotal)}
+                        </span>
+                      </td>
+
+                      {/* Sinal 50% (Exatamente a metade calculada) */}
+                      <td className="py-3 px-4">
+                        <span className="font-extrabold text-slate-800 block font-['Manrope'] text-sm tracking-tight">
+                          {formatarMoeda(valoresCalculados.valorSinal)}
+                        </span>
                       </td>
 
                       {/* Status */}
@@ -710,7 +949,7 @@ Qualquer dúvida, estamos à disposição!`;
                             </button>
                           )}
 
-                          {/* Botão Criar Reserva: Desabilitado se a reserva já foi realizada ou hóspede já importado */}
+                          {/* Botão Criar Reserva */}
                           {jaPossuiReserva ? (
                             <button
                               type="button"
@@ -781,6 +1020,8 @@ Qualquer dúvida, estamos à disposição!`;
         aberto={Boolean(cadastroDetalhes)}
         cadastro={cadastroDetalhes}
         reservaVinculada={cadastroDetalhes ? obterReservaDoCadastro(cadastroDetalhes) : null}
+        valorTotalSugerido={cadastroDetalhes ? calcularValoresReserva(cadastroDetalhes, pacotes, quartos, configuracoes).valorTotal : undefined}
+        pacoteSugerido={cadastroDetalhes ? calcularValoresReserva(cadastroDetalhes, pacotes, quartos, configuracoes).pacote : null}
         onFechar={() => setCadastroDetalhes(null)}
         onConfirmarSinal={(c) => {
           setCadastroDetalhes(null);
@@ -797,6 +1038,8 @@ Qualquer dúvida, estamos à disposição!`;
       <ModalConfirmarSinalFnrh
         aberto={Boolean(cadastroSinal)}
         cadastro={cadastroSinal}
+        valorTotalSugerido={cadastroSinal ? calcularValoresReserva(cadastroSinal, pacotes, quartos, configuracoes).valorTotal : undefined}
+        pacoteSugerido={cadastroSinal ? calcularValoresReserva(cadastroSinal, pacotes, quartos, configuracoes).pacote : null}
         onFechar={() => setCadastroSinal(null)}
         onSucesso={(msg) => {
           exibirFeedback(msg);

@@ -176,9 +176,11 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       let adultosPre = modoDayUse ? 1 : 0;
       let criancasPre = 0;
       let entradaPre = dataSelecionada || hoje;
+      let saidaPre: string | null = null;
+      let pacotePre: string | null = null;
       let valorPagoPre = 0;
       let valorPagoTextoPre = '';
-
+      let autorizarExcecaoPre = false;
       let idadesCriancasPre: number[] = [];
 
       if (typeof window !== 'undefined') {
@@ -196,9 +198,14 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               }
             }
             if (parsed.dataentrada) entradaPre = parsed.dataentrada;
+            if (parsed.datasaida) saidaPre = parsed.datasaida;
+            if (parsed.pacoteid) pacotePre = String(parsed.pacoteid);
             if (parsed.valor_sinal && Number(parsed.valor_sinal) > 0) {
               valorPagoPre = Number(parsed.valor_sinal);
               valorPagoTextoPre = Number(parsed.valor_sinal).toFixed(2).replace('.', ',');
+            } else if (parsed.valor_sinal === 0) {
+              // Cliente liberado para pagar 100% no check-out
+              autorizarExcecaoPre = true;
             }
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
           } catch (e) {
@@ -217,7 +224,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setPreReserva(false);
       setValorPago(valorPagoPre);
       setValorPagoTexto(valorPagoTextoPre);
-      setAutorizarExcecaoSinal(false);
+      setAutorizarExcecaoSinal(autorizarExcecaoPre);
       setErro(null);
       setFormaPagamento(configuracoes?.formapagamentopadrao || 'PIX');
       valorMinimoAnteriorRef.current = 0;
@@ -234,19 +241,21 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           setPacoteId(String(pDayUse.pacoteid));
         }
       } else {
-        const pacoteInicial = pacoteId
-          ? pacotesAtivos.find(p => String(p.pacoteid) === pacoteId)
-          : pacotesAtivos[0];
+        const pacoteInicial = pacotePre
+          ? pacotesAtivos.find(p => String(p.pacoteid) === pacotePre)
+          : (pacoteId
+            ? pacotesAtivos.find(p => String(p.pacoteid) === pacoteId)
+            : pacotesAtivos[0]);
 
         if (pacoteInicial) {
           const qtdDias = Number(pacoteInicial.quantidadedias ?? 2);
-          const novaSaida = calcularDataSaida(entradaPre, qtdDias);
+          const novaSaida = saidaPre || calcularDataSaida(entradaPre, qtdDias);
           setDataSaida(novaSaida);
-
-          if (!pacoteId) {
-            setPacoteId(String(pacoteInicial.pacoteid));
-          }
+          setPacoteId(String(pacoteInicial.pacoteid));
         } else {
+          if (saidaPre) {
+            setDataSaida(saidaPre);
+          }
           setPacoteId('');
         }
       }
@@ -291,7 +300,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             acompsFnrh.forEach((a: any) => {
               if (a.datanascimento) {
                 const age = calcularIdadeNumerica(a.datanascimento);
-                if (age >= 0 && age <= 17) idadesCalculadas.push(age);
+                if (age >= 0 && age <= 11) idadesCalculadas.push(age);
               }
             });
           }
@@ -308,7 +317,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             acompsOficial.forEach((a: any) => {
               if (a.datanascimento) {
                 const age = calcularIdadeNumerica(a.datanascimento);
-                if (age >= 0 && age <= 17) idadesCalculadas.push(age);
+                if (age >= 0 && age <= 11) idadesCalculadas.push(age);
               }
             });
           }

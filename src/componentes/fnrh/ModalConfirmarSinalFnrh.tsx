@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   CreditCard,
@@ -6,15 +6,19 @@ import {
   AlertCircle,
   LoaderCircle,
   Clock,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
-import { CadastroFnrh } from '../../tipos';
+import { CadastroFnrh, Pacote } from '../../tipos';
 import { FnrhService } from '../../servicos/supabase/FnrhService';
 import { useHotel } from '../../contextos/ContextoHotel';
+import { formatarMoeda } from '../../utilitarios/formatadores';
 
 interface ModalConfirmarSinalFnrhProps {
   aberto: boolean;
   cadastro: CadastroFnrh | null;
+  valorTotalSugerido?: number;
+  pacoteSugerido?: Pacote | null;
   onFechar: () => void;
   onSucesso: (mensagem: string) => void;
 }
@@ -22,32 +26,46 @@ interface ModalConfirmarSinalFnrhProps {
 export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = ({
   aberto,
   cadastro,
+  valorTotalSugerido,
+  pacoteSugerido,
   onFechar,
   onSucesso,
 }) => {
   const { usuarioAtual, recarregarDados } = useHotel();
 
   const [semSinal, setSemSinal] = useState<boolean>(false);
-  const [valorSinal, setValorSinal] = useState<string>(
-    cadastro?.valor_sinal ? String(cadastro.valor_sinal) : ''
-  );
-  const [formaPagamento, setFormaPagamento] = useState<string>(
-    cadastro?.forma_pagamento && cadastro.forma_pagamento !== 'CHECKOUT' ? cadastro.forma_pagamento : 'PIX'
-  );
+  const [valorSinal, setValorSinal] = useState<string>('');
+  const [formaPagamento, setFormaPagamento] = useState<string>('PIX');
   const [comprovante, setComprovante] = useState<string>('');
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  React.useEffect(() => {
+  const sinalCalculado = useMemo(() => {
+    if (valorTotalSugerido && valorTotalSugerido > 0) {
+      return valorTotalSugerido * 0.5;
+    }
+    return 0;
+  }, [valorTotalSugerido]);
+
+  useEffect(() => {
     if (cadastro) {
       setSemSinal(false);
-      setValorSinal(cadastro.valor_sinal > 0 ? String(cadastro.valor_sinal) : '');
-      const fp = cadastro.forma_pagamento && cadastro.forma_pagamento !== 'CHECKOUT' ? cadastro.forma_pagamento : 'PIX';
+      if (cadastro.valor_sinal > 0) {
+        setValorSinal(String(cadastro.valor_sinal));
+      } else if (sinalCalculado > 0) {
+        setValorSinal(sinalCalculado.toFixed(2).replace('.', ','));
+      } else {
+        setValorSinal('');
+      }
+
+      const fp = cadastro.forma_pagamento && cadastro.forma_pagamento !== 'CHECKOUT'
+        ? cadastro.forma_pagamento
+        : 'PIX';
       setFormaPagamento(fp);
       setComprovante(cadastro.comprovante_url || '');
       setErro(null);
     }
-  }, [cadastro]);
+  }, [cadastro, sinalCalculado]);
 
   if (!aberto || !cadastro) return null;
 
@@ -57,7 +75,13 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     if (marcado) {
       setValorSinal('0,00');
     } else {
-      setValorSinal(cadastro.valor_sinal > 0 ? String(cadastro.valor_sinal) : '');
+      if (cadastro.valor_sinal > 0) {
+        setValorSinal(String(cadastro.valor_sinal));
+      } else if (sinalCalculado > 0) {
+        setValorSinal(sinalCalculado.toFixed(2).replace('.', ','));
+      } else {
+        setValorSinal('');
+      }
     }
   };
 
@@ -93,6 +117,11 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
       return;
     }
 
+    // Vincula o valor total estimado ao cadastro em memória
+    if (valorTotalSugerido && valorTotalSugerido > 0) {
+      cadastro.valor_total = valorTotalSugerido;
+    }
+
     // Recarrega todos os dados para sincronizar o mapa de reservas
     try {
       await recarregarDados();
@@ -102,7 +131,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
       setCarregando(false);
     }
 
-    onSucesso(semSinal ? 'Cadastro liberado sem sinal (pagamento no check-out)!' : res.mensagem);
+    onSucesso(semSinal ? 'Cadastro liberado sem sinal (pagamento 100% no check-out)!' : res.mensagem);
     onFechar();
   };
 
@@ -142,6 +171,33 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
             </div>
           )}
 
+          {/* Resumo de Valores Calculados */}
+          {valorTotalSugerido && valorTotalSugerido > 0 ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-950">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-emerald-800">Total Previsto da Estadia:</span>
+                <span className="font-extrabold text-sm text-[#053d1e] font-['Manrope']">
+                  {formatarMoeda(valorTotalSugerido)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-emerald-700">
+                <span>Sinal Sugerido (50%):</span>
+                <span className="font-bold text-emerald-900">
+                  {formatarMoeda(sinalCalculado)}
+                </span>
+              </div>
+              {pacoteSugerido && (
+                <div className="mt-2 pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[11px]">
+                  <span className="text-emerald-700 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    Pacote Aplicado:
+                  </span>
+                  <span className="font-semibold text-emerald-900">{pacoteSugerido.nome}</span>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* CHECKBOX: Pagar tudo no Check-out */}
           <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/70 transition-all">
             <label className="flex items-start gap-3 cursor-pointer select-none">
@@ -176,9 +232,20 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
 
           {/* Valor do Sinal */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Valor do Sinal Recebido (R$) {!semSinal && '*'}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                Valor do Sinal Recebido (R$) {!semSinal && '*'}
+              </label>
+              {!semSinal && sinalCalculado > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setValorSinal(sinalCalculado.toFixed(2).replace('.', ','))}
+                  className="text-[10px] text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer"
+                >
+                  Usar 50% ({formatarMoeda(sinalCalculado)})
+                </button>
+              )}
+            </div>
             <div className="relative">
               <span className={`absolute left-3 top-2.5 text-xs font-bold ${semSinal ? 'text-slate-300' : 'text-slate-400'}`}>
                 R$
