@@ -324,6 +324,7 @@ export const PaginaFnrhAdmin: React.FC = () => {
       }
 
       const valoresCalculados = calcularValoresReserva(cadastro, pacotes, quartos, configuracoes);
+      const dataCriacaoFnrh = (cadastro.datainclusao || (cadastro as any).created_at || (cadastro as any).criado_em || cadastro.data_declaracao || '')?.slice(0, 10) || new Date().toISOString().slice(0, 10);
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(
@@ -334,6 +335,7 @@ export const PaginaFnrhAdmin: React.FC = () => {
             nomecompleto: cadastro.nomecompleto,
             telefone: cadastro.telefone,
             cpf: cadastro.cpf,
+            datareserva: dataCriacaoFnrh,
             dataentrada: cadastro.dataentrada,
             datasaida: cadastro.datasaida,
             adultos: valoresCalculados.qtdAdultos,

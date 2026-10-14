@@ -204,7 +204,13 @@ export const ModalDetalhesQuarto: React.FC<ModalDetalhesQuartoProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div>
+                  <p className="text-[#717971]">Data da Reserva</p>
+                  <p className="font-semibold text-[#191c1d] mt-0.5">
+                    {formatarData(reservaAtual.datareserva || reservaAtual.datainclusao || '')}
+                  </p>
+                </div>
                 <div>
                   <p className="text-[#717971]">Telefone</p>
                   <p className="font-semibold text-[#191c1d] mt-0.5">

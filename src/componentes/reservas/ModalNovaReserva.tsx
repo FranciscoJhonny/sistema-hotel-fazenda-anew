@@ -53,8 +53,10 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   const [estadoHospede, setEstadoHospede] = useState<string>('MS');
   const [modoNovoHospede, setModoNovoHospede] = useState<boolean>(true);
 
-  // Estadia
-  const [dataEntrada, setDataEntrada] = useState<string>(dataSistema);
+  // Estadia & Datas
+  const hoje = dataSistema || new Date().toISOString().slice(0, 10);
+  const [dataReserva, setDataReserva] = useState<string>(hoje);
+  const [dataEntrada, setDataEntrada] = useState<string>(hoje);
   const [dataSaida, setDataSaida] = useState<string>('2026-09-02');
   const [horarioEntrada, setHorarioEntrada] = useState<string>(configuracoes.checkintime || '09:00');
   const [horarioSaida, setHorarioSaida] = useState<string>(configuracoes.checkouttime || '15:00');
@@ -96,21 +98,59 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
       setModoNovoHospede(true);
 
       const entradaInicial = dataSistema || new Date().toISOString().slice(0, 10);
-      setDataEntrada(entradaInicial);
+      let dataReservaPadrao = entradaInicial;
+      let entradaPadrao = entradaInicial;
+      let saidaPadrao = '';
+      let pacotePadrao: number | undefined = undefined;
 
-      const dataObj = new Date(`${entradaInicial}T00:00:00`);
-      dataObj.setDate(dataObj.getDate() + 2);
-      setDataSaida(dataObj.toISOString().slice(0, 10));
+      // Carrega parâmetros pré-configurados da FNRH se houver
+      if (typeof window !== 'undefined') {
+        const rawFnrh = sessionStorage.getItem('fnrh_reserva_preenchimento');
+        if (rawFnrh) {
+          try {
+            const parsed = JSON.parse(rawFnrh);
+            if (parsed.datareserva) dataReservaPadrao = parsed.datareserva;
+            if (parsed.nomecompleto) setNomeHospede(parsed.nomecompleto);
+            if (parsed.cpf) setCpfHospede(formatarCpf(parsed.cpf));
+            if (parsed.telefone) setTelefoneHospede(formatarTelefone(parsed.telefone));
+            if (parsed.dataentrada) entradaPadrao = parsed.dataentrada;
+            if (parsed.datasaida) saidaPadrao = parsed.datasaida;
+            if (parsed.adultos) setAdultos(Number(parsed.adultos));
+            if (parsed.criancas !== undefined) setCriancas(Number(parsed.criancas));
+            if (parsed.idades_criancas && Array.isArray(parsed.idades_criancas)) {
+              setIdadesCriancas(parsed.idades_criancas.map(Number));
+            }
+            if (parsed.pacoteid) pacotePadrao = Number(parsed.pacoteid);
+            if (parsed.valor_sinal && Number(parsed.valor_sinal) > 0) {
+              setValorPago(aplicarMascaraMoeda(Number(parsed.valor_sinal)));
+            }
+          } catch (e) {
+            console.warn('Erro ao carregar dados da FNRH no ModalNovaReserva:', e);
+          }
+        }
+      }
+
+      setDataReserva(dataReservaPadrao);
+      setDataEntrada(entradaPadrao);
+
+      if (saidaPadrao) {
+        setDataSaida(saidaPadrao);
+      } else {
+        const dataObj = new Date(`${entradaPadrao}T00:00:00`);
+        dataObj.setDate(dataObj.getDate() + 2);
+        setDataSaida(dataObj.toISOString().slice(0, 10));
+      }
+
+      if (pacotePadrao !== undefined) {
+        setPacoteId(pacotePadrao);
+      } else {
+        setPacoteId(undefined);
+      }
 
       setHorarioEntrada(configuracoes.checkintime || '09:00');
       setHorarioSaida(configuracoes.checkouttime || '15:00');
       setTipoAtendimento('HOSPEDAGEM');
-      setAdultos(2);
-      setCriancas(0);
-      setIdadesCriancas([]);
-      setPacoteId(undefined);
       setValorDesconto('');
-      setValorPago('');
       setIsPreReserva(false);
       setAutorizarExcecaoSinal(false);
       setFormaPagamento('PIX');
@@ -319,6 +359,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
 
       // 3. Cria a reserva através do serviço com proteção anti-duplicidade
       const resultado = await criarReserva({
+        datareserva: dataReserva,
         hospedeid: idFinalHospede,
         hospedenome: nomeHospede,
         hospedetelefone: telefoneHospede,
@@ -349,6 +390,10 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
         setErroValidacao(resultado.mensagem);
         setEnviando(false);
         return;
+      }
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('fnrh_reserva_preenchimento');
       }
 
       setSucessoFeedback(resultado.mensagem);
@@ -541,7 +586,18 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   </h3>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs mb-3">
+                  <div>
+                    <label className="block font-semibold text-[#414941] mb-1">
+                      Data da Reserva
+                    </label>
+                    <input
+                      type="date"
+                      value={dataReserva}
+                      onChange={(e) => setDataReserva(e.target.value)}
+                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e] bg-[#f8f9fa] font-semibold text-[#191c1d]"
+                    />
+                  </div>
                   <div>
                     <label className="block font-semibold text-[#414941] mb-1">
                       Data de Entrada *
@@ -942,6 +998,13 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                     <span>Quarto Selecionado:</span>
                     <span className="font-bold text-[#053d1e]">
                       Quarto {quartoAtualStatus?.quarto.Numero} ({quartoAtualStatus?.quarto.CodigoIdentificador})
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-[#e1e3e4]">
+                    <span>Data da Reserva:</span>
+                    <span className="font-bold text-[#191c1d]">
+                      {formatarData(dataReserva)}
                     </span>
                   </div>
 

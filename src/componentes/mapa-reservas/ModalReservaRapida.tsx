@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CreditCard, X, Users, Bed, LoaderCircle, Sun } from 'lucide-react';
+import { CreditCard, X, Users, Bed, LoaderCircle, Sun, Calendar } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, Pacote, FormaPagamento } from '../../tipos';
 import {
@@ -130,6 +130,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   } = useHotel();
 
   const hoje = new Date().toISOString().slice(0, 10);
+  const [dataReserva, setDataReserva] = useState<string>(dataSelecionada || hoje);
   const [dataEntrada, setDataEntrada] = useState<string>(dataSelecionada || hoje);
   const [dataSaida, setDataSaida] = useState<string>(somarDias(dataSelecionada || hoje, 2));
   const [hospedeId, setHospedeId] = useState<string>('');
@@ -180,6 +181,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       let cadastroidPre: number | null = null;
       let adultosPre = modoDayUse ? 1 : 2;
       let criancasPre = 0;
+      let dataReservaPre = dataSelecionada || hoje;
       let entradaPre = dataSelecionada || hoje;
       let saidaPre: string | null = null;
       let pacotePre: string | null = null;
@@ -195,6 +197,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             const parsed = JSON.parse(raw);
             if (parsed.cadastroid) cadastroidPre = Number(parsed.cadastroid);
             if (parsed.hospedeid) hospedePre = String(parsed.hospedeid);
+            if (parsed.datareserva) dataReservaPre = parsed.datareserva;
             if (!modoDayUse) {
               if (parsed.adultos) adultosPre = Number(parsed.adultos);
               if (parsed.criancas !== undefined) criancasPre = Number(parsed.criancas);
@@ -224,6 +227,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
       setCadastroidFnrh(cadastroidPre);
       setHospedeId(hospedePre);
+      setDataReserva(dataReservaPre);
       setAdultos(modoDayUse ? 1 : adultosPre);
       setCriancas(modoDayUse ? 0 : (idadesCriancasPre.length > 0 ? idadesCriancasPre.length : criancasPre));
       setIdadesCriancas(modoDayUse ? [] : idadesCriancasPre);
@@ -529,6 +533,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
       const resultado = await criarReserva({
         cadastroid: cadastroidFnrh || undefined,
+        datareserva: dataReserva,
         hospedeid: Number(hospedeId),
         hospedenome: hospedeSelecionado?.nomecompleto || '',
         hospedetelefone: hospedeSelecionado?.telefone || '',
@@ -633,6 +638,23 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                     : `Quarto selecionado - ${quarto?.codigoidentificador}`}
                 </p>
               </div>
+            </div>
+
+            {/* Data da Reserva */}
+            <div>
+              <label className="block space-y-1 text-xs font-semibold text-[#191c1d]">
+                <span className="flex items-center gap-1.5 text-slate-700">
+                  <Calendar className="w-3.5 h-3.5 text-[#053d1e]" />
+                  Data da Reserva
+                </span>
+                <input
+                  type="date"
+                  value={dataReserva}
+                  onChange={(e) => setDataReserva(e.target.value)}
+                  disabled={enviando}
+                  className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 text-xs font-semibold text-[#191c1d] focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                />
+              </label>
             </div>
 
             {/* Datas */}
@@ -942,6 +964,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               </div>
 
               <div className="space-y-2 text-sm text-[#191c1d]">
+                <div className="flex justify-between gap-2 border-b border-[#e5e7eb] pb-1">
+                  <span>Data da Reserva:</span>
+                  <strong>{formatarData(dataReserva)}</strong>
+                </div>
                 <div className="flex justify-between gap-2 border-b border-[#e5e7eb] pb-1">
                   <span>Pacote:</span>
                   <strong>{pacoteSelecionado?.nome || 'Não selecionado'}</strong>

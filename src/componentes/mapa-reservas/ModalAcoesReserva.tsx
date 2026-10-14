@@ -167,11 +167,17 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-[11px] pt-2 border-t border-slate-200/70">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] pt-2 border-t border-slate-200/70">
               <div>
                 <span className="text-slate-400 block">Quarto Alocado:</span>
                 <span className="font-bold text-slate-800 text-xs">
                   Quarto #{reserva.quartonumero} ({reserva.quartocategoria})
+                </span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">Data da Reserva:</span>
+                <span className="font-bold text-slate-800 text-xs">
+                  {formatarData(reserva.datareserva || reserva.datainclusao || '') || '--'}
                 </span>
               </div>
               <div>
@@ -187,6 +193,12 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
               <div>
                 <span className="text-slate-400 block">Valor Já Pago:</span>
                 <span className="font-bold text-emerald-700">{formatarMoeda(reserva.valorpago)}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block">Saldo Restante:</span>
+                <span className={`font-bold ${reserva.saldo > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                  {formatarMoeda(reserva.saldo)}
+                </span>
               </div>
             </div>
           </div>

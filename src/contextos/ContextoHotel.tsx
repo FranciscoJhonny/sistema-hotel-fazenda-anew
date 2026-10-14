@@ -48,7 +48,7 @@ interface ContextoHotelType {
   obterQuartoPorId: (quartoId: number | string) => Quarto | undefined;
   obterQuartoPorNumero: (numero: string) => Quarto | undefined;
   verificarDisponibilidade: (dataEntrada: string, dataSaida: string, reservaIdIgnorar?: number | string) => StatusDisponibilidadeQuarto[];
-  criarReserva: (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number }) => Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }>;
+  criarReserva: (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number; datareserva?: string }) => Promise<{ sucesso: boolean; mensagem: string; reserva?: Reserva }>;
   atualizarReserva: (id: number | string, dados: Partial<Reserva>) => Promise<{ sucesso: boolean; mensagem: string }>;
   cancelarReserva: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   suspenderReservaComCredito: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
@@ -388,7 +388,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     return calcularDisponibilidadeQuartos(quartos, reservas, dataEntrada, dataSaida, reservaIdIgnorar);
   };
 
-  const criarReserva = async (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number }) => {
+  const criarReserva = async (novaReserva: Omit<Reserva, 'reservaid' | 'codigo' | 'datainclusao' | 'dataoperacao' | 'ativo' | 'statusreserva'> & { statusreserva?: StatusReserva; cadastroid?: number; datareserva?: string }) => {
     const client = supabaseService.getClient();
     if (!client) return { sucesso: false, mensagem: 'Supabase offline.' };
 
@@ -412,7 +412,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const agora = new Date().toISOString();
-    const dataReserva = agora.slice(0, 10);
+    const dataReserva = (novaReserva as any).datareserva || agora.slice(0, 10);
     const valorPago = Number(novaReserva.valorpago || 0);
     const valorTotal = Number(novaReserva.valortotal || 0);
 
@@ -479,7 +479,15 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       datareserva: dataReserva,
     };
 
-    const { data, error } = await client.from('reserva').insert(dadosParaBanco).select().single();
+    let { data, error } = await client.from('reserva').insert(dadosParaBanco).select().single();
+    if (error && error.message?.toLowerCase().includes('datareserva')) {
+      const { datareserva: _, ...dadosSemDataReserva } = dadosParaBanco;
+      const retry = await client.from('reserva').insert(dadosSemDataReserva).select().single();
+      if (!retry.error) {
+        data = retry.data;
+        error = null;
+      }
+    }
     if (error) return { sucesso: false, mensagem: 'Erro ao salvar: ' + error.message };
 
     if (valorPago > 0) {
@@ -541,6 +549,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const reservaSalva = {
       ...reservaParaInserir,
       ...data,
+      datareserva: data?.datareserva || dataReserva,
       quartonumero: quarto.numero,
       quartocodigo: quarto.codigoidentificador,
       quartocategoria: quarto.categoria

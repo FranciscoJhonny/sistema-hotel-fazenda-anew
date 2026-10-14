@@ -23,6 +23,20 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
     super('reserva', 'reservaid');
   }
 
+  public override async criar(reserva: Partial<Reserva>): Promise<ResultadoSupabase<Reserva>> {
+    const dataReserva = reserva.datareserva || new Date().toISOString().slice(0, 10);
+    const dados = {
+      ...reserva,
+      datareserva: dataReserva,
+    };
+    const res = await super.criar(dados);
+    if (!res.sucesso && res.erro?.toLowerCase().includes('datareserva')) {
+      const { datareserva: _, ...semDataReserva } = dados;
+      return super.criar(semDataReserva);
+    }
+    return res;
+  }
+
   public async obterPorCodigo(codigo: string): Promise<ResultadoSupabase<Reserva>> {
     const client = this.getClient();
     if (!client) return { sucesso: false, erro: 'Supabase não conectado.' };
