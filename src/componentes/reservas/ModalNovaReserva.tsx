@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   User,
@@ -8,9 +8,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Lock,
-  Search,
-  Plus,
-  ArrowRight,
 } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, TipoAtendimento, FormaPagamento, StatusPagamento } from '../../tipos';
@@ -20,10 +17,9 @@ import {
   formatarTelefone,
   formatarCpf,
   calcularDiarias,
-  converterValorMonetario,
-  sanitizarValorMonetario,
+  aplicarMascaraMoeda,
+  desformatarMoeda,
 } from '../../utilitarios/formatadores';
-import { CardQuarto } from '../quartos/CardQuarto';
 
 interface ModalNovaReservaProps {
   aberto: boolean;
@@ -65,6 +61,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
   const [tipoAtendimento, setTipoAtendimento] = useState<TipoAtendimento>('HOSPEDAGEM');
   const [adultos, setAdultos] = useState<number>(2);
   const [criancas, setCriancas] = useState<number>(0);
+  const [idadesCriancas, setIdadesCriancas] = useState<number[]>([]);
 
   // Quarto
   const [quartoSelecionadoId, setQuartoSelecionadoId] = useState<number>(
@@ -110,6 +107,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
       setTipoAtendimento('HOSPEDAGEM');
       setAdultos(2);
       setCriancas(0);
+      setIdadesCriancas([]);
       setPacoteId(undefined);
       setValorDesconto('');
       setValorPago('');
@@ -135,6 +133,16 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
     }
   }, [quartoSelecionadoId, quartos]);
 
+  // Sincroniza array de idades quando o contador de crianças muda (0 a 11 anos)
+  useEffect(() => {
+    setIdadesCriancas((prev) => {
+      return Array.from({ length: criancas }, (_, index) => {
+        const val = prev[index] ?? 5;
+        return Math.min(11, Math.max(0, val));
+      });
+    });
+  }, [criancas]);
+
   // Se selecionar hóspede existente da lista
   const handleSelecionarHospede = (idStr: string) => {
     const id = idStr ? Number(idStr) : null;
@@ -159,20 +167,91 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
     }
   };
 
-  // Cálculo de diárias e valor total
+  // Cálculo de diárias e pacotes
   const numeroDiarias = calcularDiarias(dataEntrada, dataSaida);
   const pacoteSelecionado = pacotes.find((p) => String(p.pacoteid) === String(pacoteId));
 
-  const valorTotalBruto = pacoteSelecionado
-    ? pacoteSelecionado.valor
-    : valorDiaria * numeroDiarias;
+  // Lógica oficial de cálculo por pessoa e idades (Adulto >= 12, Meia 6-11, Grátis 0-5)
+  const {
+    valorBasePorPessoa,
+    subtotalAdultos,
+    totalCriancasMeia,
+    qtdCriancasMeia,
+    qtdCriancasGratis,
+    valorTotalBruto,
+    detalhamentoOcupantes,
+  } = useMemo(() => {
+    if (!pacoteSelecionado) {
+      const bruto = valorDiaria * numeroDiarias;
+      return {
+        valorBasePorPessoa: valorDiaria,
+        subtotalAdultos: bruto,
+        totalCriancasMeia: 0,
+        qtdCriancasMeia: 0,
+        qtdCriancasGratis: 0,
+        valorTotalBruto: bruto,
+        detalhamentoOcupantes: `${numeroDiarias} diária(s) x ${formatarMoeda(valorDiaria)} = ${formatarMoeda(bruto)}`,
+      };
+    }
 
-  const valorDescontoNumerico = converterValorMonetario(valorDesconto);
-  const valorPagoNumerico = converterValorMonetario(valorPago);
+    const valorBase = Number(pacoteSelecionado.valor || 0);
+    const subAdultos = adultos * valorBase;
+    let somaCriancas = 0;
+    let qtdMeia = 0;
+    let qtdGratis = 0;
+    const detalhes: string[] = [];
+
+    if (adultos > 0) {
+      detalhes.push(`${adultos} adulto(s) x ${formatarMoeda(valorBase)} = ${formatarMoeda(subAdultos)}`);
+    }
+
+    if (criancas > 0) {
+      for (let i = 0; i < criancas; i++) {
+        const idade = Math.min(11, Math.max(0, idadesCriancas[i] ?? 0));
+        let valorCrianca = 0;
+
+        if (idade <= 5) {
+          valorCrianca = 0;
+          qtdGratis++;
+          detalhes.push(`Criança ${i + 1} (${idade} anos): GRÁTIS`);
+        } else {
+          valorCrianca = valorBase * 0.5;
+          somaCriancas += valorCrianca;
+          qtdMeia++;
+          detalhes.push(`Criança ${i + 1} (${idade} anos): MEIA (${formatarMoeda(valorCrianca)})`);
+        }
+      }
+    }
+
+    const total = subAdultos + somaCriancas;
+
+    return {
+      valorBasePorPessoa: valorBase,
+      subtotalAdultos: subAdultos,
+      totalCriancasMeia: somaCriancas,
+      qtdCriancasMeia: qtdMeia,
+      qtdCriancasGratis: qtdGratis,
+      valorTotalBruto: total,
+      detalhamentoOcupantes: detalhes.join(' | ') || 'Nenhum ocupante selecionado',
+    };
+  }, [pacoteSelecionado, valorDiaria, numeroDiarias, adultos, criancas, idadesCriancas]);
+
+  const valorDescontoNumerico = desformatarMoeda(valorDesconto);
   const valorTotalFinal = Math.max(0, valorTotalBruto - valorDescontoNumerico);
+  const valorMinimoSinal = valorTotalFinal * 0.5;
+  const valorPagoNumerico = isPreReserva ? 0 : desformatarMoeda(valorPago);
   const saldoRestante = Math.max(0, valorTotalFinal - valorPagoNumerico);
 
-  // Status de disponibilidade em tempo real dos 13 quartos para as datas selecionadas
+  // Atualiza automaticamente o valor sugerido de 50% de entrada sempre que alterar pacote, adultos ou idades
+  useEffect(() => {
+    if (!isPreReserva) {
+      setValorPago(aplicarMascaraMoeda(valorMinimoSinal));
+    } else {
+      setValorPago('');
+    }
+  }, [valorMinimoSinal, isPreReserva]);
+
+  // Status de disponibilidade em tempo real dos quartos
   const statusDisponibilidade = verificarDisponibilidade(dataEntrada, dataSaida);
   const quartoAtualStatus = statusDisponibilidade.find((s) => s.quarto.QuartoId === quartoSelecionadoId);
 
@@ -206,7 +285,6 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
     }
 
     // Validação de Sinal Mínimo (50%) com opção de exceção
-    const valorMinimoSinal = valorTotalFinal * 0.5;
     if (!isPreReserva && valorPagoNumerico < valorMinimoSinal && !autorizarExcecaoSinal) {
       setErroValidacao(
         `O sinal informado (${formatarMoeda(valorPagoNumerico)}) é menor que 50% (${formatarMoeda(valorMinimoSinal)}). Marque a caixa 'Autorizar exceção (sinal menor que 50%)' para confirmar.`
@@ -324,7 +402,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
           </div>
         )}
 
-        {/* Corpo com Grid: 2 Colunas (Formulário + Resumo Sticky) */}
+        {/* Corpo com Grid: 2 Colunas */}
         <form onSubmit={handleSalvarReserva} className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Coluna Principal: Formulário Detalhado */}
@@ -512,6 +590,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   </div>
                 </div>
 
+                {/* Dropdowns e Rótulos da seção Ocupantes */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
                     <label className="block font-semibold text-[#414941] mb-1">
@@ -529,34 +608,81 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   </div>
                   <div>
                     <label className="block font-semibold text-[#414941] mb-1">
-                      Quantidade de Adultos
+                      Adultos (a partir de 12 anos)
                     </label>
                     <input
                       type="number"
                       min={1}
-                      max={8}
+                      max={10}
                       value={adultos}
                       onChange={(e) => setAdultos(Number(e.target.value))}
-                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
+                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e] font-bold text-[#191c1d]"
                     />
                   </div>
                   <div>
                     <label className="block font-semibold text-[#414941] mb-1">
-                      Quantidade de Crianças
+                      Crianças (0 a 11 anos)
                     </label>
                     <input
                       type="number"
                       min={0}
-                      max={6}
+                      max={10}
                       value={criancas}
                       onChange={(e) => setCriancas(Number(e.target.value))}
-                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
+                      className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e] font-bold text-[#191c1d]"
                     />
                   </div>
                 </div>
+
+                {/* Idades das Crianças (0 a 11 anos) */}
+                {criancas > 0 && (
+                  <div className="mt-3 space-y-2 rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] p-3 text-xs">
+                    <p className="font-bold text-[#414941]">Idade de cada criança (0 a 11 anos):</p>
+                    {Array.from({ length: criancas }).map((_, index) => {
+                      const idade = Math.min(11, Math.max(0, idadesCriancas[index] ?? 5));
+                      const eGratis = idade <= 5;
+
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between gap-2 bg-white p-2 rounded-lg border border-[#e1e3e4]"
+                        >
+                          <span className="font-semibold text-slate-700">Criança {index + 1}:</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={11}
+                              value={idade}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                const valClamped = Math.min(11, Math.max(0, isNaN(val) ? 0 : val));
+                                const proximo = [...idadesCriancas];
+                                proximo[index] = valClamped;
+                                setIdadesCriancas(proximo);
+                              }}
+                              disabled={enviando}
+                              className="w-16 rounded-lg border border-[#c1c9bf] bg-white px-2 py-1 text-center font-bold text-slate-800 disabled:bg-gray-100"
+                            />
+                            <span className="text-[11px] text-[#717971]">anos</span>
+                            {eGratis ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                                Grátis (0%)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                                Meia (50%)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              {/* 3. SELEÇÃO DO QUARTO (OS 13 QUARTOS OFICIAIS COM STATUS ANTI-CONFLITO) */}
+              {/* 3. SELEÇÃO DO QUARTO */}
               <div className="border border-[#c1c9bf] rounded-xl p-4 bg-white shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-2 border-b border-[#e1e3e4]">
                   <div className="flex items-center gap-2">
@@ -655,10 +781,12 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                       setIsPreReserva(marcado);
                       if (marcado) {
                         setValorPago('');
+                      } else {
+                        setValorPago(aplicarMascaraMoeda(valorMinimoSinal));
                       }
                     }}
                     disabled={enviando}
-                    className="h-4 w-4 accent-[#053d1e] disabled:cursor-not-allowed"
+                    className="h-4 w-4 accent-[#053d1e] disabled:cursor-not-allowed cursor-pointer"
                   />
                   Salvar como pré-reserva (sem pagamento)
                 </label>
@@ -677,7 +805,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                         <option value="">Nenhum (Diária Normal)</option>
                         {pacotes.map((p) => (
                           <option key={p.pacoteid} value={String(p.pacoteid)}>
-                            {p.nome} ({formatarMoeda(p.valor)})
+                            {p.nome} ({formatarMoeda(p.valor)}/pessoa)
                           </option>
                         ))}
                       </select>
@@ -687,30 +815,31 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                         Desconto / Cortesia (R$)
                       </label>
                       <input
-                        type="number"
-                        min={0}
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
                         value={valorDesconto}
-                        onChange={(e) => setValorDesconto(sanitizarValorMonetario(e.target.value))}
+                        onChange={(e) => setValorDesconto(aplicarMascaraMoeda(e.target.value))}
                         className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
                       />
                     </div>
                     <div>
                       <label className="block font-semibold text-[#414941] mb-1">
-                        Valor de Entrada / Sinal (R$)
+                        Valor de Entrada / Sinal (50%)
                       </label>
                       <input
                         type="text"
-                        inputMode="decimal"
-                        placeholder="0,00"
+                        inputMode="numeric"
+                        placeholder="R$ 0,00"
                         value={valorPago}
-                        onChange={(e) => setValorPago(sanitizarValorMonetario(e.target.value))}
-                        className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e]"
+                        onChange={(e) => setValorPago(aplicarMascaraMoeda(e.target.value))}
+                        className="w-full p-2 border border-[#c1c9bf] rounded-lg focus:outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
                       />
                     </div>
                   </div>
                 )}
 
-                {!isPreReserva && valorPagoNumerico < valorTotalFinal * 0.5 && (
+                {!isPreReserva && valorPagoNumerico < valorMinimoSinal && (
                   <div className="mt-2.5 mb-3 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2.5 animate-in fade-in">
                     <input
                       type="checkbox"
@@ -722,7 +851,7 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                     <label htmlFor="chkExcecaoSinalNova" className="cursor-pointer font-semibold leading-tight">
                       <span className="text-amber-950 font-bold block">⚠️ Autorizar exceção (Sinal menor que 50%)</span>
                       <span className="text-[11px] font-normal text-amber-800 block mt-0.5">
-                        O valor pago ({formatarMoeda(valorPagoNumerico)}) é menor que 50% do total ({formatarMoeda(valorTotalFinal * 0.5)}). Marque esta opção para permitir o cadastro desta exceção.
+                        O valor pago ({formatarMoeda(valorPagoNumerico)}) é menor que 50% do total ({formatarMoeda(valorMinimoSinal)}). Marque esta opção para permitir o cadastro desta exceção.
                       </span>
                     </label>
                   </div>
@@ -838,12 +967,22 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   </div>
 
                   <div className="flex justify-between py-1 border-b border-[#e1e3e4]">
-                    <span>Ocupantes:</span>
-                    <span className="font-medium text-[#191c1d]">
-                      {adultos} Adulto{adultos > 1 ? 's' : ''}
-                      {criancas > 0 ? `, ${criancas} Cri` : ''}
+                    <span>Adultos:</span>
+                    <span className="font-bold text-[#191c1d]">
+                      {adultos} x {formatarMoeda(valorBasePorPessoa)} = {formatarMoeda(subtotalAdultos)}
                     </span>
                   </div>
+
+                  {criancas > 0 && (
+                    <div className="flex justify-between py-1 border-b border-[#e1e3e4]">
+                      <span>Crianças (Meia):</span>
+                      <span className="font-bold text-[#191c1d]">
+                        {qtdCriancasMeia > 0
+                          ? `${qtdCriancasMeia} x ${formatarMoeda(valorBasePorPessoa * 0.5)} = ${formatarMoeda(totalCriancasMeia)}`
+                          : `${formatarMoeda(0)} (Isento)`}
+                      </span>
+                    </div>
+                  )}
 
                   {pacoteSelecionado && (
                     <div className="flex justify-between py-1 border-b border-[#e1e3e4]">
@@ -872,20 +1011,27 @@ export const ModalNovaReserva: React.FC<ModalNovaReservaProps> = ({
                   </div>
 
                   <div className="flex justify-between text-xs">
-                    <span className="text-[#414941]">Sinal / Pago:</span>
-                    <span className="font-semibold text-[#137333]">
-                      {formatarMoeda(valorPagoNumerico)}
+                    <span className="text-[#414941]">Entrada (50%):</span>
+                    <span className="font-semibold text-[#735c00]">
+                      {formatarMoeda(isPreReserva ? 0 : valorMinimoSinal)}
                     </span>
                   </div>
 
                   <div className="flex justify-between text-xs font-bold">
-                    <span className="text-[#717971]">Saldo no Check-in:</span>
+                    <span className="text-[#717971]">Saldo no Hotel:</span>
                     <span
                       className={saldoRestante > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}
                     >
                       {formatarMoeda(saldoRestante)}
                     </span>
                   </div>
+
+                  {pacoteSelecionado && detalhamentoOcupantes && (
+                    <div className="rounded-lg border border-[#c1c9bf] bg-white px-2.5 py-1.5 text-[10px] text-[#717971] mt-2">
+                      <p className="font-semibold text-[#191c1d]">📋 Detalhamento:</p>
+                      <p className="mt-0.5 leading-relaxed">{detalhamentoOcupantes}</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Botões de Ação */}

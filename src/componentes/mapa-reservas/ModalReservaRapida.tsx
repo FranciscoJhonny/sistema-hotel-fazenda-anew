@@ -1,8 +1,14 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { CalendarDays, CreditCard, X, Users, Bed, LoaderCircle, Sun } from 'lucide-react'; // ✅ Adicionado LoaderCircle e Sun
+import React, { useEffect, useMemo, useState } from 'react';
+import { CreditCard, X, Users, Bed, LoaderCircle, Sun } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, Pacote, FormaPagamento } from '../../tipos';
-import { formatarData, formatarMoeda, sanitizarValorMonetario, calcularIdadeNumerica } from '../../utilitarios/formatadores';
+import {
+  formatarData,
+  formatarMoeda,
+  calcularIdadeNaData,
+  aplicarMascaraMoeda,
+  desformatarMoeda,
+} from '../../utilitarios/formatadores';
 import { FnrhService } from '../../servicos/supabase/FnrhService';
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
 
@@ -26,22 +32,11 @@ const calcularDataSaida = (dataEntrada: string, quantidadeDias: number): string 
   return somarDias(dataEntrada, quantidadeDias - 1);
 };
 
-const converterValorMonetario = (valor: string): number => {
-  const normalizado = valor
-    .replace(/[^\d,.-]/g, '')
-    .replace(/\.(?=\d{3}(?:\.|,|$))/g, '')
-    .replace(',', '.');
-
-  const numero = Number(normalizado);
-  return Number.isFinite(numero) ? Math.max(0, numero) : 0;
-};
-
 const calcularValorReserva = (
   pacote: Pacote | undefined,
   adultos: number,
   criancas: number,
-  idadesCriancas: number[],
-  configuracao: any
+  idadesCriancas: number[]
 ) => {
   if (!pacote) {
     return {
@@ -49,51 +44,60 @@ const calcularValorReserva = (
       detalhe: 'Selecione um pacote',
       entrada: 0,
       valorBase: 0,
-      adultosExtras: 0,
+      valorAdultos: 0,
       valorCriancas: 0,
-      valorAdultos: 0
+      qtdCriancasMeia: 0,
+      qtdCriancasGratis: 0,
+      detalhesCriancas: [] as { index: number; idade: number; tipo: string; valor: number }[],
     };
   }
 
-  const idadeLimiteGratis = Number(configuracao?.CriancaIdadeLimiteGratis ?? 5);
-  const idadeLimiteMeia = Number(configuracao?.CriancaIdadeLimiteMeia ?? 11);
-  const porcentagemMeia = Number(configuracao?.CriancaPorcentagemMeiaDiaria ?? 50);
-  const porcentagemEntrada = Number(configuracao?.PorcentagemEntradaMinima ?? 50);
-
   const valorPorPessoa = Number(pacote.valor || 0);
-  let valorTotal = 0;
   let valorAdultosTotal = 0;
   let valorCriancasTotal = 0;
-  let detalhes: string[] = [];
+  let qtdCriancasMeia = 0;
+  let qtdCriancasGratis = 0;
+  const detalhes: string[] = [];
+  const detalhesCriancas: { index: number; idade: number; tipo: string; valor: number }[] = [];
 
   if (adultos > 0) {
     valorAdultosTotal = adultos * valorPorPessoa;
-    valorTotal += valorAdultosTotal;
     detalhes.push(`${adultos} adulto(s) x ${formatarMoeda(valorPorPessoa)} = ${formatarMoeda(valorAdultosTotal)}`);
   }
 
-  if (criancas > 0 && idadesCriancas.length > 0) {
+  if (criancas > 0) {
     for (let i = 0; i < criancas; i++) {
-      const idade = idadesCriancas[i] || 0;
+      // Idade limitada estritamente de 0 a 11 anos
+      const idade = Math.min(11, Math.max(0, idadesCriancas[i] ?? 0));
       let valorCrianca = 0;
+      let tipoStr = '';
 
-      if (idade <= idadeLimiteGratis) {
+      if (idade <= 5) {
+        // 0 a 5 anos: Grátis (0%)
         valorCrianca = 0;
+        qtdCriancasGratis++;
+        tipoStr = 'Grátis (0%)';
         detalhes.push(`Criança ${i + 1} (${idade} anos): GRÁTIS`);
-      } else if (idade <= idadeLimiteMeia) {
-        valorCrianca = (valorPorPessoa * porcentagemMeia) / 100;
-        valorCriancasTotal += valorCrianca;
-        detalhes.push(`Criança ${i + 1} (${idade} anos): MEIA ${formatarMoeda(valorCrianca)}`);
       } else {
-        valorCrianca = valorPorPessoa;
+        // 6 a 11 anos: Meia (50%)
+        valorCrianca = valorPorPessoa * 0.5;
         valorCriancasTotal += valorCrianca;
-        detalhes.push(`Criança ${i + 1} (${idade} anos): INTEGRAL ${formatarMoeda(valorCrianca)}`);
+        qtdCriancasMeia++;
+        tipoStr = 'Meia (50%)';
+        detalhes.push(`Criança ${i + 1} (${idade} anos): MEIA (${formatarMoeda(valorCrianca)})`);
       }
+
+      detalhesCriancas.push({
+        index: i + 1,
+        idade,
+        tipo: tipoStr,
+        valor: valorCrianca,
+      });
     }
-    valorTotal += valorCriancasTotal;
   }
 
-  const entrada = valorTotal * (porcentagemEntrada / 100);
+  const valorTotal = valorAdultosTotal + valorCriancasTotal;
+  const entrada = valorTotal * 0.5;
 
   return {
     total: valorTotal,
@@ -101,6 +105,9 @@ const calcularValorReserva = (
     valorBase: valorPorPessoa,
     valorAdultos: valorAdultosTotal,
     valorCriancas: valorCriancasTotal,
+    qtdCriancasMeia,
+    qtdCriancasGratis,
+    detalhesCriancas,
     detalhe: detalhes.join(' | ') || 'Nenhum hóspede selecionado',
   };
 };
@@ -128,7 +135,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [hospedeId, setHospedeId] = useState<string>('');
   const [cadastroidFnrh, setCadastroidFnrh] = useState<number | null>(null);
   
-  const [adultos, setAdultos] = useState<number>(modoDayUse ? 1 : 0);
+  const [adultos, setAdultos] = useState<number>(modoDayUse ? 1 : 2);
   const [criancas, setCriancas] = useState<number>(0);
   
   const [idadesCriancas, setIdadesCriancas] = useState<number[]>([]);
@@ -143,8 +150,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  const valorMinimoAnteriorRef = useRef(0);
-
   const pacoteSelecionado = useMemo(
     () => pacotes.find((p) => String(p.pacoteid) === pacoteId),
     [pacoteId, pacotes]
@@ -157,7 +162,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const hospedeSelecionado = hospedes.find((h) => String(h.hospedeid) === hospedeId) || null;
   const pacotesAtivos = pacotes.filter((p) => p.ativo !== false);
 
-  const capacidadeMaxAdultos = 10;
   const capacidadeMaxCriancas = 10;
 
   // Limpa a mensagem de erro vermelha automaticamente após 3.5 segundos
@@ -169,11 +173,12 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     return () => clearTimeout(timer);
   }, [erro]);
 
+  // Carrega parâmetros pré-configurados da FNRH via sessionStorage
   useEffect(() => {
     if (aberto && (dataSelecionada || modoDayUse)) {
       let hospedePre = '';
       let cadastroidPre: number | null = null;
-      let adultosPre = modoDayUse ? 1 : 0;
+      let adultosPre = modoDayUse ? 1 : 2;
       let criancasPre = 0;
       let entradaPre = dataSelecionada || hoje;
       let saidaPre: string | null = null;
@@ -192,9 +197,12 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             if (parsed.hospedeid) hospedePre = String(parsed.hospedeid);
             if (!modoDayUse) {
               if (parsed.adultos) adultosPre = Number(parsed.adultos);
-              if (parsed.criancas) criancasPre = Number(parsed.criancas);
+              if (parsed.criancas !== undefined) criancasPre = Number(parsed.criancas);
               if (parsed.idades_criancas && Array.isArray(parsed.idades_criancas)) {
-                idadesCriancasPre = parsed.idades_criancas;
+                // Filtra estritamente crianças entre 0 e 11 anos
+                idadesCriancasPre = parsed.idades_criancas
+                  .map(Number)
+                  .filter((id: number) => id >= 0 && id <= 11);
               }
             }
             if (parsed.dataentrada) entradaPre = parsed.dataentrada;
@@ -202,9 +210,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             if (parsed.pacoteid) pacotePre = String(parsed.pacoteid);
             if (parsed.valor_sinal && Number(parsed.valor_sinal) > 0) {
               valorPagoPre = Number(parsed.valor_sinal);
-              valorPagoTextoPre = Number(parsed.valor_sinal).toFixed(2).replace('.', ',');
+              valorPagoTextoPre = aplicarMascaraMoeda(Number(parsed.valor_sinal));
             } else if (parsed.valor_sinal === 0) {
-              // Cliente liberado para pagar 100% no check-out
               autorizarExcecaoPre = true;
             }
             sessionStorage.removeItem('fnrh_reserva_preenchimento');
@@ -227,7 +234,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setAutorizarExcecaoSinal(autorizarExcecaoPre);
       setErro(null);
       setFormaPagamento(configuracoes?.formapagamentopadrao || 'PIX');
-      valorMinimoAnteriorRef.current = 0;
 
       setDataEntrada(entradaPre);
 
@@ -273,9 +279,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     }
   }, [modoDayUse, pacotesAtivos, pacoteId]);
 
-  // Busca e calcula automaticamente a idade das crianças do hóspede / FNRH selecionado
+  // Sincroniza e classifica acompanhantes do banco de dados (FNRH ou cadastro de acompanhantes)
+  // REGRA: >= 12 anos é somado em Adultos; 0 a 11 anos conta em Crianças
   useEffect(() => {
-    const carregarIdadesDoBanco = async () => {
+    const carregarOcupantesDoBanco = async () => {
       if (!aberto || (!hospedeId && !cadastroidFnrh)) return;
       if (modoDayUse) {
         setAdultos(1);
@@ -287,7 +294,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       if (!cliente) return;
 
       try {
-        let idadesCalculadas: number[] = [];
+        let qtdAdultosAcomps = 0;
+        let idadesCriancasCalc: number[] = [];
 
         // 1. Busca acompanhantes do cadastro FNRH se houver cadastroidFnrh
         if (cadastroidFnrh) {
@@ -299,15 +307,19 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           if (acompsFnrh && acompsFnrh.length > 0) {
             acompsFnrh.forEach((a: any) => {
               if (a.datanascimento) {
-                const age = calcularIdadeNumerica(a.datanascimento);
-                if (age >= 0 && age <= 11) idadesCalculadas.push(age);
+                const age = calcularIdadeNaData(a.datanascimento, dataEntrada);
+                if (age >= 12) {
+                  qtdAdultosAcomps++;
+                } else if (age >= 0 && age <= 11) {
+                  idadesCriancasCalc.push(age);
+                }
+              } else {
+                qtdAdultosAcomps++;
               }
             });
           }
-        }
-
-        // 2. Se não encontrou no FNRH, busca na tabela acompanhante pelo hospedeId
-        if (idadesCalculadas.length === 0 && hospedeId) {
+        } else if (hospedeId) {
+          // 2. Se não veio de FNRH mas selecionou hóspede cadastrado, busca na tabela acompanhante
           const { data: acompsOficial } = await cliente
             .from('acompanhante')
             .select('datanascimento')
@@ -316,25 +328,35 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           if (acompsOficial && acompsOficial.length > 0) {
             acompsOficial.forEach((a: any) => {
               if (a.datanascimento) {
-                const age = calcularIdadeNumerica(a.datanascimento);
-                if (age >= 0 && age <= 11) idadesCalculadas.push(age);
+                const age = calcularIdadeNaData(a.datanascimento, dataEntrada);
+                if (age >= 12) {
+                  qtdAdultosAcomps++;
+                } else if (age >= 0 && age <= 11) {
+                  idadesCriancasCalc.push(age);
+                }
+              } else {
+                qtdAdultosAcomps++;
               }
             });
           }
         }
 
-        setCriancas(idadesCalculadas.length);
-        setIdadesCriancas(idadesCalculadas);
-        if (hospedeId && adultos < 1) {
+        // Sincroniza: Titular (1) + acompanhantes com idade >= 12 anos
+        if (cadastroidFnrh || (hospedeId && (qtdAdultosAcomps > 0 || idadesCriancasCalc.length > 0))) {
+          const totalAdultos = Math.max(1, 1 + qtdAdultosAcomps);
+          setAdultos(totalAdultos);
+          setCriancas(idadesCriancasCalc.length);
+          setIdadesCriancas(idadesCriancasCalc);
+        } else if (hospedeId && adultos < 1) {
           setAdultos(1);
         }
       } catch (e) {
-        console.warn('Aviso ao carregar idades das crianças:', e);
+        console.warn('Aviso ao carregar ocupantes:', e);
       }
     };
 
-    carregarIdadesDoBanco();
-  }, [aberto, hospedeId, cadastroidFnrh, adultos, modoDayUse]);
+    carregarOcupantesDoBanco();
+  }, [aberto, hospedeId, cadastroidFnrh, dataEntrada, modoDayUse]);
 
   useEffect(() => {
     if (!pacoteSelecionado || !dataEntrada) return;
@@ -385,7 +407,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
   useEffect(() => {
     setIdadesCriancas((prev) => {
-      const next = Array.from({ length: criancas }, (_, index) => prev[index] ?? 5);
+      const next = Array.from({ length: criancas }, (_, index) => {
+        const val = prev[index] ?? 5;
+        return Math.min(11, Math.max(0, val));
+      });
       return next;
     });
   }, [criancas]);
@@ -395,31 +420,43 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       pacoteSelecionado,
       adultos,
       criancas,
-      idadesCriancas,
-      configuracoes
+      idadesCriancas
     ),
-    [pacoteSelecionado, adultos, criancas, idadesCriancas, configuracoes]
+    [pacoteSelecionado, adultos, criancas, idadesCriancas]
   );
 
-  const valorMinimoEntrada = valorCalculado.total * 0.5;
+  const valorMinimoEntrada = valorCalculado.entrada;
   const valorPagamento = preReserva ? 0 : valorPago;
   const saldoHotel = Math.max(0, valorCalculado.total - valorPagamento);
   const statusPagamento = valorPagamento === 0 ? 'PENDENTE' : saldoHotel === 0 ? 'PAGO' : 'PARCIAL';
 
+  // Atualiza automaticamente o valor sugerido da entrada (50%) sempre que alterar pacote, adultos ou idades das crianças
   useEffect(() => {
     if (!preReserva) {
-      const diff = Math.abs(valorPago - valorMinimoAnteriorRef.current);
-      if (diff < 0.01 || valorPago === 0) {
-        setValorPago(valorMinimoEntrada);
-        setValorPagoTexto(valorMinimoEntrada > 0 ? valorMinimoEntrada.toFixed(2).replace('.', ',') : '');
-      }
-      valorMinimoAnteriorRef.current = valorMinimoEntrada;
+      setValorPago(valorMinimoEntrada);
+      setValorPagoTexto(aplicarMascaraMoeda(valorMinimoEntrada));
     } else {
       setValorPago(0);
       setValorPagoTexto('');
-      valorMinimoAnteriorRef.current = 0;
     }
   }, [valorMinimoEntrada, preReserva]);
+
+  const handleTogglePreReserva = (marcado: boolean) => {
+    setPreReserva(marcado);
+    if (marcado) {
+      setValorPago(0);
+      setValorPagoTexto('');
+    } else {
+      setValorPago(valorMinimoEntrada);
+      setValorPagoTexto(aplicarMascaraMoeda(valorMinimoEntrada));
+    }
+  };
+
+  const handleValorPagoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const textoMascarado = aplicarMascaraMoeda(e.target.value);
+    setValorPagoTexto(textoMascarado);
+    setValorPago(desformatarMoeda(textoMascarado));
+  };
 
   const handleSalvar = async () => {
     setErro(null);
@@ -474,7 +511,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       return;
     }
 
-    setEnviando(true); // ✅ Ativa o loading
+    setEnviando(true);
     onCarregandoChange?.(true);
 
     try {
@@ -537,7 +574,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       }
       setCadastroidFnrh(null);
       setHospedeId('');
-      setAdultos(0);
+      setAdultos(2);
       setCriancas(0);
       setIdadesCriancas([]);
       setObservacoes('');
@@ -550,7 +587,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     } catch (error: any) {
       setErro(error?.message || 'Erro ao salvar a reserva.');
     } finally {
-      setEnviando(false); // ✅ Desativa o loading
+      setEnviando(false);
       onCarregandoChange?.(false);
     }
   };
@@ -559,7 +596,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-      {/* ✅ Adicionado 'relative' aqui para o overlay funcionar corretamente */}
       <div className="relative w-full max-w-4xl rounded-2xl border border-[#c1c9bf] bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
         
         <div className="flex items-center justify-between border-b border-[#c1c9bf] bg-[#053d1e] px-6 py-4 text-white">
@@ -576,7 +612,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 : ''}
             </p>
           </div>
-          <button type="button" onClick={onFechar} className="rounded-full p-1.5 hover:bg-white/10 disabled:opacity-50" disabled={enviando}>
+          <button type="button" onClick={onFechar} className="rounded-full p-1.5 hover:bg-white/10 disabled:opacity-50 cursor-pointer" disabled={enviando}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -688,7 +724,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1 text-xs font-semibold text-[#191c1d]">
-                  <span>Adultos</span>
+                  <span>Ad. (a part. de 12 anos)</span>
                   <select
                     value={adultos}
                     onChange={(e) => {
@@ -713,7 +749,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 </label>
 
                 <label className="space-y-1 text-xs font-semibold text-[#191c1d]">
-                  <span>Crianças</span>
+                  <span>Cri. (0 a 11 anos)</span>
                   <select
                     value={criancas}
                     onChange={(e) => {
@@ -737,31 +773,52 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               </div>
             </div>
 
-            {/* Idades das Crianças */}
+            {/* Idades das Crianças (0 a 11 anos) */}
             {criancas > 0 && !modoDayUse && (
-              <div className="space-y-2 rounded-xl border border-[#c1c9bf] bg-white p-3">               
-                {Array.from({ length: criancas }).map((_, index) => (
-                  <label key={index} className="flex items-center justify-between gap-3 text-xs text-[#191c1d]">
-                    <span>Criança {index + 1}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={17}
-                      value={idadesCriancas[index] ?? 0}
-                      onChange={(e) => {
-                        const proximo = [...idadesCriancas];
-                        proximo[index] = Number(e.target.value) || 0;
-                        setIdadesCriancas(proximo);
-                      }}
-                      disabled={enviando}
-                      className="w-20 rounded-lg border border-[#c1c9bf] px-2 py-1.5 text-right disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    />
-                    <span className="text-[10px] text-[#717971]">
-                      {idadesCriancas[index] <= 5 ? 'Grátis' :
-                        idadesCriancas[index] <= 11 ? 'Meia' : 'Integral'}
-                    </span>
-                  </label>
-                ))}
+              <div className="space-y-2 rounded-xl border border-[#c1c9bf] bg-white p-3">
+                <p className="text-[11px] font-bold text-[#414941] mb-1">
+                  Idade de cada criança (0 a 11 anos):
+                </p>
+                {Array.from({ length: criancas }).map((_, index) => {
+                  const idade = Math.min(11, Math.max(0, idadesCriancas[index] ?? 5));
+                  const eGratis = idade <= 5;
+
+                  return (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between gap-2 text-xs text-[#191c1d] bg-[#f8f9fa] p-2 rounded-lg border border-[#e5e7eb]"
+                    >
+                      <span className="font-semibold text-slate-700">Criança {index + 1}:</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={11}
+                          value={idade}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            const valClamped = Math.min(11, Math.max(0, isNaN(val) ? 0 : val));
+                            const proximo = [...idadesCriancas];
+                            proximo[index] = valClamped;
+                            setIdadesCriancas(proximo);
+                          }}
+                          disabled={enviando}
+                          className="w-16 rounded-lg border border-[#c1c9bf] bg-white px-2 py-1 text-center font-bold text-slate-800 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        />
+                        <span className="text-[11px] text-[#717971]">anos</span>
+                        {eGratis ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                            Grátis (0%)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                            Meia (50%)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -783,23 +840,13 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             </label>
 
             <div className="mt-4 space-y-3 rounded-xl border border-[#c1c9bf] bg-white p-3">
-              <label className="flex items-center gap-2 text-xs font-semibold text-[#191c1d]">
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#191c1d] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={preReserva}
-                  onChange={(e) => {
-                    const marcado = e.target.checked;
-                    setPreReserva(marcado);
-                    if (marcado) {
-                      setValorPago(0);
-                      setValorPagoTexto('');
-                    } else if (valorPago === 0) {
-                      setValorPago(valorMinimoEntrada);
-                      setValorPagoTexto(valorMinimoEntrada.toFixed(2).replace('.', ','));
-                    }
-                  }}
+                  onChange={(e) => handleTogglePreReserva(e.target.checked)}
                   disabled={enviando}
-                  className="h-4 w-4 accent-[#053d1e] disabled:cursor-not-allowed"
+                  className="h-4 w-4 accent-[#053d1e] disabled:cursor-not-allowed cursor-pointer"
                 />
                 Salvar como pré-reserva (sem pagamento)
               </label>
@@ -808,21 +855,15 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 <div className="space-y-2">
                   <label className="block space-y-1 text-xs font-semibold text-[#191c1d]">
                     <span>Valor da entrada/pagamento</span>
-                    <div className="relative">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#717971]">R$</span>
+                    <div>
                       <input
                         type="text"
-                        inputMode="decimal"
-                        max={valorCalculado.total}
+                        inputMode="numeric"
                         value={valorPagoTexto}
-                        placeholder="0,00"
-                        onChange={(e) => {
-                          const texto = e.target.value;
-                          setValorPagoTexto(sanitizarValorMonetario(texto));
-                          setValorPago(converterValorMonetario(texto));
-                        }}
+                        placeholder="R$ 0,00"
+                        onChange={handleValorPagoChange}
                         disabled={enviando}
-                        className="w-full rounded-lg border border-[#c1c9bf] bg-white py-2 pl-9 pr-3 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed font-semibold text-[#053d1e]"
+                        className="w-full rounded-lg border border-[#c1c9bf] bg-white py-2 px-3 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed font-semibold text-[#053d1e]"
                       />
                     </div>
                     <span className="text-[10px] text-[#717971] block">
@@ -907,12 +948,18 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 </div>
                 <div className="flex justify-between gap-2 border-b border-[#e5e7eb] pb-1">
                   <span>Adultos:</span>
-                  <strong>{adultos} x {formatarMoeda(valorCalculado.valorBase)} = {formatarMoeda(valorCalculado.valorAdultos)}</strong>
+                  <strong>
+                    {adultos} x {formatarMoeda(valorCalculado.valorBase)} = {formatarMoeda(valorCalculado.valorAdultos)}
+                  </strong>
                 </div>
                 {criancas > 0 && (
                   <div className="flex justify-between gap-2 border-b border-[#e5e7eb] pb-1">
-                    <span>Crianças:</span>
-                    <strong>{formatarMoeda(valorCalculado.valorCriancas)}</strong>
+                    <span>Crianças (Meia):</span>
+                    <strong>
+                      {valorCalculado.qtdCriancasMeia > 0
+                        ? `${valorCalculado.qtdCriancasMeia} x ${formatarMoeda(valorCalculado.valorBase * 0.5)} = ${formatarMoeda(valorCalculado.valorCriancas)}`
+                        : `${formatarMoeda(0)} (Isento)`}
+                    </strong>
                   </div>
                 )}
                 <div className="flex justify-between gap-2 text-base font-bold pt-1">
@@ -921,7 +968,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 </div>
                 <div className="flex justify-between gap-2 text-sm font-semibold pt-1 border-t border-[#e5e7eb]">
                   <span>Entrada (50%):</span>
-                  <span className="text-[#735c00]">{formatarMoeda(valorPagamento)}</span>
+                  <span className="text-[#735c00]">
+                    {formatarMoeda(preReserva ? 0 : valorMinimoEntrada)}
+                  </span>
                 </div>
                 <div className="flex justify-between gap-2 text-sm font-semibold">
                   <span>Saldo no hotel:</span>
@@ -931,7 +980,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 </div>
                 <div className="rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 text-[10px] text-[#717971] mt-2">
                   <p className="font-semibold text-[#191c1d]">📋 Detalhamento:</p>
-                  <p>{valorCalculado.detalhe}</p>
+                  <p className="mt-0.5 leading-relaxed">{valorCalculado.detalhe}</p>
                 </div>
               </div>
             </div>
@@ -962,7 +1011,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 type="button"
                 onClick={onFechar}
                 disabled={enviando}
-                className="rounded-xl border border-[#c1c9bf] bg-white px-4 py-2 text-sm font-semibold text-[#191c1d] hover:bg-[#f3f4f6] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-xl border border-[#c1c9bf] bg-white px-4 py-2 text-sm font-semibold text-[#191c1d] hover:bg-[#f3f4f6] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 Cancelar
               </button>
@@ -970,7 +1019,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 type="button"
                 disabled={enviando}
                 onClick={handleSalvar}
-                className="rounded-xl bg-[#053d1e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#225533] disabled:cursor-not-allowed disabled:opacity-70 flex items-center gap-2"
+                className="rounded-xl bg-[#053d1e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#225533] disabled:cursor-not-allowed disabled:opacity-70 flex items-center gap-2 cursor-pointer shadow-xs"
               >
                 {enviando ? (
                   <>

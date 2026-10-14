@@ -30,7 +30,6 @@ import {
   formatarData,
   formatarMoeda,
   formatarTelefone,
-  calcularIdadeNumerica,
   calcularIdadeNaData
 } from '../utilitarios/formatadores';
 
@@ -79,7 +78,7 @@ export const calcularValoresReserva = (
   cadastro: CadastroFnrh,
   pacotes: Pacote[] = [],
   _quartos: Quarto[] = [],
-  configuracoes?: any
+  _configuracoes?: any
 ): ValoresCalculadosReserva => {
   const dataEntradaStr = (cadastro.dataentrada || '').slice(0, 10).trim();
   const dataSaidaStr = (cadastro.datasaida || '').slice(0, 10).trim();
@@ -174,15 +173,9 @@ export const calcularValoresReserva = (
   // 0 a 5 anos: Grátis (0%)
   // 6 a 11 anos: Criança Pagante Meia (50%)
   // 12 anos ou mais: ADULTO (Integral 100%)
-  const idadeLimiteGratis = Number(
-    configuracoes?.criancaidadelimitegratis ?? configuracoes?.CriancaIdadeLimiteGratis ?? 5
-  );
-  const idadeLimiteMeia = Number(
-    configuracoes?.criancaidadelimitemeia ?? configuracoes?.CriancaIdadeLimiteMeia ?? 11
-  );
-  const porcentagemMeia = Number(
-    configuracoes?.criancaporcentagemmeiadiaria ?? configuracoes?.CriancaPorcentagemMeiaDiaria ?? 50
-  );
+  const idadeLimiteGratis = 5;
+  const idadeLimiteMeia = 11;
+  const porcentagemMeia = 50;
 
   let acompAdultos = 0;
   let criancasGratis = 0;
@@ -212,18 +205,19 @@ export const calcularValoresReserva = (
   }
 
   // Titular é sempre 1 adulto + acompanhantes com 12 anos ou mais
-  // Se o cadastro tiver número maior declarado sem acompanhante detalhado, respeita o informado
-  const qtdAdultos = Math.max(1, Number(cadastro.adultos || 0), 1 + acompAdultos);
-  const qtdCriancasInformada = Number(cadastro.criancas || 0);
-  const totalCriancasAcomp = criancasGratis + criancasMeia;
+  let qtdAdultos = 1 + acompAdultos;
+  let qtdCriancasMeia = criancasMeia;
+  let qtdCriancasGratis = criancasGratis;
 
-  // Se foram informadas mais crianças no cadastro do que acompanhantes detalhados, o excedente é meia
-  if (qtdCriancasInformada > totalCriancasAcomp) {
-    criancasMeia += (qtdCriancasInformada - totalCriancasAcomp);
+  // Se NÃO houver acompanhantes detalhados cadastrados, usa os contadores informados
+  if (!cadastro.acompanhantes || cadastro.acompanhantes.length === 0) {
+    qtdAdultos = Math.max(1, Number(cadastro.adultos || 1));
+    qtdCriancasMeia = Number(cadastro.criancas || 0);
+    qtdCriancasGratis = 0;
   }
 
   // Capacidade física total de acomodação (adultos + crianças meia + bebês/grátis)
-  const totalHospedesFisicos = qtdAdultos + criancasMeia + criancasGratis;
+  const totalHospedesFisicos = qtdAdultos + qtdCriancasMeia + qtdCriancasGratis;
 
   // Fórmula oficial do pacote:
   // Total = (Qtd Adultos [>= 12 anos] * ValorPacote) + (Qtd Crianças Meia [6 a 11 anos] * (ValorPacote * 0.5))
@@ -343,7 +337,7 @@ export const PaginaFnrhAdmin: React.FC = () => {
             dataentrada: cadastro.dataentrada,
             datasaida: cadastro.datasaida,
             adultos: valoresCalculados.qtdAdultos,
-            criancas: valoresCalculados.qtdCriancasMeia,
+            criancas: idadesCriancasCalculadas.length,
             criancas_gratis: valoresCalculados.qtdCriancasGratis,
             idades_criancas: idadesCriancasCalculadas,
             valor_sinal: cadastro.valor_sinal > 0 ? cadastro.valor_sinal : (cadastro.forma_pagamento === 'CHECKOUT' ? 0 : valoresCalculados.valorSinal),
@@ -614,7 +608,7 @@ Qualquer dúvida, estamos à disposição!`;
           <button
             onClick={carregarDados}
             disabled={carregando}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#c1c9bf] bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
             title="Recarregar lista"
           >
             <RefreshCw className={`w-4 h-4 text-slate-500 ${carregando ? 'animate-spin' : ''}`} />
@@ -623,7 +617,7 @@ Qualquer dúvida, estamos à disposição!`;
 
           <button
             onClick={() => setModalGerarAberto(true)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-xs"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-xs cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Gerar Novo Link FNRH
@@ -687,7 +681,7 @@ Qualquer dúvida, estamos à disposição!`;
           <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0">
             <button
               onClick={() => setFiltroStatus('TODOS')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                 filtroStatus === 'TODOS'
                   ? 'bg-[#053d1e] text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -697,7 +691,7 @@ Qualquer dúvida, estamos à disposição!`;
             </button>
             <button
               onClick={() => setFiltroStatus('AGUARDANDO_PREENCHIMENTO')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                 filtroStatus === 'AGUARDANDO_PREENCHIMENTO'
                   ? 'bg-orange-600 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -707,7 +701,7 @@ Qualquer dúvida, estamos à disposição!`;
             </button>
             <button
               onClick={() => setFiltroStatus('PREENCHIDO_AGUARDANDO_SINAL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                 filtroStatus === 'PREENCHIDO_AGUARDANDO_SINAL'
                   ? 'bg-amber-600 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -717,7 +711,7 @@ Qualquer dúvida, estamos à disposição!`;
             </button>
             <button
               onClick={() => setFiltroStatus('LIBERADA_PARA_RESERVA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                 filtroStatus === 'LIBERADA_PARA_RESERVA'
                   ? 'bg-blue-600 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -727,7 +721,7 @@ Qualquer dúvida, estamos à disposição!`;
             </button>
             <button
               onClick={() => setFiltroStatus('RESERVA_CRIADA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
                 filtroStatus === 'RESERVA_CRIADA'
                   ? 'bg-emerald-600 text-white'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -755,7 +749,7 @@ Qualquer dúvida, estamos à disposição!`;
             {!busca && filtroStatus === 'TODOS' && (
               <button
                 onClick={() => setModalGerarAberto(true)}
-                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#053d1e] text-xs font-bold text-white hover:bg-[#043017]"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#053d1e] text-xs font-bold text-white hover:bg-[#043017] cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Gerar Primeiro Link FNRH
@@ -808,7 +802,7 @@ Qualquer dúvida, estamos à disposição!`;
                             type="button"
                             onClick={() => handleCopiarLink(item)}
                             title="Copiar Link Seguro"
-                            className={`p-1.5 rounded-lg border transition-colors ${
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                               copiadoId === item.cadastroid
                                 ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -854,7 +848,7 @@ Qualquer dúvida, estamos à disposição!`;
                               type="button"
                               onClick={() => handleEnviarWhatsApp(item)}
                               title="Abrir no WhatsApp com mensagem pronta"
-                              className="p-1 rounded-md bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-colors"
+                              className="p-1 rounded-md bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-colors cursor-pointer"
                             >
                               <Send className="w-3 h-3" />
                             </button>
@@ -867,7 +861,7 @@ Qualquer dúvida, estamos à disposição!`;
                         )}
                       </td>
 
-                      {/* Estadia Prevista: Badge padronizado de adultos (>=12 anos) e crianças que pagam meia (6-11 anos) */}
+                      {/* Estadia Prevista */}
                       <td className="py-3 px-4">
                         {(item.dataentrada || item.datasaida) ? (
                           <div>
