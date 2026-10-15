@@ -16,7 +16,7 @@ import {
 import { useHotel } from '../contextos/ContextoHotel';
 import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
 import { ModalAcoesReserva } from '../componentes/mapa-reservas/ModalAcoesReserva';
-import { ModalTrocaQuarto } from '../componentes/reservas/ModalTrocaQuarto';
+import { ModalTrocaQuartoEAdicional } from '../componentes/mapa-reservas/ModalTrocaQuartoEAdicional';
 import { Quarto, Hospede, Reserva } from '../tipos';
 import { formatarData } from '../utilitarios/formatadores';
 
@@ -651,7 +651,7 @@ export const PaginaMapaReservas: React.FC = () => {
         }}
       />
 
-      <ModalTrocaQuarto
+      <ModalTrocaQuartoEAdicional
         aberto={modalTrocaQuartoAberto}
         reserva={reservaTrocaQuarto}
         onFechar={() => {

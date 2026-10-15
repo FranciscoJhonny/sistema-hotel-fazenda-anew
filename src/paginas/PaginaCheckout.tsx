@@ -20,9 +20,17 @@ import {
 import React, { useState, useEffect, useMemo } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { FormaPagamento, Reserva } from '../tipos';
-import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
+import {
+  aplicarMascaraMoeda,
+  desformatarMoeda,
+  formatarData,
+  formatarMoeda
+} from '../utilitarios/formatadores';
 import { obterClienteSupabase } from '../lib/supabaseCliente';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
+import { SelectBuscaProduto } from '../componentes/comuns/SelectBuscaProduto';
+
+const TAXA_CARTAO_PARCELADO = 65.00; // Taxa de máquina para 2x ou 3x
 
 export type LinhaPagamento = {
   id: string;
@@ -53,6 +61,7 @@ export const PaginaCheckout: React.FC = () => {
   // Estados principais
   const [busca, setBusca] = useState<string>('');
   const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
+  const [observacoesCheckout, setObservacoesCheckout] = useState<string>('');
   const [feedbackErro, setFeedbackErro] = useState<string | null>(null);
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
 
@@ -78,8 +87,10 @@ export const PaginaCheckout: React.FC = () => {
     reserva: Reserva;
     consumoExtra: number;
     totalPago: number;
+    taxasAdicionais: number;
     pagamentoParcial?: boolean;
     saldoRestante?: number;
+    observacoesCheckout?: string;
   } | null>(null);
 
   // Hóspedes com estadia ativa
@@ -108,13 +119,32 @@ export const PaginaCheckout: React.FC = () => {
   const totalConsumosDaConta = totalConsumosJaSalvos + totalConsumosPendentes;
   const saldoHospedagem = reservaSelecionada ? Number(reservaSelecionada.saldo || 0) : 0;
 
-  const totalAcobrar = reservaSelecionada
-    ? Number((saldoHospedagem + totalConsumosDaConta).toFixed(2))
-    : 0;
+  // Total das taxas de cartão parcelado (R$ 65,00 para cada linha em 2x ou 3x)
+  const totalTaxasParcelamento = useMemo(() => {
+    return linhasPagamento.reduce((acc, l) => {
+      if (l.formaPagamento === 'CARTAO_CREDITO' && (l.parcelas === 2 || l.parcelas === 3)) {
+        return acc + TAXA_CARTAO_PARCELADO;
+      }
+      return acc;
+    }, 0);
+  }, [linhasPagamento]);
+
+  // Total a cobrar considerando Hospedagem + Consumos + Taxas de Parcelamento
+  const totalAcobrar = useMemo(() => {
+    if (!reservaSelecionada) return 0;
+    return Number((saldoHospedagem + totalConsumosDaConta + totalTaxasParcelamento).toFixed(2));
+  }, [reservaSelecionada, saldoHospedagem, totalConsumosDaConta, totalTaxasParcelamento]);
 
   // Soma dos valores informados nas linhas de pagamento
   const totalInformado = useMemo(() => {
-    return Number(linhasPagamento.reduce((acc, l) => acc + (Number(l.valor) || 0), 0).toFixed(2));
+    return Number(linhasPagamento.reduce((acc, l) => {
+      let valorLinha = Number(l.valor) || 0;
+      // Se parcelado em 2x ou 3x, inclui os 65 da máquina
+      if (l.formaPagamento === 'CARTAO_CREDITO' && (l.parcelas === 2 || l.parcelas === 3)) {
+        valorLinha += TAXA_CARTAO_PARCELADO;
+      }
+      return acc + valorLinha;
+    }, 0).toFixed(2));
   }, [linhasPagamento]);
 
   // Saldo restante devido
@@ -122,7 +152,7 @@ export const PaginaCheckout: React.FC = () => {
     return Number((totalAcobrar - totalInformado).toFixed(2));
   }, [totalAcobrar, totalInformado]);
 
-  // Ao selecionar uma reserva, inicializa com o cenário 1 (Juntar tudo para facilitar)
+  // Ao selecionar uma reserva, inicializa com o cenário 1
   useEffect(() => {
     if (reservaSelecionada) {
       cenarioJuntarTudo(reservaSelecionada, totalConsumosDaConta);
@@ -133,7 +163,6 @@ export const PaginaCheckout: React.FC = () => {
 
   // ================= CENÁRIOS RÁPIDOS ================= //
 
-  // CENÁRIO 1: Juntar saldo da hospedagem e consumos em uma única cobrança
   const cenarioJuntarTudo = (reserva: Reserva, consumos: number) => {
     const total = Number((Number(reserva.saldo || 0) + consumos).toFixed(2));
     setLinhasPagamento([
@@ -148,7 +177,6 @@ export const PaginaCheckout: React.FC = () => {
     ]);
   };
 
-  // CENÁRIO 2: Separar Hospedagem de um lado e Consumos do outro
   const cenarioSepararConta = () => {
     if (!reservaSelecionada) return;
     const novasLinhas: LinhaPagamento[] = [];
@@ -189,7 +217,6 @@ export const PaginaCheckout: React.FC = () => {
     setLinhasPagamento(novasLinhas);
   };
 
-  // CENÁRIO 3: Divisão entre hóspedes por valor específico ou total
   const handleAplicarDivisao = () => {
     if (!reservaSelecionada || qtdPessoasDivisao < 1) return;
 
@@ -198,7 +225,7 @@ export const PaginaCheckout: React.FC = () => {
     let tipoLanc: 'SALDO_RESERVA' | 'CONSUMO_EXTRA' = 'SALDO_RESERVA';
 
     if (tipoAlvoDivisao === 'TUDO') {
-      valorTotal = totalAcobrar;
+      valorTotal = saldoHospedagem + totalConsumosDaConta;
       descPrefixo = 'Hóspede';
       tipoLanc = 'SALDO_RESERVA';
     } else if (tipoAlvoDivisao === 'HOSPEDAGEM') {
@@ -233,7 +260,6 @@ export const PaginaCheckout: React.FC = () => {
       });
     }
 
-    // Se dividiu apenas uma parte, mantém a outra parte intacta para não sumir do total
     if (tipoAlvoDivisao === 'HOSPEDAGEM' && totalConsumosDaConta > 0) {
       linhasGeradas.push({
         id: `pag-cons-restante-${Date.now()}`,
@@ -303,7 +329,6 @@ export const PaginaCheckout: React.FC = () => {
     if (!reservaSelecionada) return;
     setFeedbackErro(null);
 
-    // Se o valor a cobrar da conta está zerado (100% quitado na reserva e sem consumos extras)
     if (eLiquidacaoTotal && totalAcobrar <= 0.01 && !bypassContaZerada) {
       setModalContaZeradaAberta(true);
       return;
@@ -339,7 +364,6 @@ export const PaginaCheckout: React.FC = () => {
     setProcessandoCheckout(true);
 
     try {
-      // 1. Salva consumos novos no banco se houver
       if (consumosPendentes.length > 0) {
         setSalvandoConsumo(true);
         const resConsumos = await salvarConsumosPendentes(reservaSelecionada);
@@ -354,27 +378,38 @@ export const PaginaCheckout: React.FC = () => {
       const cliente = obterClienteSupabase();
       const agora = new Date().toISOString();
 
-      if (eLiquidacaoTotal) {
-        // LIQUIDAÇÃO TOTAL: Libera quarto e marca CONCLUIDA
-        const pagamentosParaSalvar = linhasPagamento
-          .filter((l) => Number(l.valor) > 0)
-          .map((l) => ({
-            valor: Number(l.valor),
+      // Monta os pagamentos com a taxa de R$ 65 já incorporada caso parcelado
+      const pagamentosParaSalvar = linhasPagamento
+        .filter((l) => Number(l.valor) > 0)
+        .map((l) => {
+          const taxa = (l.formaPagamento === 'CARTAO_CREDITO' && (l.parcelas === 2 || l.parcelas === 3))
+            ? TAXA_CARTAO_PARCELADO
+            : 0;
+          return {
+            valor: Number(l.valor) + taxa,
             formapagamento: l.formaPagamento,
             tipolancamento: l.tipoLancamento,
-          }));
+          };
+        });
 
-        const res = await realizarCheckout(reservaSelecionada.reservaid, pagamentosParaSalvar);
+      if (eLiquidacaoTotal) {
+        const res = await realizarCheckout(reservaSelecionada.reservaid, pagamentosParaSalvar, observacoesCheckout);
 
         if (res.sucesso) {
           setFeedbackSucesso(res.mensagem);
           setComprovanteCheckout({
-            reserva: reservaSelecionada,
+            reserva: {
+              ...reservaSelecionada,
+              observacoes_checkout: observacoesCheckout,
+            },
             consumoExtra: totalConsumosDaConta,
+            taxasAdicionais: totalTaxasParcelamento,
             totalPago: totalAcobrar,
             pagamentoParcial: false,
+            observacoesCheckout: observacoesCheckout,
           });
           setReservaSelecionada(null);
+          setObservacoesCheckout('');
           setLinhasPagamento([]);
           setConsumosPendentes([]);
           setModalContaZeradaAberta(false);
@@ -383,27 +418,31 @@ export const PaginaCheckout: React.FC = () => {
           setFeedbackErro(res.mensagem);
         }
       } else {
-        // PAGAMENTO PARCIAL: Abate saldo mas mantém o quarto ocupado
         if (!cliente) {
           setFeedbackErro('Supabase não conectado.');
           setProcessandoCheckout(false);
           return;
         }
 
-        const registrosPagamento = linhasPagamento.map((l) => ({
-          reservaid: reservaSelecionada.reservaid,
-          valor: Number(l.valor),
-          formapagamento: l.formaPagamento,
-          tipolancamento: l.tipoLancamento,
-          status: 'PAGO',
-          datapagamento: agora,
-          ativo: true,
-          usuarioinclusao: usuarioAtual?.usuarioid,
-          datainclusao: agora,
-          usuariooperacao: usuarioAtual?.usuarioid,
-          dataoperacao: agora,
-          naturezaoperacao: 'INSERT',
-        }));
+        const registrosPagamento = linhasPagamento.map((l) => {
+          const taxa = (l.formaPagamento === 'CARTAO_CREDITO' && (l.parcelas === 2 || l.parcelas === 3))
+            ? TAXA_CARTAO_PARCELADO
+            : 0;
+          return {
+            reservaid: reservaSelecionada.reservaid,
+            valor: Number(l.valor) + taxa,
+            formapagamento: l.formaPagamento,
+            tipolancamento: l.tipoLancamento,
+            status: 'PAGO',
+            datapagamento: agora,
+            ativo: true,
+            usuarioinclusao: usuarioAtual?.usuarioid,
+            datainclusao: agora,
+            usuariooperacao: usuarioAtual?.usuarioid,
+            dataoperacao: agora,
+            naturezaoperacao: 'INSERT',
+          };
+        });
 
         const { error: erroInsert } = await cliente.from('pagamento').insert(registrosPagamento);
         if (erroInsert) {
@@ -415,16 +454,30 @@ export const PaginaCheckout: React.FC = () => {
         const novoValorPago = Number((Number(reservaSelecionada.valorpago || 0) + totalInformado).toFixed(2));
         const novoSaldo = Number(Math.max(0, Number(reservaSelecionada.saldo || 0) - totalInformado).toFixed(2));
 
-        const { error: erroUpdate } = await cliente
+        const updatePayload: any = {
+          valorpago: novoValorPago,
+          saldo: novoSaldo,
+          statuspagamento: 'PARCIAL',
+          dataoperacao: agora,
+          naturezaoperacao: 'UPDATE',
+        };
+        if (observacoesCheckout) {
+          updatePayload.observacoes_checkout = observacoesCheckout;
+        }
+
+        let { error: erroUpdate } = await cliente
           .from('reserva')
-          .update({
-            valorpago: novoValorPago,
-            saldo: novoSaldo,
-            statuspagamento: 'PARCIAL',
-            dataoperacao: agora,
-            naturezaoperacao: 'UPDATE',
-          })
+          .update(updatePayload)
           .eq('reservaid', reservaSelecionada.reservaid);
+
+        if (erroUpdate && (erroUpdate.message?.toLowerCase().includes('observacoes_checkout') || erroUpdate.code === 'PGRST204')) {
+          delete updatePayload.observacoes_checkout;
+          const retry = await cliente
+            .from('reserva')
+            .update(updatePayload)
+            .eq('reservaid', reservaSelecionada.reservaid);
+          erroUpdate = retry.error;
+        }
 
         if (erroUpdate) {
           setFeedbackErro(`Erro ao atualizar saldo: ${erroUpdate.message}`);
@@ -437,6 +490,7 @@ export const PaginaCheckout: React.FC = () => {
             valorpago: novoValorPago,
             saldo: novoSaldo,
             statuspagamento: 'PARCIAL' as const,
+            observacoes_checkout: observacoesCheckout,
           };
           setReservaSelecionada(reservaAtualizada);
           cenarioJuntarTudo(reservaAtualizada, totalConsumosDaConta);
@@ -604,6 +658,7 @@ export const PaginaCheckout: React.FC = () => {
                     key={res.reservaid}
                     onClick={() => {
                       setReservaSelecionada(res);
+                      setObservacoesCheckout(res.observacoes_checkout || '');
                       setConsumosPendentes([]);
                       setFeedbackErro(null);
                     }}
@@ -674,7 +729,9 @@ export const PaginaCheckout: React.FC = () => {
 
               <div className="p-3 rounded-xl bg-[#f8f9fa] border border-[#e1e3e4] space-y-1 text-xs">
                 <p className="font-bold text-sm text-[#191c1d]">{reservaSelecionada.hospedenome}</p>
-                <p className="text-[#053d1e] font-semibold">Acomodação {reservaSelecionada.quartonumero} • {reservaSelecionada.quartocategoria}</p>
+                <p className="text-[#053d1e] font-semibold">
+                  Acomodação {reservaSelecionada.quartonumero} {reservaSelecionada.quartocategoria}
+                </p>
               </div>
 
               {/* Botão para lançar consumos extras */}
@@ -723,13 +780,21 @@ export const PaginaCheckout: React.FC = () => {
               {/* Demonstrativo Resumido */}
               <div className="border border-[#c1c9bf] rounded-xl p-3.5 space-y-2 text-xs bg-[#f8f9fa]">
                 <div className="flex justify-between text-[#414941]">
-                  <span>Saldo da Hospedagem (50% ou restante):</span>
+                  <span>Saldo da Hospedagem:</span>
                   <span className="font-semibold">{formatarMoeda(saldoHospedagem)}</span>
                 </div>
                 {totalConsumosDaConta > 0 && (
                   <div className="flex justify-between text-[#414941]">
                     <span>Consumos Extras (Bar e Lojinha):</span>
                     <span className="font-semibold">{formatarMoeda(totalConsumosDaConta)}</span>
+                  </div>
+                )}
+                {totalTaxasParcelamento > 0 && (
+                  <div className="flex justify-between text-amber-800 font-bold bg-amber-50 p-1.5 rounded-lg border border-amber-200">
+                    <span className="flex items-center gap-1">
+                      <CreditCard className="w-3.5 h-3.5" /> Taxa de Máquina (Parcelamento 2x/3x):
+                    </span>
+                    <span>+{formatarMoeda(totalTaxasParcelamento)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-base font-extrabold pt-2 border-t border-[#c1c9bf]">
@@ -745,29 +810,26 @@ export const PaginaCheckout: React.FC = () => {
                 </span>
 
                 <div className="grid grid-cols-3 gap-1.5">
-                  {/* Cenário 1 */}
                   <button
                     type="button"
                     onClick={() => cenarioJuntarTudo(reservaSelecionada, totalConsumosDaConta)}
                     className="p-2 rounded-xl border border-[#c1c9bf] bg-white text-[11px] font-bold text-[#191c1d] hover:bg-[#e6f4ea] hover:border-[#053d1e] transition-colors cursor-pointer flex flex-col items-center justify-center gap-1 text-center"
-                    title="Junta hospedagem e bar/lojinha para pagar tudo de uma vez ou em até 3x no cartão"
+                    title="Junta hospedagem e bar/lojinha para pagar tudo de uma vez"
                   >
                     <DollarSign className="w-4 h-4 text-[#053d1e]" />
                     <span>Juntar Tudo</span>
                   </button>
 
-                  {/* Cenário 2 */}
                   <button
                     type="button"
                     onClick={cenarioSepararConta}
                     className="p-2 rounded-xl border border-[#c1c9bf] bg-white text-[11px] font-bold text-[#191c1d] hover:bg-[#e6f4ea] hover:border-[#053d1e] transition-colors cursor-pointer flex flex-col items-center justify-center gap-1 text-center"
-                    title="Separa o saldo da hospedagem do valor do bar/lojinha para pagar de formas diferentes"
+                    title="Separa o saldo da hospedagem do valor do bar/lojinha"
                   >
                     <Layers className="w-4 h-4 text-[#053d1e]" />
                     <span>Pagar Separado</span>
                   </button>
 
-                  {/* Cenário 3 */}
                   <button
                     type="button"
                     onClick={() => setModalDividirAberta(true)}
@@ -780,7 +842,7 @@ export const PaginaCheckout: React.FC = () => {
                 </div>
               </div>
 
-              {/* LISTA DINÂMICA DE PAGAMENTOS COM PARCELAMENTO EM ATÉ 3X */}
+              {/* LISTA DINÂMICA DE PAGAMENTOS COM REGRA DE R$ 65 EM 2X E 3X */}
               <div className="space-y-3 border-t border-[#e1e3e4] pt-3">
                 {totalAcobrar <= 0.01 && (
                   <div className="p-3 bg-[#e6f4ea] border border-[#b8f0c2] rounded-xl flex items-center gap-2.5 text-xs text-[#053d1e]">
@@ -793,9 +855,13 @@ export const PaginaCheckout: React.FC = () => {
                 )}
 
                 {linhasPagamento.map((linha, index) => {
-                  const valorLinha = Number(linha.valor) || 0;
+                  const valorBaseLinha = Number(linha.valor) || 0;
                   const eCredito = linha.formaPagamento === 'CARTAO_CREDITO';
-                  const valorParcela = eCredito && linha.parcelas > 1 ? valorLinha / linha.parcelas : valorLinha;
+                  const temTaxa = eCredito && (linha.parcelas === 2 || linha.parcelas === 3);
+                  
+                  // Se parcelado em 2x ou 3x, adiciona R$ 65,00 ao total a passar na máquina
+                  const valorComTaxa = valorBaseLinha + (temTaxa ? TAXA_CARTAO_PARCELADO : 0);
+                  const valorParcela = linha.parcelas > 1 ? valorComTaxa / linha.parcelas : valorComTaxa;
 
                   return (
                     <div key={linha.id} className="p-3.5 border border-[#c1c9bf] rounded-xl bg-white space-y-2.5 shadow-xs relative">
@@ -821,17 +887,25 @@ export const PaginaCheckout: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {/* Campo de Valor */}
+                        {/* Campo de Valor Base com Máscara Monetária */}
                         <div>
                           <label className="block text-[10px] font-bold text-[#717971] mb-1">
-                            Valor a Pagar (R$)
+                            Valor Base a Quitar (R$)
                           </label>
                           <input
-                            type="number"
-                            step="0.01"
-                            min={totalAcobrar <= 0.01 ? "0" : "0.01"}
-                            value={linha.valor !== undefined && linha.valor !== null ? linha.valor : ''}
-                            onChange={(e) => handleAtualizarLinha(linha.id, 'valor', parseFloat(e.target.value) || 0)}
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="R$ 0,00"
+                            value={
+                              Number(linha.valor) > 0
+                                ? aplicarMascaraMoeda(String(Math.round(Number(linha.valor) * 100)))
+                                : (linha.valor === 0 && totalAcobrar <= 0.01 ? 'R$ 0,00' : '')
+                            }
+                            onChange={(e) => {
+                              const valorComMascara = aplicarMascaraMoeda(e.target.value);
+                              const valorNumerico = desformatarMoeda(valorComMascara);
+                              handleAtualizarLinha(linha.id, 'valor', valorNumerico);
+                            }}
                             className="w-full px-3 py-1.5 border border-[#c1c9bf] rounded-lg text-xs font-bold text-[#053d1e] bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e]"
                           />
                         </div>
@@ -855,21 +929,41 @@ export const PaginaCheckout: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Seletor de Parcelas em até 3x no Cartão de Crédito */}
+                      {/* Seletor de Parcelas com Regra de +R$ 65,00 em 2x e 3x */}
                       {eCredito && (
-                        <div className="flex items-center justify-between pt-1 text-xs bg-emerald-50/50 p-2 rounded-lg border border-emerald-200">
-                          <span className="font-semibold text-emerald-900 flex items-center gap-1 text-[11px]">
-                            <CreditCard className="w-3.5 h-3.5 text-emerald-700" /> Parcelas do Cartão:
-                          </span>
-                          <select
-                            value={linha.parcelas || 1}
-                            onChange={(e) => handleAtualizarLinha(linha.id, 'parcelas', Number(e.target.value))}
-                            className="px-2 py-1 border border-emerald-300 rounded text-xs font-bold text-[#053d1e] bg-white"
-                          >
-                            <option value={1}>1x de {formatarMoeda(valorLinha)} (à vista)</option>
-                            <option value={2}>2x de {formatarMoeda(valorParcela)}</option>
-                            <option value={3}>3x de {formatarMoeda(valorParcela)}</option>
-                          </select>
+                        <div className="pt-1 text-xs bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-200 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-emerald-900 flex items-center gap-1 text-[11px]">
+                              <CreditCard className="w-3.5 h-3.5 text-emerald-700" /> Parcelas do Cartão:
+                            </span>
+                            <select
+                              value={linha.parcelas || 1}
+                              onChange={(e) => handleAtualizarLinha(linha.id, 'parcelas', Number(e.target.value))}
+                              className="px-2 py-1 border border-emerald-300 rounded text-xs font-bold text-[#053d1e] bg-white cursor-pointer"
+                            >
+                              <option value={1}>1x (à vista - sem taxa)</option>
+                              <option value={2}>2x (+ R$ 65,00 taxa de máquina)</option>
+                              <option value={3}>3x (+ R$ 65,00 taxa de máquina)</option>
+                            </select>
+                          </div>
+
+                          {/* Demonstrativo da Parcela e Valor Cobrado na Maquininha */}
+                          <div className="flex justify-between items-center text-[11px] pt-1 border-t border-emerald-200/60 font-semibold text-emerald-950">
+                            <span>
+                              {temTaxa ? (
+                                <span className="text-amber-900 font-bold">
+                                  Passar na Máquina ({linha.parcelas}x):
+                                </span>
+                              ) : (
+                                <span>Passar na Máquina (1x):</span>
+                              )}
+                            </span>
+                            <span className="font-extrabold text-[#053d1e]">
+                              {linha.parcelas > 1
+                                ? `${linha.parcelas}x de ${formatarMoeda(valorParcela)} (${formatarMoeda(valorComTaxa)})`
+                                : formatarMoeda(valorComTaxa)}
+                            </span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -889,7 +983,7 @@ export const PaginaCheckout: React.FC = () => {
               {/* DEMONSTRATIVO EM TEMPO REAL: TOTAL VS PAGO VS RESTANTE */}
               <div className="p-3.5 rounded-xl border bg-[#f8f9fa] space-y-2 text-xs">
                 <div className="flex justify-between items-center text-[#414941]">
-                  <span>Total da Conta:</span>
+                  <span>Total da Conta (com taxas):</span>
                   <span className="font-bold text-[#191c1d]">{formatarMoeda(totalAcobrar)}</span>
                 </div>
                 <div className="flex justify-between items-center text-[#414941]">
@@ -915,6 +1009,24 @@ export const PaginaCheckout: React.FC = () => {
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* Observações do Check-out */}
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="observacoes-checkout"
+                  className="block text-xs font-bold text-[#191c1d]"
+                >
+                  Observações do Check-out (Acertos / Divisões Financeiras)
+                </label>
+                <textarea
+                  id="observacoes-checkout"
+                  rows={3}
+                  value={observacoesCheckout}
+                  onChange={(e) => setObservacoesCheckout(e.target.value)}
+                  placeholder="Ex: Ediane quitou R$ 1.300 + R$ 65 taxa no crédito 3x; Maisa pagou R$ 1.375 + R$ 65 taxa..."
+                  className="w-full p-2.5 text-xs bg-[#f8f9fa] border border-[#c1c9bf] rounded-xl focus:border-[#053d1e] focus:outline-none resize-none transition-colors"
+                />
               </div>
 
               {/* AÇÃO FINAL: QUITAR OU PARCIAL */}
@@ -1029,11 +1141,11 @@ export const PaginaCheckout: React.FC = () => {
 
             <div className="p-3 bg-[#f8f9fa] rounded-xl border border-[#e1e3e4] text-xs space-y-1">
               <div className="flex justify-between">
-                <span>Valor por pessoa:</span>
+                <span>Valor por pessoa (sem taxas):</span>
                 <strong className="text-[#053d1e]">
                   {formatarMoeda(
                     (tipoAlvoDivisao === 'TUDO'
-                      ? totalAcobrar
+                      ? (saldoHospedagem + totalConsumosDaConta)
                       : tipoAlvoDivisao === 'HOSPEDAGEM'
                       ? saldoHospedagem
                       : totalConsumosDaConta) / qtdPessoasDivisao
@@ -1062,7 +1174,7 @@ export const PaginaCheckout: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Consumo Extra */}
+      {/* Modal de Consumo Extra com SelectBuscaProduto */}
       {modalConsumoAberta && reservaSelecionada && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in" role="dialog" aria-modal="true">
           <form onSubmit={(event) => { event.preventDefault(); adicionarConsumoPendente(); }} className="bg-white rounded-2xl border border-[#c1c9bf] shadow-2xl max-w-md w-full p-5 space-y-4">
@@ -1080,21 +1192,13 @@ export const PaginaCheckout: React.FC = () => {
             </div>
 
             <div className="space-y-1.5 text-xs">
-              <label htmlFor="produto-consumo" className="block font-semibold text-[#414941]">Produto</label>
-              <select
-                id="produto-consumo"
-                required
-                value={produtoSelecionadoId}
-                onChange={(event) => setProdutoSelecionadoId(event.target.value)}
-                className="w-full p-2.5 border border-[#c1c9bf] rounded-xl bg-[#f8f9fa] font-semibold text-xs focus:outline-none focus:border-[#053d1e]"
-              >
-                <option value="">Selecione um produto</option>
-                {produtos.filter((produto) => produto.ativo && produto.estoque > 0).map((produto) => (
-                  <option key={produto.produtoid} value={String(produto.produtoid)}>
-                    {produto.nome} • {formatarMoeda(produto.preco)} • Estoque: {produto.estoque}
-                  </option>
-                ))}
-              </select>
+              <label className="block font-semibold text-[#414941]">Produto</label>
+              <SelectBuscaProduto
+                produtos={produtos}
+                valorSelecionadoId={produtoSelecionadoId}
+                onSelecionar={(id) => setProdutoSelecionadoId(id)}
+                placeholder="Selecione ou busque o produto..."
+              />
             </div>
 
             <div className="space-y-1.5 text-xs">
@@ -1174,7 +1278,7 @@ export const PaginaCheckout: React.FC = () => {
         </div>
       )}
 
-      {/* Modal de Alerta / Confirmação de Check-out com Conta Zerada */}
+      {/* Modal de Confirmação de Check-out com Conta Zerada */}
       <ModalConfirmacao
         aberto={modalContaZeradaAberta}
         titulo="Check-out com Valor Zerado"
@@ -1209,10 +1313,26 @@ export const PaginaCheckout: React.FC = () => {
                 <span className="text-[#717971]">Acomodação:</span>
                 <span className="font-bold text-[#053d1e]">Quarto {comprovanteCheckout.reserva.quartonumero}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[#717971]">Total Pago:</span>
+              {comprovanteCheckout.taxasAdicionais > 0 && (
+                <div className="flex justify-between text-amber-800">
+                  <span>Taxas de Cartão Parcelado:</span>
+                  <span className="font-bold">+{formatarMoeda(comprovanteCheckout.taxasAdicionais)}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1 border-t border-[#e1e3e4]">
+                <span className="text-[#717971]">Total Efetivamente Pago:</span>
                 <span className="font-bold text-[#137333]">{formatarMoeda(comprovanteCheckout.totalPago)}</span>
               </div>
+              {(comprovanteCheckout.observacoesCheckout || comprovanteCheckout.reserva.observacoes_checkout) && (
+                <div className="pt-2 border-t border-[#e1e3e4] text-left">
+                  <span className="text-[#717971] block font-semibold mb-1 text-[11px]">
+                    Observações do Check-out:
+                  </span>
+                  <p className="text-[#191c1d] bg-white p-2.5 rounded-lg border border-[#c1c9bf] whitespace-pre-wrap leading-relaxed text-xs">
+                    {comprovanteCheckout.observacoesCheckout || comprovanteCheckout.reserva.observacoes_checkout}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-2">

@@ -201,6 +201,20 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                 </span>
               </div>
             </div>
+
+            {reserva.observacoes && (
+              <div className="p-2.5 bg-slate-100/70 rounded-lg text-[11px] text-slate-700 border border-slate-200">
+                <span className="font-bold text-slate-900">Observações: </span>
+                {reserva.observacoes}
+              </div>
+            )}
+
+            {reserva.observacoes_checkout && (
+              <div className="p-2.5 bg-emerald-50 rounded-lg text-[11px] text-emerald-900 border border-emerald-200">
+                <span className="font-bold text-emerald-950">Observações do Check-out: </span>
+                {reserva.observacoes_checkout}
+              </div>
+            )}
           </div>
 
           {/* Modo de Confirmação de Suspensão com Crédito */}

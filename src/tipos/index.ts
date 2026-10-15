@@ -277,6 +277,7 @@ export interface Reserva extends EntidadeAuditavel {
   statuspagamento: StatusPagamento;
   formapagamento?: FormaPagamento;
   observacoes?: string;
+  observacoes_checkout?: string;
 
   // Campos ViewModel / Joins
   quartonumero?: string;

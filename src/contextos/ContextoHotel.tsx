@@ -54,7 +54,7 @@ interface ContextoHotelType {
   suspenderReservaComCredito: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   trocarQuartoReserva: (reservaId: number | string, novoQuartoId: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckin: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
-  realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>) => Promise<{ sucesso: boolean; mensagem: string }>;
+  realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>, observacoesCheckout?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   criarConsumoExtra: (consumo: {
     reservaid: number;
     produtoid?: number;
@@ -714,7 +714,11 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     return { sucesso: true, mensagem: `Check-in de ${reserva.hospedenome} realizado!` };
   };
 
-  const realizarCheckout = async (reservaId: number | string, pagamentosInput: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>> = []): Promise<{ sucesso: boolean; mensagem: string }> => {
+  const realizarCheckout = async (
+    reservaId: number | string,
+    pagamentosInput: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>> = [],
+    observacoesCheckout?: string
+  ): Promise<{ sucesso: boolean; mensagem: string }> => {
     const client = supabaseService.getClient();
     const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
@@ -754,7 +758,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const totalPagoAteAgora = Number(reserva.valorpago || 0) + pagamentosConfirmados.reduce((acc, p) => acc + Number(p.valor), 0);
     const novoSaldo = Math.max(0, Number(reserva.valortotal || 0) - totalPagoAteAgora);
-    const dadosReserva = {
+    const dadosReserva: any = {
       statusreserva: 'CONCLUIDA' as StatusReserva,
       valorpago: totalPagoAteAgora,
       saldo: novoSaldo,
@@ -765,7 +769,18 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       naturezaoperacao: 'UPDATE',
     };
 
-    if (client) await client.from('reserva').update(dadosReserva).eq('reservaid', reservaId);
+    if (observacoesCheckout !== undefined) {
+      dadosReserva.observacoes_checkout = observacoesCheckout;
+    }
+
+    if (client) {
+      let { error: erroUpdate } = await client.from('reserva').update(dadosReserva).eq('reservaid', reservaId);
+      if (erroUpdate && (erroUpdate.message?.toLowerCase().includes('observacoes_checkout') || erroUpdate.code === 'PGRST204')) {
+        const payloadSemObs = { ...dadosReserva };
+        delete payloadSemObs.observacoes_checkout;
+        await client.from('reserva').update(payloadSemObs).eq('reservaid', reservaId);
+      }
+    }
     setReservas(prev => prev.map(r => String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r) as Reserva[]);
     await atualizarStatusQuarto(reserva.quartoid, 'A_LIMPAR');
     return { sucesso: true, mensagem: `Check-out de ${reserva.hospedenome} realizado!` };
