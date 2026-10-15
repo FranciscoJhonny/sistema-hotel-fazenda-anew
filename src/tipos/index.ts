@@ -261,6 +261,7 @@ export interface Reserva extends EntidadeAuditavel {
   codigo: string;
   hospedeid: number;
   quartoid: number;
+  cadastroid?: number;
   datareserva?: string;
   dataentrada: string;
   datasaida: string;
