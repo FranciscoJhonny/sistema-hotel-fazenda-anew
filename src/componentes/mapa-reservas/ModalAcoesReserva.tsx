@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   RefreshCw,
@@ -40,7 +40,8 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     cancelarReserva,
     realizarCheckin,
     navegarPara,
-    recarregarDados
+    recarregarDados,
+    quartos
   } = useHotel();
 
   const [carregando, setCarregando] = useState(false);
@@ -50,10 +51,26 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
   const [confirmandoSuspencao, setConfirmandoSuspencao] = useState(false);
   const [motivoSuspencao, setMotivoSuspencao] = useState('');
 
-  // Estados para Remarcação de Datas (UPDATE)
+  // Estados para Remarcação de Datas e Quarto (UPDATE)
   const [remarcandoDatas, setRemarcandoDatas] = useState(false);
   const [novaDataEntrada, setNovaDataEntrada] = useState('');
   const [novaDataSaida, setNovaDataSaida] = useState('');
+  const [novoQuartoId, setNovoQuartoId] = useState<number>(0);
+
+  const quartosFisicos = useMemo(() => {
+    return (quartos || [])
+      .filter((q) => {
+        const cod = String(q.codigoidentificador || '').toUpperCase();
+        const num = String(q.numero || '').toUpperCase();
+        const cat = String(q.categoria || '').toUpperCase();
+        return q.ativo !== false && cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
+      })
+      .sort((a, b) => {
+        const codA = a.codigoidentificador || a.numero || '';
+        const codB = b.codigoidentificador || b.numero || '';
+        return codA.localeCompare(codB);
+      });
+  }, [quartos]);
 
   useEffect(() => {
     if (aberto && reserva) {
@@ -67,6 +84,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       const dSaida = (reserva.datasaida || '').split('T')[0];
       setNovaDataEntrada(dEntrada);
       setNovaDataSaida(dSaida);
+      setNovoQuartoId(Number(reserva.quartoid || 0));
     }
   }, [aberto, reserva]);
 
@@ -75,7 +93,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
   const estaHospedado = reserva.statusreserva === 'HOSPEDADO';
   const podeCheckin = reserva.statusreserva === 'RESERVADO' || reserva.statusreserva === 'PRE_RESERVA';
 
-  // Executa a remarcação de datas diretamente no Supabase sem cancelar
+  // Executa a remarcação de datas e quarto diretamente no Supabase sem cancelar
   const handleConfirmarRemarcacao = async () => {
     setErro(null);
 
@@ -89,6 +107,12 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       return;
     }
 
+    const quartoDestinoId = novoQuartoId || reserva.quartoid;
+    if (!quartoDestinoId) {
+      setErro('Selecione uma acomodação para a reserva.');
+      return;
+    }
+
     try {
       setCarregando(true);
       const supabase = SupabaseService.getInstance().getClient();
@@ -97,11 +121,11 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         return;
       }
 
-      // 1. Verifica se o mesmo quarto já tem outra reserva ativa no novo período
+      // 1. Verifica se o quarto já tem outra reserva ativa no novo período
       const { data: conflitos, error: errConflito } = await supabase
         .from('reserva')
         .select('reservaid, codigo, dataentrada, datasaida')
-        .eq('quartoid', reserva.quartoid)
+        .eq('quartoid', quartoDestinoId)
         .neq('reservaid', reserva.reservaid)
         .in('statusreserva', ['RESERVADO', 'HOSPEDADO', 'PRE_RESERVA'])
         .lte('dataentrada', novaDataSaida)
@@ -112,17 +136,30 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       }
 
       if (conflitos && conflitos.length > 0) {
-        setErro(`O Quarto #${reserva.quartonumero} já possui outra reserva (${conflitos[0].codigo}) no período selecionado.`);
+        const qConflito = quartos.find(q => q.quartoid === quartoDestinoId);
+        setErro(`O Quarto #${qConflito?.codigoidentificador || qConflito?.numero || quartoDestinoId} já possui outra reserva (${conflitos[0].codigo}) no período selecionado.`);
         return;
       }
 
+      const quartoEscolhido = quartos.find(q => q.quartoid === quartoDestinoId);
+
       // 2. Executa o UPDATE direto mantendo todo o histórico financeiro intacto
+      // e retirando do status 'CREDITO' para 'RESERVADO'
+      const updatePayload: any = {
+        dataentrada: novaDataEntrada,
+        datasaida: novaDataSaida,
+        quartoid: quartoDestinoId,
+        quartonumero: quartoEscolhido?.codigoidentificador || quartoEscolhido?.numero || reserva.quartonumero,
+        quartocategoria: quartoEscolhido?.categoria || reserva.quartocategoria,
+      };
+
+      if (reserva.statusreserva === 'CREDITO') {
+        updatePayload.statusreserva = 'RESERVADO';
+      }
+
       const { error: errUpdate } = await supabase
         .from('reserva')
-        .update({
-          dataentrada: novaDataEntrada,
-          datasaida: novaDataSaida,
-        })
+        .update(updatePayload)
         .eq('reservaid', reserva.reservaid);
 
       if (errUpdate) {
@@ -134,7 +171,8 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       await recarregarDados();
 
       if (onSucesso) {
-        onSucesso(`Reserva ${reserva.codigo} remarcada com sucesso para ${formatarData(novaDataEntrada)} até ${formatarData(novaDataSaida)}!`);
+        const statusMsg = reserva.statusreserva === 'CREDITO' ? ' reativada com status RESERVADO e' : '';
+        onSucesso(`Reserva ${reserva.codigo}${statusMsg} remarcada com sucesso para ${formatarData(novaDataEntrada)} até ${formatarData(novaDataSaida)} no Quarto #${quartoEscolhido?.codigoidentificador || quartoEscolhido?.numero || reserva.quartonumero}!`);
       }
       onFechar();
     } catch (err: any) {
@@ -338,6 +376,23 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
                   />
                 </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Novo Quarto / Acomodação:
+                  </label>
+                  <select
+                    value={novoQuartoId}
+                    onChange={(e) => setNovoQuartoId(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
+                  >
+                    {quartosFisicos.map((q) => (
+                      <option key={q.quartoid} value={q.quartoid}>
+                        Quarto #{q.codigoidentificador || q.numero} — {q.categoria} (Bloco {q.bloco || 'B'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200/60">
@@ -444,14 +499,16 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                 </button>
 
                 {/* 3. Suspender / Gerar Crédito */}
-                <button
-                  type="button"
-                  onClick={() => setConfirmandoSuspencao(true)}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-bold transition-all cursor-pointer shadow-2xs"
-                >
-                  <PauseCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>⏸️ Suspender (Crédito)</span>
-                </button>
+                {reserva.statusreserva !== 'CREDITO' && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoSuspencao(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                  >
+                    <PauseCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                    <span>⏸️ Suspender (Crédito)</span>
+                  </button>
+                )}
 
                 {/* 4. Check-in (se aplicável) */}
                 {podeCheckin && (

@@ -12,13 +12,17 @@ import {
   Search,
   Sun,
   Wrench,
+  PauseCircle,
+  Phone,
+  User,
+  Bed,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
 import { ModalAcoesReserva } from '../componentes/mapa-reservas/ModalAcoesReserva';
 import { ModalTrocaQuartoEAdicional } from '../componentes/mapa-reservas/ModalTrocaQuartoEAdicional';
 import { Quarto, Hospede, Reserva } from '../tipos';
-import { formatarData } from '../utilitarios/formatadores';
+import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 
 const hoje = new Date();
 const periodoInicialPadrao = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
@@ -264,6 +268,40 @@ export const PaginaMapaReservas: React.FC = () => {
       };
     });
   }, [reservas, periodoInicio, numeroDias, filtroStatus, busca, hospedeMap, quartos]);
+
+  // Reservas em Crédito (filtradas e enriquecidas para a visão de gestão de créditos)
+  const reservasCredito = useMemo(() => {
+    return reservas.filter((reserva) => {
+      if (reserva.statusreserva !== 'CREDITO') return false;
+
+      if (busca.trim()) {
+        const termo = busca.toLowerCase();
+        const hospede = hospedeMap.get(Number(reserva.hospedeid));
+        const quarto = quartos.find(q => Number(q.quartoid) === Number(reserva.quartoid));
+        const nomeHospede = hospede?.nomecompleto || '';
+        const numeroQuarto = quarto?.codigoidentificador || '';
+
+        return (
+          nomeHospede.toLowerCase().includes(termo) ||
+          numeroQuarto.toLowerCase().includes(termo) ||
+          (reserva.codigo || '').toLowerCase().includes(termo) ||
+          (hospede?.telefone || '').toLowerCase().includes(termo)
+        );
+      }
+
+      return true;
+    }).map((reserva) => {
+      const hospede = hospedeMap.get(Number(reserva.hospedeid));
+      const quarto = quartos.find(q => Number(q.quartoid) === Number(reserva.quartoid));
+      return {
+        ...reserva,
+        hospedenome: hospede?.nomecompleto || `Hóspede #${reserva.hospedeid}`,
+        hospedetelefone: hospede?.telefone || hospede?.whatsapp || reserva.hospedetelefone || '',
+        quartonumero: quarto?.codigoidentificador || quarto?.numero || reserva.quartonumero || '',
+        quartocategoria: quarto?.categoria || reserva.quartocategoria || '',
+      };
+    });
+  }, [reservas, busca, hospedeMap, quartos]);
 
   const ocupacao = useMemo(() => {
     if (reservasVisiveis.length === 0 || quartosFisicos.length === 0) return 0;
@@ -523,51 +561,163 @@ export const PaginaMapaReservas: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid Principal do Mapa de Reservas */}
-      <div className="overflow-x-auto rounded-2xl border border-[#c1c9bf] bg-white shadow-sm">
-        <div className="min-w-[1140px]">
-          {/* Cabeçalho de Datas */}
-          <div className="grid border-b border-[#c1c9bf] bg-[#f8f9fa]" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
-            <div className="sticky left-0 z-30 flex items-center justify-between border-r border-[#c1c9bf] bg-[#f8f9fa] px-3 py-2 font-bold text-xs text-[#191c1d] shadow-[2px_0_4px_rgba(0,0,0,0.03)]">
-              <span>ACOMODAÇÃO</span>
-              <span className="text-[10px] text-[#717971]">{quartosFisicos.length} Quartos</span>
+      {/* Grid Principal do Mapa de Reservas OU Painel de Créditos */}
+      {filtroStatus === 'CREDITO' ? (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-50/70 border border-amber-300 rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-amber-600 text-white rounded-xl shadow-xs">
+                <PauseCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-['Manrope'] font-bold text-sm text-amber-950">
+                  Reservas Suspensas em Crédito ({reservasCredito.length})
+                </h3>
+                <p className="text-xs text-amber-900/80">
+                  Hóspedes com valores retidos aguardando remarcação de datas e realocação de quarto.
+                </p>
+              </div>
+            </div>
+            <div className="text-left sm:text-right">
+              <span className="text-[11px] font-semibold text-amber-900 block">Total de Créditos Retidos:</span>
+              <span className="font-['Manrope'] text-lg font-extrabold text-amber-950">
+                {formatarMoeda(reservasCredito.reduce((acc, r) => acc + Number(r.valorpago || 0), 0))}
+              </span>
+            </div>
+          </div>
+
+          {reservasCredito.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[#c1c9bf] bg-white p-12 text-center shadow-sm">
+              <PauseCircle className="w-10 h-10 text-amber-600/60 mx-auto mb-3" />
+              <h4 className="font-bold text-sm text-slate-800">Nenhuma reserva em crédito encontrada</h4>
+              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                Não há reservas com status de crédito retido no momento ou correspondentes à busca informada.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {reservasCredito.map((res) => {
+                const hospede = hospedeMap.get(Number(res.hospedeid));
+                const telefone = res.hospedetelefone || hospede?.telefone || hospede?.whatsapp || 'Não informado';
+
+                return (
+                  <div
+                    key={res.reservaid}
+                    className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between gap-4"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                        <span className="font-['Manrope'] font-extrabold text-sm text-[#053d1e] tracking-tight">
+                          {res.codigo}
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+                          CRÉDITO RETIDO
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="font-bold text-slate-900 truncate">
+                            {res.hospedenome}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="text-slate-600">
+                            {telefone}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Bed className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="text-slate-600">
+                            Quarto anterior: <strong className="text-slate-800">#{res.quartonumero || 'S/N'}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#e6f4ea]/60 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-emerald-900">
+                          Valor do Crédito:
+                        </span>
+                        <span className="font-['Manrope'] font-extrabold text-sm text-emerald-800">
+                          {formatarMoeda(res.valorpago)}
+                        </span>
+                      </div>
+
+                      {res.observacoes && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-[11px] text-slate-700 leading-snug">
+                          <span className="font-bold text-slate-900 block mb-0.5">Observações:</span>
+                          <p className="line-clamp-3">{res.observacoes}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReservaSelecionadaAcoes(res);
+                        setModalAcoesAberto(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                    >
+                      <CalendarDays className="w-4 h-4" />
+                      <span>Gerenciar / Remarcar Datas</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-[#c1c9bf] bg-white shadow-sm">
+          <div className="min-w-[1140px]">
+            {/* Cabeçalho de Datas */}
+            <div className="grid border-b border-[#c1c9bf] bg-[#f8f9fa]" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
+              <div className="sticky left-0 z-30 flex items-center justify-between border-r border-[#c1c9bf] bg-[#f8f9fa] px-3 py-2 font-bold text-xs text-[#191c1d] shadow-[2px_0_4px_rgba(0,0,0,0.03)]">
+                <span>ACOMODAÇÃO</span>
+                <span className="text-[10px] text-[#717971]">{quartosFisicos.length} Quartos</span>
+              </div>
+
+              {datasVisiveis.map((data) => {
+                const iso = data.toISOString().slice(0, 10);
+                const ehHoje = iso === dataAtual;
+
+                return (
+                  <div
+                    key={iso}
+                    className={`flex flex-col items-center justify-center border-r border-[#e5e7eb] py-2 ${
+                      ehHoje ? 'bg-[#e6f4ea] text-[#053d1e] font-extrabold' : 'text-[#414941]'
+                    }`}
+                  >
+                    <span className="text-[10px] font-semibold">{formatarDiaSemana(data)}</span>
+                    <span className="text-sm font-bold">{data.getDate()}</span>
+                    <span className="text-[9px] uppercase tracking-wider">{formatarMesCurto(data)}</span>
+                  </div>
+                );
+              })}
             </div>
 
-            {datasVisiveis.map((data) => {
-              const iso = data.toISOString().slice(0, 10);
-              const ehHoje = iso === dataAtual;
+            {/* Linhas por Bloco */}
+            {(['B', 'C', 'D'] as const).map((blocoKey) => {
+              const listaQuartosBloco = quartosPorBloco[blocoKey] || [];
+              if (listaQuartosBloco.length === 0) return null;
 
               return (
-                <div
-                  key={iso}
-                  className={`flex flex-col items-center justify-center border-r border-[#e5e7eb] py-2 ${
-                    ehHoje ? 'bg-[#e6f4ea] text-[#053d1e] font-extrabold' : 'text-[#414941]'
-                  }`}
-                >
-                  <span className="text-[10px] font-semibold">{formatarDiaSemana(data)}</span>
-                  <span className="text-sm font-bold">{data.getDate()}</span>
-                  <span className="text-[9px] uppercase tracking-wider">{formatarMesCurto(data)}</span>
-                </div>
+                <React.Fragment key={blocoKey}>
+                  <div className="sticky left-0 z-10 border-y border-[#c1c9bf] bg-[#e6f4ea]/80 px-4 py-1.5 font-['Manrope'] text-xs font-bold text-[#053d1e] tracking-wide">
+                    BLOCO {blocoKey} — {listaQuartosBloco.length} Acomodações
+                  </div>
+                  {listaQuartosBloco.map(renderizarLinhaQuarto)}
+                </React.Fragment>
               );
             })}
           </div>
-
-          {/* Linhas por Bloco */}
-          {(['B', 'C', 'D'] as const).map((blocoKey) => {
-            const listaQuartosBloco = quartosPorBloco[blocoKey] || [];
-            if (listaQuartosBloco.length === 0) return null;
-
-            return (
-              <React.Fragment key={blocoKey}>
-                <div className="sticky left-0 z-10 border-y border-[#c1c9bf] bg-[#e6f4ea]/80 px-4 py-1.5 font-['Manrope'] text-xs font-bold text-[#053d1e] tracking-wide">
-                  BLOCO {blocoKey} — {listaQuartosBloco.length} Acomodações
-                </div>
-                {listaQuartosBloco.map(renderizarLinhaQuarto)}
-              </React.Fragment>
-            );
-          })}
         </div>
-      </div>
+      )}
 
       {/* Cards com Métricas do Hotel */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
