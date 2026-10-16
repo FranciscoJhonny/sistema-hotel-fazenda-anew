@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   RefreshCw,
@@ -12,11 +12,13 @@ import {
   CreditCard,
   AlertTriangle,
   LoaderCircle,
-  CheckCircle2
+  CheckCircle2,
+  CalendarDays
 } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Reserva } from '../../tipos';
 import { formatarData, formatarMoeda } from '../../utilitarios/formatadores';
+import { SupabaseService } from '../../servicos/supabase/SupabaseService';
 
 interface ModalAcoesReservaProps {
   aberto: boolean;
@@ -37,20 +39,34 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     suspenderReservaComCredito,
     cancelarReserva,
     realizarCheckin,
-    navegarPara
+    navegarPara,
+    recarregarDados
   } = useHotel();
 
   const [carregando, setCarregando] = useState(false);
-  const [confirmandoSuspencao, setConfirmandoSuspencao] = useState(false);
-  const [motivoSuspencao, setMotivoSuspencao] = useState('');
   const [erro, setErro] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    if (aberto) {
+  // Estados para Suspensão com Crédito
+  const [confirmandoSuspencao, setConfirmandoSuspencao] = useState(false);
+  const [motivoSuspencao, setMotivoSuspencao] = useState('');
+
+  // Estados para Remarcação de Datas (UPDATE)
+  const [remarcandoDatas, setRemarcandoDatas] = useState(false);
+  const [novaDataEntrada, setNovaDataEntrada] = useState('');
+  const [novaDataSaida, setNovaDataSaida] = useState('');
+
+  useEffect(() => {
+    if (aberto && reserva) {
       setConfirmandoSuspencao(false);
       setMotivoSuspencao('');
+      setRemarcandoDatas(false);
       setErro(null);
       setCarregando(false);
+
+      const dEntrada = (reserva.dataentrada || '').split('T')[0];
+      const dSaida = (reserva.datasaida || '').split('T')[0];
+      setNovaDataEntrada(dEntrada);
+      setNovaDataSaida(dSaida);
     }
   }, [aberto, reserva]);
 
@@ -58,6 +74,75 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
 
   const estaHospedado = reserva.statusreserva === 'HOSPEDADO';
   const podeCheckin = reserva.statusreserva === 'RESERVADO' || reserva.statusreserva === 'PRE_RESERVA';
+
+  // Executa a remarcação de datas diretamente no Supabase sem cancelar
+  const handleConfirmarRemarcacao = async () => {
+    setErro(null);
+
+    if (!novaDataEntrada || !novaDataSaida) {
+      setErro('Informe as novas datas de entrada e saída.');
+      return;
+    }
+
+    if (novaDataEntrada >= novaDataSaida) {
+      setErro('A data de saída deve ser posterior à data de entrada.');
+      return;
+    }
+
+    try {
+      setCarregando(true);
+      const supabase = SupabaseService.getInstance().getClient();
+      if (!supabase) {
+        setErro('Falha na conexão com o banco de dados.');
+        return;
+      }
+
+      // 1. Verifica se o mesmo quarto já tem outra reserva ativa no novo período
+      const { data: conflitos, error: errConflito } = await supabase
+        .from('reserva')
+        .select('reservaid, codigo, dataentrada, datasaida')
+        .eq('quartoid', reserva.quartoid)
+        .neq('reservaid', reserva.reservaid)
+        .in('statusreserva', ['RESERVADO', 'HOSPEDADO', 'PRE_RESERVA'])
+        .lte('dataentrada', novaDataSaida)
+        .gte('datasaida', novaDataEntrada);
+
+      if (errConflito) {
+        console.warn('Erro ao verificar conflito de datas:', errConflito);
+      }
+
+      if (conflitos && conflitos.length > 0) {
+        setErro(`O Quarto #${reserva.quartonumero} já possui outra reserva (${conflitos[0].codigo}) no período selecionado.`);
+        return;
+      }
+
+      // 2. Executa o UPDATE direto mantendo todo o histórico financeiro intacto
+      const { error: errUpdate } = await supabase
+        .from('reserva')
+        .update({
+          dataentrada: novaDataEntrada,
+          datasaida: novaDataSaida,
+        })
+        .eq('reservaid', reserva.reservaid);
+
+      if (errUpdate) {
+        setErro(errUpdate.message || 'Erro ao atualizar datas da reserva.');
+        return;
+      }
+
+      // 3. Sincroniza os dados no contexto do mapa
+      await recarregarDados();
+
+      if (onSucesso) {
+        onSucesso(`Reserva ${reserva.codigo} remarcada com sucesso para ${formatarData(novaDataEntrada)} até ${formatarData(novaDataSaida)}!`);
+      }
+      onFechar();
+    } catch (err: any) {
+      setErro(err?.message || 'Erro inesperado ao remarcar datas.');
+    } finally {
+      setCarregando(false);
+    }
+  };
 
   const handleSuspenderCredito = async () => {
     setErro(null);
@@ -182,7 +267,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
               </div>
               <div>
                 <span className="text-slate-400 block">Período de Hospedagem:</span>
-                <span className="font-bold text-slate-800 text-xs">
+                <span className="font-bold text-[#053d1e] text-xs">
                   {formatarData(reserva.dataentrada)} até {formatarData(reserva.datasaida)}
                 </span>
               </div>
@@ -217,8 +302,71 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
             )}
           </div>
 
-          {/* Modo de Confirmação de Suspensão com Crédito */}
-          {confirmandoSuspencao ? (
+          {/* ========================================================= */}
+          {/* PAINEL 1: REMARCAR DATAS (UPDATE DIRETO)                  */}
+          {/* ========================================================= */}
+          {remarcandoDatas ? (
+            <div className="bg-emerald-50/70 border border-emerald-300 rounded-xl p-4 space-y-3 animate-in fade-in">
+              <div className="flex items-center gap-2 text-[#053d1e] font-bold text-xs">
+                <CalendarDays className="w-4 h-4 text-[#053d1e] shrink-0" />
+                <span>Remarcar Datas da Reserva</span>
+              </div>
+              <p className="text-[11px] text-emerald-900 leading-relaxed">
+                Altere o período mantendo os pagamentos, o código da reserva e o histórico financeiro intactos.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Nova Data de Entrada:
+                  </label>
+                  <input
+                    type="date"
+                    value={novaDataEntrada}
+                    onChange={(e) => setNovaDataEntrada(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Nova Data de Saída:
+                  </label>
+                  <input
+                    type="date"
+                    value={novaDataSaida}
+                    onChange={(e) => setNovaDataSaida(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200/60">
+                <button
+                  type="button"
+                  onClick={() => setRemarcandoDatas(false)}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                >
+                  Voltar
+                </button>
+                <button
+                  type="button"
+                  disabled={carregando}
+                  onClick={handleConfirmarRemarcacao}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-[#053d1e] hover:bg-[#043017] cursor-pointer shadow-xs disabled:opacity-50"
+                >
+                  {carregando ? (
+                    <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>Salvar Novo Período</span>
+                </button>
+              </div>
+            </div>
+          ) : confirmandoSuspencao ? (
+            /* ========================================================= */
+            /* PAINEL 2: SUSPENSÃO COM CRÉDITO                           */
+            /* ========================================================= */
             <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-3 animate-in fade-in">
               <div className="flex items-center gap-2 text-amber-950 font-bold text-xs">
                 <PauseCircle className="w-4 h-4 text-amber-700 shrink-0" />
@@ -260,30 +408,42 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   ) : (
                     <PauseCircle className="w-3.5 h-3.5" />
                   )}
-                  <span>Confirmar Crédito (R$ {reserva.valorpago.toFixed(2)})</span>
+                  <span>Confirmar Crédito ({formatarMoeda(reserva.valorpago)})</span>
                 </button>
               </div>
             </div>
           ) : (
-            /* Botões de Ações Principais */
+            /* ========================================================= */
+            /* BOTÕES DE AÇÕES PRINCIPAIS                                */
+            /* ========================================================= */
             <div className="space-y-2 pt-1">
               <span className="text-xs font-bold text-slate-700 block mb-1">Ações Operacionais Disponíveis:</span>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {/* 1. Trocar Quarto */}
+                {/* 1. Remarcar Datas (Novo!) */}
+                <button
+                  type="button"
+                  onClick={() => setRemarcandoDatas(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                >
+                  <CalendarDays className="w-4 h-4 text-[#053d1e] shrink-0" />
+                  <span>📅 Remarcar Datas</span>
+                </button>
+
+                {/* 2. Trocar Quarto */}
                 <button
                   type="button"
                   onClick={() => {
                     onFechar();
                     onAbrirTrocaQuarto(reserva);
                   }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
                 >
                   <RefreshCw className="w-4 h-4 text-[#053d1e] shrink-0" />
                   <span>🔄 Trocar Quarto</span>
                 </button>
 
-                {/* 2. Suspender / Gerar Crédito */}
+                {/* 3. Suspender / Gerar Crédito */}
                 <button
                   type="button"
                   onClick={() => setConfirmandoSuspencao(true)}
@@ -293,7 +453,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   <span>⏸️ Suspender (Crédito)</span>
                 </button>
 
-                {/* 3. Check-in (se aplicável) */}
+                {/* 4. Check-in (se aplicável) */}
                 {podeCheckin && (
                   <button
                     type="button"
@@ -306,7 +466,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   </button>
                 )}
 
-                {/* 4. Check-out (se hospedado) */}
+                {/* 5. Check-out (se hospedado) */}
                 {estaHospedado && (
                   <button
                     type="button"
@@ -318,7 +478,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   </button>
                 )}
 
-                {/* 5. Cancelar Reserva */}
+                {/* 6. Cancelar Reserva */}
                 <button
                   type="button"
                   disabled={carregando}

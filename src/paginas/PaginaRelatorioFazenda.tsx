@@ -14,16 +14,196 @@ import {
   Info,
   CalendarDays,
   FileSpreadsheet,
-  Download
+  Download,
+  BookOpen
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import logoTucanoImg from '../imagens/logo-tucano-transparente.png';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarMoeda, formatarData } from '../utilitarios/formatadores';
 import { SupabaseService } from '../servicos/supabase/SupabaseService';
 import { Hospede } from '../tipos';
 
 type AbaRelatorio = 'QUARTOS' | 'REFEITORIO' | 'FINANCEIRO';
+
+let logoBase64Promise: Promise<string | null> | null = null;
+
+const obterLogoBase64 = (): Promise<string | null> => {
+  if (logoBase64Promise) return logoBase64Promise;
+  logoBase64Promise = new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+          return;
+        }
+      } catch (e) {
+        console.warn('[PaginaRelatorioFazenda] Falha ao converter imagem para canvas:', e);
+      }
+      resolve(null);
+    };
+    img.onerror = () => resolve(null);
+    img.src = logoTucanoImg;
+  });
+  return logoBase64Promise;
+};
+
+if (typeof window !== 'undefined') {
+  obterLogoBase64();
+}
+
+export const exportarManualOperacionalPdf = async () => {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const logoData = await obterLogoBase64();
+
+  doc.setFillColor(30, 70, 32);
+  doc.rect(0, 0, 210, 24, 'F');
+
+  if (logoData) {
+    try {
+      doc.addImage(logoData, 'PNG', 10, 3, 18, 18);
+    } catch (e) {
+      console.warn('[exportarManualOperacionalPdf] Erro ao adicionar logo:', e);
+    }
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text('HOTEL FAZENDA ANEW — MANUAL OPERACIONAL', 105, 11, { align: 'center' });
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Guia Oficial de Fluxos: Reservas, Ocupação, Refeitório e Financeiro', 105, 18, { align: 'center' });
+
+  doc.setTextColor(30, 70, 32);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('1. Fluxo de Entrada e Confirmação de Sinal', 14, 32);
+
+  autoTable(doc, {
+    startY: 35,
+    head: [['Etapa', 'Ação no Sistema', 'Procedimento Operacional']],
+    body: [
+      ['1. Pré-Cadastro', 'Registro FNRH', 'O cliente preenche o formulário online ou a recepção faz o lançamento inicial.'],
+      ['2. Sinal (50%)', 'Confirmar Sinal', 'Registrar o valor e a forma de pagamento (PIX, Cartão ou Dinheiro).'],
+      ['3. Sem Sinal', 'Opção Check-out', 'Caso autorizado pelo gerente, assinalar para quitação total na saída.'],
+      ['4. Alocação', 'Mapa de Quartos', 'O quarto físico é alocado no calendário sem sobreposições.']
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [72, 119, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    columnStyles: {
+      0: { cellWidth: 30, fontStyle: 'bold' },
+      1: { cellWidth: 40, fontStyle: 'bold' },
+      2: { cellWidth: 'auto' }
+    }
+  });
+
+  const yRegras = (doc as any).lastAutoTable.finalY + 8;
+  doc.setTextColor(30, 70, 32);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('2. Regras Oficiais de Tarifação e Idades', 14, yRegras);
+
+  autoTable(doc, {
+    startY: yRegras + 3,
+    head: [['Faixa Etária', 'Classificação', 'Impacto na Diária', 'Contabilização na Grid']],
+    body: [
+      ['A partir de 12 anos', 'Adulto Integral', 'Paga 100% da diária', 'Soma na coluna "Adultos"'],
+      ['6 a 11 anos', 'Criança Meia', 'Paga 50% da diária', 'Soma na coluna "Crianças"'],
+      ['0 a 5 anos', 'Criança Grátis', 'Isento (100% gratuito)', 'Ignorado na contagem de pagantes']
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [72, 119, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    styles: { fontSize: 8, cellPadding: 2.5 },
+    columnStyles: {
+      0: { cellWidth: 40, fontStyle: 'bold' },
+      1: { cellWidth: 35 },
+      2: { cellWidth: 45 },
+      3: { cellWidth: 'auto', fontStyle: 'bold' }
+    }
+  });
+
+  const yAcoes = (doc as any).lastAutoTable.finalY + 8;
+  doc.setTextColor(30, 70, 32);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('3. Operações no Mapa de Quartos', 14, yAcoes);
+
+  autoTable(doc, {
+    startY: yAcoes + 3,
+    head: [['Botão de Ação', 'Quando Utilizar', 'Resultado no Sistema']],
+    body: [
+      ['Trocar Quarto', 'Transferência de acomodação física', 'Altera o quarto mantendo os valores e as datas inalterados.'],
+      ['Remarcar Datas', 'O cliente já sabe o novo período', 'Atualiza a estadia com validação de conflito e preserva o sinal.'],
+      ['Suspender (Crédito)', 'Cancelamento com retenção de valor', 'Libera o quarto e guarda o pagamento como crédito para reagendamento.'],
+      ['Realizar Check-in', 'Entrada dos hóspedes no hotel', 'Muda o status para HOSPEDADO e ativa o consumo.'],
+      ['Ir para Check-out', 'Saída e fechamento de contas', 'Calcula diárias restantes + bar + loja e finaliza a fatura.'],
+      ['Cancelar Reserva', 'Desistência sem crédito futuro', 'Cancela o registro e desocupa o quarto em definitivo.']
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [72, 119, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    styles: { fontSize: 8, cellPadding: 2 },
+    columnStyles: {
+      0: { cellWidth: 40, fontStyle: 'bold' },
+      1: { cellWidth: 55 },
+      2: { cellWidth: 'auto' }
+    }
+  });
+
+  const yFolha = (doc as any).lastAutoTable.finalY + 8;
+  doc.setTextColor(30, 70, 32);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('4. Folha de Campo e Relatórios para a Fazenda', 14, yFolha);
+
+  autoTable(doc, {
+    startY: yFolha + 3,
+    head: [['Relatório', 'Destinatário', 'Finalidade Operacional']],
+    body: [
+      ['Ocupação por Quarto', 'Recepção e Governança', 'Divisão por blocos (B, C, D) com indicação de todos os ocupantes.'],
+      ['Relação do Refeitório', 'Cozinha e Eventos', 'Contagem diária exata de refeições (Adultos, Meias e Isentos).'],
+      ['Valores a Receber', 'Caixa e Administração', 'Listagem de contatos e saldos pendentes a liquidar no check-out.'],
+      ['WhatsApp e PDF', 'Equipe de Operações', 'Envio automático do resumo em texto e exportação direta da folha A4.']
+    ],
+    theme: 'grid',
+    headStyles: { fillColor: [72, 119, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    styles: { fontSize: 8, cellPadding: 2 },
+    columnStyles: {
+      0: { cellWidth: 45, fontStyle: 'bold' },
+      1: { cellWidth: 45 },
+      2: { cellWidth: 'auto' }
+    }
+  });
+
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7.5);
+    doc.setTextColor(130, 130, 130);
+    doc.text(`Hotel Fazenda Anew • Procedimento Operacional Padrão • Página ${i} de ${pageCount}`, 105, 290, { align: 'center' });
+  }
+
+  doc.save('Hotel_Fazenda_Anew_Manual_Operacional.pdf');
+};
 
 const calcularIdade = (dataNascStr?: string): number | null => {
   if (!dataNascStr) return null;
@@ -301,7 +481,7 @@ export const PaginaRelatorioFazenda: React.FC = () => {
   };
 
   // Exportação nativa direta em PDF com jsPDF + autotable
-  const exportarPdfDireto = () => {
+  const exportarPdfDireto = async () => {
     const nomeAba = abaAtiva === 'QUARTOS' 
       ? 'Ocupacao_Quartos' 
       : abaAtiva === 'REFEITORIO' 
@@ -321,6 +501,15 @@ export const PaginaRelatorioFazenda: React.FC = () => {
       unit: 'mm',
       format: 'a4',
     });
+
+    const logoData = await obterLogoBase64();
+    if (logoData) {
+      try {
+        doc.addImage(logoData, 'PNG', 10, 5, 18, 18);
+      } catch (e) {
+        console.warn('[exportarPdfDireto] Erro ao adicionar logo:', e);
+      }
+    }
 
     // Cabeçalho Institucional
     doc.setFont('helvetica', 'bold');
@@ -664,6 +853,17 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             <span>{copiadoWhatsApp ? 'Copiado para WhatsApp!' : 'Copiar Resumo WhatsApp'}</span>
           </button>
 
+          {/* Botão Manual Operacional */}
+          <button
+            type="button"
+            onClick={exportarManualOperacionalPdf}
+            className="px-3 py-2 border border-[#053d1e] bg-white text-[#053d1e] hover:bg-[#e6f4ea] rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+            title="Baixar Manual de Instruções em PDF"
+          >
+            <BookOpen className="w-4 h-4 text-[#053d1e]" />
+            <span>Manual Operacional</span>
+          </button>
+
           {/* Botão Principal: Exportar PDF */}
           <button
             type="button"
@@ -728,7 +928,10 @@ export const PaginaRelatorioFazenda: React.FC = () => {
         className="area-impressao-fazenda bg-white border border-[#c1c9bf] rounded-2xl p-6 shadow-xs print:border-none print:p-0 print:shadow-none"
       >
         {/* Cabeçalho da Folha de Campo */}
-        <div className="text-center pb-4 mb-4 border-b border-[#e1e3e4]">
+        <div className="relative text-center pb-4 mb-4 border-b border-[#e1e3e4]">
+          {/* <div className="absolute left-2 top-0 h-14 w-14 hidden sm:block print:block">
+            <img src={logoTucanoImg} alt="Hotel Fazenda Anew" className="h-full w-full object-contain" />
+          </div> */}
           <h1 className="font-['Manrope'] text-lg font-extrabold uppercase text-[#1E4620] tracking-wide">
             HOTEL FAZENDA ANEW — FOLHA DE CAMPO
           </h1>
