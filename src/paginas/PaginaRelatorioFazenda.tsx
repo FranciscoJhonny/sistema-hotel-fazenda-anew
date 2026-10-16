@@ -903,11 +903,7 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                             }).join(', ')}
                           </div>
                         )}
-                        {r.observacoes && (
-                          <div className="text-[10px] text-amber-800 font-medium italic mt-0.5">
-                            Obs: {r.observacoes}
-                          </div>
-                        )}
+                        
                       </td>
 
                       {/* Adultos */}
