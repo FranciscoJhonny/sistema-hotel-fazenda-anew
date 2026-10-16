@@ -20,14 +20,14 @@ interface BarraSuperiorProps {
 }
 
 export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) => {
-  const { paginaAtual, dataSistema, usuarioAtual, reservas, navegarPara, logout } = useHotel();
+  const { paginaAtual, dataSistema, usuarioAtual, reservas, navegarPara, logout, abaDashboard, setAbaDashboard } = useHotel();
   const [mostrarNotificacoes, setMostrarNotificacoes] = useState(false);
   const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
   const [modalAlterarSenhaAberta, setModalAlterarSenhaAberta] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState<'visao-geral' | 'metricas'>('visao-geral');
 
   const titulos: Record<string, string> = {
     dashboard: 'Dashboard',
+    'relatorio-fazenda': 'Folha de Estadia (Fazenda)',
     fnrh: 'Links FNRH & Pré-Cadastros',
     'mapa-reservas': 'Mapa de Reservas',
     'status-quartos': 'Status dos Quartos',
@@ -80,16 +80,33 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
             </h2>            
           </div>
 
-          {paginaAtual === 'dashboard' && (
+          {(paginaAtual === 'dashboard' || paginaAtual === 'relatorio-fazenda') && (
             <div className="hidden sm:flex items-center gap-5 text-sm font-medium pt-1">
               <button
-                onClick={() => setAbaAtiva('visao-geral')}
-                className={`pb-4 pt-4 border-b-2 transition-colors cursor-pointer font-semibold ${abaAtiva === 'visao-geral'
-                  ? 'border-[#245437] text-[#245437]'
-                  : 'border-transparent text-[#6b7280] hover:text-[#111827]'
-                  }`}
+                onClick={() => {
+                  setAbaDashboard('VISAO_GERAL');
+                  if (paginaAtual !== 'dashboard') navegarPara('dashboard');
+                }}
+                className={`pb-4 pt-4 border-b-2 transition-colors cursor-pointer font-semibold ${
+                  abaDashboard === 'VISAO_GERAL' && paginaAtual === 'dashboard'
+                    ? 'border-[#245437] text-[#245437]'
+                    : 'border-transparent text-[#6b7280] hover:text-[#111827]'
+                }`}
               >
                 Visão Geral
+              </button>
+              <button
+                onClick={() => {
+                  setAbaDashboard('RELATORIO_FAZENDA');
+                  if (paginaAtual !== 'dashboard') navegarPara('dashboard');
+                }}
+                className={`pb-4 pt-4 border-b-2 transition-colors cursor-pointer font-semibold flex items-center gap-1.5 ${
+                  abaDashboard === 'RELATORIO_FAZENDA' || paginaAtual === 'relatorio-fazenda'
+                    ? 'border-[#245437] text-[#245437]'
+                    : 'border-transparent text-[#6b7280] hover:text-[#111827]'
+                }`}
+              >
+                Folha de Estadia (Fazenda)
               </button>
             </div>
           )}

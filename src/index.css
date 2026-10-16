@@ -1,1 +1,54 @@
 @import "tailwindcss";
+
+@media print {
+  /* Esconder toda a barra lateral, menus de navegação, cabeçalhos do sistema e rodapés */
+  aside, 
+  nav, 
+  header, 
+  .sidebar, 
+  button, 
+  input, 
+  [class*="print:hidden"],
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Reset de margens e largura para ocupar 100% da folha A4 */
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  body, html, #root, main {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+
+  /* Reset de padding do container principal do app */
+  [class*="md:pl-64"] {
+    padding-left: 0 !important;
+  }
+
+  /* Container exclusivo da folha de campo */
+  .area-impressao-fazenda {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Manter fundos coloridos e bordas nas tabelas */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+}

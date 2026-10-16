@@ -21,6 +21,7 @@ import { PaginaLogin } from './paginas/PaginaLogin';
 import { PaginaCadastroFnrh } from './paginas/PaginaCadastroFnrh';
 import { PaginaFnrhAdmin } from './paginas/PaginaFnrhAdmin';
 import { PaginaReservasAnteriores } from './paginas/PaginaReservasAnteriores';
+import { PaginaRelatorioFazenda } from './paginas/PaginaRelatorioFazenda';
 import { LoaderCircle } from 'lucide-react';
 
 const obterTokenFnrhDaUrl = (): string | null => {
@@ -30,7 +31,7 @@ const obterTokenFnrhDaUrl = (): string | null => {
 };
 
 const ConteudoPrincipal: React.FC = () => {
-  const { paginaAtual, autenticado, carregando, usuarioAtual, navegarPara } = useHotel();
+  const { paginaAtual, autenticado, carregando, usuarioAtual, navegarPara, abaDashboard } = useHotel();
   const [mobileMenuAberto, setMobileMenuAberto] = React.useState(false);
 
   if (!autenticado || paginaAtual === 'login') {
@@ -60,7 +61,9 @@ const ConteudoPrincipal: React.FC = () => {
   const renderizarPagina = () => {
     switch (paginaAtual) {
       case 'dashboard':
-        return <PaginaDashboard />;
+        return abaDashboard === 'RELATORIO_FAZENDA' ? <PaginaRelatorioFazenda /> : <PaginaDashboard />;
+      case 'relatorio-fazenda':
+        return <PaginaRelatorioFazenda />;
       case 'dashboard-executivo':
         return <PaginaDashboardExecutivo />;
       case 'quartos':
@@ -105,9 +108,9 @@ const ConteudoPrincipal: React.FC = () => {
       />
 
       {/* Área de Conteúdo Principal */}
-      <div className="flex-1 flex flex-col min-w-0 md:pl-64">
+      <div className="flex-1 flex flex-col min-w-0 md:pl-64 print:pl-0">
         <BarraSuperior onAbrirMobile={() => setMobileMenuAberto(true)} />
-        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto print:p-0 print:m-0 print:max-w-none">
           {renderizarPagina()}
         </main>
       </div>

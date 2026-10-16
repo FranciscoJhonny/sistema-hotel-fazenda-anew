@@ -419,6 +419,7 @@ export type PaginaNavegacao =
   | 'login'
   | 'dashboard'
   | 'dashboard-executivo'
+  | 'relatorio-fazenda'
   | 'quartos'
   | 'status-quartos'
   | 'mapa-reservas'

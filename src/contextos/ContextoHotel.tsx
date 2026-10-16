@@ -31,6 +31,8 @@ interface ContextoHotelType {
   usuarioAtual: Usuario;
   usuarios: Usuario[];
   paginaAtual: PaginaNavegacao;
+  abaDashboard: 'VISAO_GERAL' | 'RELATORIO_FAZENDA';
+  setAbaDashboard: (aba: 'VISAO_GERAL' | 'RELATORIO_FAZENDA') => void;
   dataSistema: string;
   online: boolean;
   autenticado: boolean;
@@ -133,6 +135,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const [usuarioAtual, setUsuarioAtual] = useState<Usuario>(usuarioPadrao);
   const [autenticado, setAutenticado] = useState<boolean>(false);
   const [paginaAtual, setPaginaAtual] = useState<PaginaNavegacao>('login');
+  const [abaDashboard, setAbaDashboard] = useState<'VISAO_GERAL' | 'RELATORIO_FAZENDA'>('VISAO_GERAL');
   const [dataSistema] = useState<string>(new Date().toISOString().slice(0, 10));
   const [online, setOnline] = useState<boolean>(typeof window !== 'undefined' ? navigator.onLine : true);
   const [carregando, setCarregando] = useState<boolean>(true);
@@ -997,6 +1000,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     <ContextoHotel.Provider value={{
       quartos, reservas, hospedes, produtos, consumosExtras, pacotes, configuracoes, pagamentos,
       usuarioAtual, usuarios, paginaAtual, dataSistema, online, autenticado,
+      abaDashboard, setAbaDashboard,
       carregando, erro, login, logout, navegarPara, trocarUsuario,
       atualizarStatusQuarto, obterQuartoPorId, obterQuartoPorNumero,
       criarQuarto, editarQuarto, excluirQuarto,
