@@ -297,7 +297,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         observacoes: reserva.observacoes || '',
         observacoes_checkout: reserva.observacoes_checkout || '',
       };
-    }).sort((a, b) => new Date(b.dataEntrada).getTime() - new Date(a.dataEntrada).getTime());
+    }).sort((a, b) => String(a.quarto || '').localeCompare(String(b.quarto || ''), undefined, { numeric: true, sensitivity: 'base' }));
   }, [reservasFiltradas, consumosFiltrados, pagamentosFiltrados, quartos, pacotes, hospedes, hospedesLive, acompanhantesDb]);
 
   // 4. INDICADORES MACRO EXECUTIVOS
