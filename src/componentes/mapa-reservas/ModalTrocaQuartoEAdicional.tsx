@@ -21,6 +21,7 @@ import {
 import { useHotel } from '../../contextos/ContextoHotel';
 import { SupabaseService } from '../../servicos/supabase/SupabaseService';
 import { Reserva, Quarto, Pacote, Hospede } from '../../tipos';
+import { verificarSobreposicaoDatas } from '../../servicos/conflitoReservas';
 import {
   formatarData,
   formatarMoeda,
@@ -192,16 +193,64 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     }
   }, [aberto, carregarDadosCompletosLive]);
 
-  // Quartos disponíveis para seleção (excluindo Day Use e filtrando ativos)
+  // Quartos físicos avaliados por disponibilidade e colisão de datas no período da estadia
+  const quartosDisponibilidade = useMemo(() => {
+    if (!reserva) return [];
+
+    const dataEntrada = reserva.dataentrada;
+    const dataSaida = novaDataSaida || reserva.datasaida;
+    const listaReservas = reservasLive && reservasLive.length > 0 ? reservasLive : reservas;
+
+    return quartos
+      .filter((q) => {
+        const cod = String(q.codigoidentificador || '').toUpperCase();
+        const num = String(q.numero || '').toUpperCase();
+        const cat = String(q.categoria || '').toUpperCase();
+        const ehDayUse = cod === 'DAY_USE' || num === 'DU' || num === 'DAY USE' || cat === 'DAY USE';
+        return !ehDayUse && q.ativo !== false;
+      })
+      .map((q) => {
+        const emManutencao = String(q.status || '').toUpperCase() === 'MANUTENCAO';
+
+        // Procura colisão de datas com OUTRAS reservas ativas (status diferente de 'CANCELADA' e 'CREDITO')
+        const reservaConflitante = listaReservas.find((r) => {
+          if (Number(r.quartoid) !== Number(q.quartoid)) return false;
+          if (String(r.reservaid) === String(reserva.reservaid)) return false;
+
+          const st = String(r.statusreserva || r.status || '').toUpperCase();
+          if (st === 'CANCELADA' || st === 'CREDITO' || !st) return false;
+
+          const rEntrada = r.dataentrada;
+          const rSaida = r.datasaida;
+          if (!rEntrada || !rSaida) return false;
+
+          // Verifica se há sobreposição no período selecionado
+          return verificarSobreposicaoDatas(dataEntrada, dataSaida, rEntrada, rSaida);
+        });
+
+        const temConflito = !!reservaConflitante;
+        const disponivel = !emManutencao && !temConflito;
+
+        let motivoBloqueio = '';
+        if (emManutencao) {
+          motivoBloqueio = 'Em Manutenção';
+        } else if (temConflito) {
+          motivoBloqueio = `Ocupado (${reservaConflitante.codigo || 'Reserva'})`;
+        }
+
+        return {
+          ...q,
+          disponivelNoPeriodo: disponivel,
+          motivoBloqueio,
+          reservaConflitante,
+        };
+      });
+  }, [quartos, reserva, novaDataSaida, reservasLive, reservas]);
+
+  // Lista com apenas os quartos disponíveis para seleção
   const quartosDisponiveis = useMemo(() => {
-    return quartos.filter((q) => {
-      const cod = String(q.codigoidentificador || '').toUpperCase();
-      const num = String(q.numero || '').toUpperCase();
-      const cat = String(q.categoria || '').toUpperCase();
-      const ehDayUse = cod === 'DAY_USE' || num === 'DU' || num === 'DAY USE' || cat === 'DAY USE';
-      return !ehDayUse && q.ativo !== false;
-    });
-  }, [quartos]);
+    return quartosDisponibilidade.filter((q) => q.disponivelNoPeriodo);
+  }, [quartosDisponibilidade]);
 
   // Objetos do quarto atual e novo quarto
   const quartoAtualObj = useMemo(() => {
@@ -574,6 +623,16 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     try {
       const quartoMudou = Number(novoQuartoId) !== Number(reserva.quartoid);
 
+      // Validação de conflito de datas e manutenção no período selecionado
+      if (quartoMudou && novoQuartoObj) {
+        const quartoAlvo = quartosDisponibilidade.find((q) => Number(q.quartoid) === Number(novoQuartoId));
+        if (quartoAlvo && !quartoAlvo.disponivelNoPeriodo) {
+          setErro(`Não é possível alocar o Quarto #${quartoAlvo.codigoidentificador || quartoAlvo.numero}: ${quartoAlvo.motivoBloqueio}.`);
+          setCarregando(false);
+          return;
+        }
+      }
+
       // Total de pessoas físicas acomodadas no quarto (para controle de capacidade)
       const transferidosAdultos = habilitarTransferencia
         ? hospedesTransferidos.filter((h) => h.categoria === 'ADULTO').length
@@ -657,13 +716,20 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         }
       }
 
-      // 2. Se o quarto físico mudou, atualizar o status dos quartos envolvidos
+      // 2. Se o quarto físico mudou, atualizar o status dos quartos envolvidos (apenas se for estadia em andamento hoje)
       if (quartoMudou && novoQuartoObj) {
         const estaHospedado = reserva.statusreserva === 'HOSPEDADO';
-        if (quartoAtualObj) {
-          await atualizarStatusQuarto(quartoAtualObj.quartoid, estaHospedado ? 'A_LIMPAR' : 'DISPONIVEL');
+        const hojeStr = new Date().toISOString().slice(0, 10);
+        const ehEstadiaAtual = estaHospedado || (reserva.dataentrada <= hojeStr && reserva.datasaida >= hojeStr);
+
+        if (ehEstadiaAtual) {
+          if (quartoAtualObj && quartoAtualObj.status !== 'OCUPADO') {
+            await atualizarStatusQuarto(quartoAtualObj.quartoid, estaHospedado ? 'A_LIMPAR' : 'DISPONIVEL');
+          }
+          if (novoQuartoObj.status !== 'OCUPADO') {
+            await atualizarStatusQuarto(novoQuartoObj.quartoid, estaHospedado ? 'OCUPADO' : 'RESERVADO');
+          }
         }
-        await atualizarStatusQuarto(novoQuartoObj.quartoid, estaHospedado ? 'OCUPADO' : 'RESERVADO');
       }
 
       // 3. Recarregar dados para sincronizar contexto
@@ -734,11 +800,16 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                 <option value={reserva.quartoid}>
                   Manter quarto atual (#{quartoAtualObj?.codigoidentificador || quartoAtualObj?.numero || reserva.quartonumero} - {quartoAtualObj?.categoria || reserva.quartocategoria})
                 </option>
-                {quartosDisponiveis
+                {quartosDisponibilidade
                   .filter((q) => Number(q.quartoid) !== Number(reserva.quartoid))
                   .map((q) => (
-                    <option key={q.quartoid} value={q.quartoid}>
-                      Quarto #{q.codigoidentificador || q.numero} — {q.categoria} (Bloco {q.bloco}) — Status: {q.status}
+                    <option
+                      key={q.quartoid}
+                      value={q.quartoid}
+                      disabled={!q.disponivelNoPeriodo}
+                      className={!q.disponivelNoPeriodo ? 'text-slate-400 bg-slate-50' : 'text-slate-900'}
+                    >
+                      Quarto #{q.codigoidentificador || q.numero} — {q.categoria} (Bloco {q.bloco}) — {q.disponivelNoPeriodo ? 'Disponível no período' : `[Bloqueado: ${q.motivoBloqueio}]`}
                     </option>
                   ))}
               </select>
