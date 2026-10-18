@@ -16,7 +16,9 @@ import {
   Trash2,
   Edit2,
   XCircle,
-  LoaderCircle
+  LoaderCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { CadastroFnrh, Reserva, Pacote, Quarto } from '../tipos';
 import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/supabase/FnrhService';
@@ -241,6 +243,8 @@ export const calcularValoresReserva = (
   };
 };
 
+const ITENS_POR_PAGINA = 15;
+
 export const PaginaFnrhAdmin: React.FC = () => {
   const {
     usuarioAtual,
@@ -259,9 +263,10 @@ export const PaginaFnrhAdmin: React.FC = () => {
   const [erro, setErro] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  // Estados de filtros
+  // Estados de filtros e paginação
   const [busca, setBusca] = useState<string>('');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
+  const [paginaAtual, setPaginaAtual] = useState<number>(1);
 
   // Estados de Modais
   const [modalGerarAberto, setModalGerarAberto] = useState<boolean>(false);
@@ -480,9 +485,65 @@ Qualquer dúvida, estamos à disposição!`;
     return { total, aguardandoPreenchimento, preenchidoAguardandoSinal, liberadas, reservasCriadas };
   }, [cadastros, reservas, hospedes]);
 
-  // Lista Filtrada
+  // Ordenação estrita por prioridade de estados:
+  // 1º: Aguardando Preenchimento (status 'PENDENTE' / 'AGUARDANDO_PREENCHIMENTO')
+  // 2º: Ficha Preenchida / Aguardando Sinal (status 'AGUARDANDO_PAGAMENTO')
+  // 3º: Reservas Concluídas (status 'CONCLUIDO' / 'RESERVADO')
+  // Desempate: cadastroid DESC (mais recentes no topo de cada grupo)
+  const obterPrioridadeStatus = (c: CadastroFnrh): number => {
+    const statusUpper = String(c.status || '').toUpperCase();
+    const r = obterReservaDoCadastro(c);
+    const jaReserva = statusUpper === 'RESERVA_CRIADA' || statusUpper === 'CONCLUIDO' || statusUpper === 'CONCLUIDA' || statusUpper === 'RESERVADO' || Boolean(c.reservaid) || Boolean(r);
+    const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
+
+    // 1º: Aguardando Preenchimento
+    if (
+      statusUpper === 'PENDENTE' ||
+      statusUpper === 'AGUARDANDO_PREENCHIMENTO' ||
+      (statusUpper === 'AGUARDANDO_PAGAMENTO' && !temDados && !jaReserva)
+    ) {
+      return 1;
+    }
+
+    // 2º: Ficha Preenchida / Aguardando Sinal
+    if (
+      (statusUpper === 'AGUARDANDO_PAGAMENTO' && temDados && !jaReserva) ||
+      statusUpper === 'LIBERADA_PARA_RESERVA' ||
+      statusUpper === 'PREENCHIDO_AGUARDANDO_SINAL'
+    ) {
+      return 2;
+    }
+
+    // 3º: Reservas Concluídas
+    if (
+      jaReserva ||
+      statusUpper === 'CONCLUIDO' ||
+      statusUpper === 'CONCLUIDA' ||
+      statusUpper === 'RESERVADO' ||
+      statusUpper === 'RESERVA_CRIADA'
+    ) {
+      return 3;
+    }
+
+    // 4º: Outros (Cancelados, Expirados, etc.)
+    return 4;
+  };
+
+  const compararPorPrioridade = (a: CadastroFnrh, b: CadastroFnrh): number => {
+    const prioA = obterPrioridadeStatus(a);
+    const prioB = obterPrioridadeStatus(b);
+
+    if (prioA !== prioB) {
+      return prioA - prioB;
+    }
+
+    // Desempate: cadastroid DESC (mais recentes no topo de cada grupo)
+    return Number(b.cadastroid || 0) - Number(a.cadastroid || 0);
+  };
+
+  // Lista Filtrada e Ordenada por Prioridade Estrita
   const cadastrosFiltrados = useMemo(() => {
-    return cadastros.filter((c) => {
+    const filtrados = cadastros.filter((c) => {
       // Filtro de busca
       if (busca.trim()) {
         const termo = busca.toLowerCase();
@@ -527,7 +588,30 @@ Qualquer dúvida, estamos à disposição!`;
 
       return true;
     });
+
+    return filtrados.sort(compararPorPrioridade);
   }, [cadastros, busca, filtroStatus, reservas, hospedes]);
+
+  // Paginação: 15 itens por página
+  const totalPaginas = Math.max(1, Math.ceil(cadastrosFiltrados.length / ITENS_POR_PAGINA));
+
+  // Reset de página ao alterar busca ou filtro
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [busca, filtroStatus]);
+
+  // Ajusta a página atual caso diminua o total de páginas
+  useEffect(() => {
+    if (paginaAtual > totalPaginas) {
+      setPaginaAtual(totalPaginas);
+    }
+  }, [totalPaginas, paginaAtual]);
+
+  // 4. Renderize a lista utilizando a variável paginada cadastrosPaginados
+  const cadastrosPaginados = useMemo(() => {
+    const inicio = (paginaAtual - 1) * ITENS_POR_PAGINA;
+    return cadastrosFiltrados.slice(inicio, inicio + ITENS_POR_PAGINA);
+  }, [cadastrosFiltrados, paginaAtual]);
 
   // Renderiza a tag de status visual
   const renderizarStatusBadge = (c: CadastroFnrh) => {
@@ -759,7 +843,8 @@ Qualquer dúvida, estamos à disposição!`;
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold">
@@ -774,7 +859,7 @@ Qualquer dúvida, estamos à disposição!`;
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {cadastrosFiltrados.map((item) => {
+                {cadastrosPaginados.map((item) => {
                   const diasRestantes = item.token_expira_em
                     ? Math.ceil((new Date(item.token_expira_em).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
                     : 0;
@@ -998,7 +1083,41 @@ Qualquer dúvida, estamos à disposição!`;
               </tbody>
             </table>
           </div>
-        )}
+
+          {/* Componente de Paginação */}
+          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            <span>
+              Exibindo <strong>{Math.min((paginaAtual - 1) * ITENS_POR_PAGINA + 1, cadastrosFiltrados.length)}</strong> a{' '}
+              <strong>{Math.min(paginaAtual * ITENS_POR_PAGINA, cadastrosFiltrados.length)}</strong> de{' '}
+              <strong>{cadastrosFiltrados.length}</strong> cadastros (Página <strong>{paginaAtual}</strong> de{' '}
+              <strong>{totalPaginas}</strong>)
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPaginaAtual((p) => Math.max(1, p - 1))}
+                disabled={paginaAtual === 1}
+                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                title="Página anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-2.5 py-1 rounded-md bg-white border border-slate-200 font-bold text-slate-800 text-xs">
+                {paginaAtual} / {totalPaginas}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPaginaAtual((p) => Math.min(totalPaginas, p + 1))}
+                disabled={paginaAtual === totalPaginas}
+                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                title="Próxima página"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       </div>
 
       {/* Modal de Geração de Novo Link */}
