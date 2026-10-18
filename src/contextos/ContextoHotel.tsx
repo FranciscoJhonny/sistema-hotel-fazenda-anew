@@ -155,7 +155,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const [quartosResult, reservasResult, hospedesResult, produtosResult, vendasResult, pacotesResult, usuariosResult, configuracaoResult, consumosResult, pagamentosResult] = await Promise.all([
         client.from('quarto').select('*').eq('ativo', true),
-        client.from('reserva').select('*'),
+        client.from('reserva').select('*, quarto:quartoid(categoria, numero, codigoidentificador)'),
         client.from('hospede').select('*').eq('ativo', true).order('nomecompleto', { ascending: true }),
         client.from('produto').select('*').eq('ativo', true),
         client.from('venda').select('*'),
@@ -171,14 +171,15 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!reservasResult.error && reservasResult.data) {
         const reservasComQuartos = reservasResult.data.map((reserva: any) => {
-          const quarto = quartosResult.data?.find((q: any) => q.quartoid === reserva.quartoid);
+          const quartoRel = reserva.quarto;
+          const quarto = quartoRel || quartosResult.data?.find((q: any) => q.quartoid === reserva.quartoid);
           const hospede = hospedesResult.data?.find((h: any) => Number(h.hospedeid) === Number(reserva.hospedeid));
           return {
             ...reserva,
             statusreserva: normalizarStatusReserva(reserva.statusreserva ?? reserva.status),
-            quartonumero: quarto?.numero || 'N/A',
+            quartonumero: quarto?.numero || quartoRel?.numero || 'N/A',
             quartocodigo: quarto?.codigoidentificador || quarto?.numero || 'N/A',
-            quartocategoria: quarto?.categoria || 'N/A',
+            quartocategoria: quarto?.categoria || quartoRel?.categoria || 'N/A',
             hospedenome: hospede?.nomecompleto || 'Hóspede não encontrado',
             hospedetelefone: hospede?.telefone || '',
             hospedeemail: hospede?.email || '',
@@ -579,7 +580,10 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       dataoperacao: agora, usuariooperacao: usuarioAtual?.usuarioid, naturezaoperacao: 'UPDATE',
     };
 
-    if (client) await client.from('reserva').update(dadosAtualizados).eq('reservaid', id);
+    // Remove campos virtuais/relacionais que não existem na tabela física 'reserva'
+    const { quartocategoria, quartonumero, quartocodigo, hospedenome, hospedetelefone, hospedeemail, quarto, ...dadosBanco } = dadosAtualizados as any;
+
+    if (client) await client.from('reserva').update(dadosBanco).eq('reservaid', id);
     setReservas(prev => prev.map(r => String(r.reservaid) === String(id) ? { ...r, ...dadosAtualizados } : r) as Reserva[]);
     return { sucesso: true, mensagem: 'Reserva atualizada com sucesso.' };
   };
@@ -660,11 +664,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const obsNova = `${reserva.observacoes || ''} [Troca de Quarto em ${dataHoraStr}: Quarto #${nomeQuartoAnt} -> Quarto #${nomeQuartoNovo}${motivo ? ' (' + motivo + ')' : ''}]`;
 
-    const dadosAtualizacaoReserva = {
+    const dadosAtualizacaoBanco = {
       quartoid: novoQuarto.quartoid,
-      quartonumero: novoQuarto.numero,
-      quartocodigo: novoQuarto.codigoidentificador,
-      quartocategoria: novoQuarto.categoria,
       observacoes: obsNova,
       dataoperacao: agora,
       usuariooperacao: usuarioAtual?.usuarioid,
@@ -672,8 +673,15 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     if (client) {
-      await client.from('reserva').update(dadosAtualizacaoReserva).eq('reservaid', reservaId);
+      await client.from('reserva').update(dadosAtualizacaoBanco).eq('reservaid', reservaId);
     }
+
+    const dadosAtualizacaoReserva = {
+      ...dadosAtualizacaoBanco,
+      quartonumero: novoQuarto.numero,
+      quartocodigo: novoQuarto.codigoidentificador,
+      quartocategoria: novoQuarto.categoria,
+    };
 
     setReservas((prev) =>
       prev.map((r) => (String(r.reservaid) === String(reservaId) ? { ...r, ...dadosAtualizacaoReserva } : r))

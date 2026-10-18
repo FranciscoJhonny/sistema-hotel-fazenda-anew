@@ -298,7 +298,7 @@ export const PaginaMapaReservas: React.FC = () => {
         hospedenome: hospede?.nomecompleto || `Hóspede #${reserva.hospedeid}`,
         hospedetelefone: hospede?.telefone || hospede?.whatsapp || reserva.hospedetelefone || '',
         quartonumero: quarto?.codigoidentificador || quarto?.numero || reserva.quartonumero || '',
-        quartocategoria: quarto?.categoria || reserva.quartocategoria || '',
+        quartocategoria: quarto?.categoria || '',
       };
     });
   }, [reservas, busca, hospedeMap, quartos]);

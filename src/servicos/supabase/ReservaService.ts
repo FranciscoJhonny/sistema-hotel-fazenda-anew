@@ -24,9 +24,10 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
   }
 
   public override async criar(reserva: Partial<Reserva>): Promise<ResultadoSupabase<Reserva>> {
-    const dataReserva = reserva.datareserva || new Date().toISOString().slice(0, 10);
+    const { quartocategoria, quartonumero, quartocodigo, hospedenome, hospedetelefone, hospedeemail, quarto, ...dadosLimpos } = reserva as any;
+    const dataReserva = dadosLimpos.datareserva || new Date().toISOString().slice(0, 10);
     const dados = {
-      ...reserva,
+      ...dadosLimpos,
       datareserva: dataReserva,
     };
     const res = await super.criar(dados);
@@ -37,6 +38,11 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
     return res;
   }
 
+  public override async atualizar(id: number | string, reserva: Partial<Reserva>): Promise<ResultadoSupabase<Reserva>> {
+    const { quartocategoria, quartonumero, quartocodigo, hospedenome, hospedetelefone, hospedeemail, quarto, ...dadosBanco } = reserva as any;
+    return super.atualizar(id, dadosBanco);
+  }
+
   public async obterPorCodigo(codigo: string): Promise<ResultadoSupabase<Reserva>> {
     const client = this.getClient();
     if (!client) return { sucesso: false, erro: 'Supabase não conectado.' };
@@ -44,7 +50,7 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
     try {
       const { data, error } = await client
         .from('reserva')
-        .select('*')
+        .select('*, quarto:quartoid(categoria, numero, codigoidentificador)')
         .eq('codigo', codigo)
         .maybeSingle();
 
@@ -64,7 +70,7 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
     try {
       const { data, error } = await client
         .from('reserva')
-        .select('*')
+        .select('*, quarto:quartoid(categoria, numero, codigoidentificador)')
         .eq('quartoid', quartoId)
         .eq('ativo', true)
         .order('dataentrada', { ascending: false });
@@ -83,7 +89,7 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
     try {
       const { data, error } = await client
         .from('reserva')
-        .select('*')
+        .select('*, quarto:quartoid(categoria, numero, codigoidentificador)')
         .eq('hospedeid', hospedeId)
         .eq('ativo', true)
         .order('dataentrada', { ascending: false });
@@ -102,7 +108,7 @@ export class ReservaService extends BaseService<Reserva> implements IReservaServ
     try {
       const { data, error } = await client
         .from('reserva')
-        .select('*')
+        .select('*, quarto:quartoid(categoria, numero, codigoidentificador)')
         .eq('ativo', true)
         .gte('datasaida', dataInicio)
         .lte('dataentrada', dataFim)

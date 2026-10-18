@@ -1,13 +1,10 @@
 import {
   ArrowUpRight,
   Download,
-  Receipt,
   TrendingUp,
   AlertCircle,
   Calendar,
   LoaderCircle,
-  CheckCircle2,
-  Clock,
   RefreshCw,
   Users
 } from 'lucide-react';
@@ -17,7 +14,6 @@ import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { Pagamento, Reserva, ConsumoExtra } from '../tipos';
 import * as XLSX from 'xlsx-js-style';
 
-// Formatação legível e discriminada por forma de pagamento e parcelamento
 const formatarNomePagamento = (forma: string, parcelas?: number) => {
   const parcelaTexto = parcelas && Number(parcelas) > 1 ? ` (${parcelas}x)` : '';
   switch (forma) {
@@ -30,7 +26,6 @@ const formatarNomePagamento = (forma: string, parcelas?: number) => {
   }
 };
 
-// Formata lista discriminada de pagamentos (Ex: "PIX: R$ 150,00 | Crédito (3x): R$ 350,00")
 const formatarDiscriminacaoPagamentos = (lista: Pagamento[]) => {
   if (!lista || lista.length === 0) return '';
   return lista
@@ -144,15 +139,11 @@ export const PaginaFinanceiro: React.FC = () => {
         (p) => p.tipolancamento === 'SALDO_RESERVA' || p.tipolancamento === 'CONSUMO_EXTRA'
       );
       const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-
-      // Discriminação exata com parcelas e valores
       const pagtoCheckoutDetalhado = formatarDiscriminacaoPagamentos(pagamentosCheckout);
 
-      // Rastrear pagamento exclusivo de consumo (quando pago separado)
       const pagamentosExtras = pagamentosDaReserva.filter((p) => p.tipolancamento === 'CONSUMO_EXTRA');
       const pagtoExtrasSeparado = formatarDiscriminacaoPagamentos(pagamentosExtras);
 
-      // Se foi pago separado, mostra a discriminação do consumo. Se foi junto no checkout, aponta acerto consolidado.
       const pagtoLojinha = valorLojinha > 0
         ? (pagtoExtrasSeparado || (reserva.statusreserva === 'CONCLUIDA' ? (pagtoCheckoutDetalhado || 'Liquidado no Checkout') : 'Pendente'))
         : '';
@@ -161,12 +152,12 @@ export const PaginaFinanceiro: React.FC = () => {
         ? (pagtoExtrasSeparado || (reserva.statusreserva === 'CONCLUIDA' ? (pagtoCheckoutDetalhado || 'Liquidado no Checkout') : 'Pendente'))
         : '';
 
-      // Total financeiro realizado no banco
+      const totalHospedagem = Number(reserva.valortotal || 0);
       const totalGeral = valorReservaPago + valorCheckoutPago;
+      const saldoPendente = Number(reserva.saldo !== undefined ? reserva.saldo : Math.max(0, totalHospedagem - valorReservaPago));
 
-      // Status
       let status = 'PENDENTE';
-      if (reserva.statusreserva === 'CONCLUIDA' && Number(reserva.saldo || 0) <= 0.01) {
+      if (reserva.statusreserva === 'CONCLUIDA' && saldoPendente <= 0.01) {
         status = 'PAGO';
       } else if (Number(reserva.valorpago || 0) > 0 || valorCheckoutPago > 0) {
         status = 'PARCIAL';
@@ -177,29 +168,33 @@ export const PaginaFinanceiro: React.FC = () => {
       const totalHospedesReserva = Math.max(adultosReserva + criancasReserva, 1);
 
       return {
-        quarto: quarto?.codigoidentificador || reserva.quartonumero || '',
+        quarto: quarto?.codigoidentificador || reserva.quartocodigo || reserva.quartonumero || '',
         codigo: reserva.codigo,
-        hospede: reserva.hospedenome,
+        hospede: reserva.hospedenome || 'Hóspede',
         adultos: adultosReserva,
         criancas: criancasReserva,
-        dataReserva: reserva.datareserva,
         dataEntrada: reserva.dataentrada,
         dataSaida: reserva.datasaida,
+        totalHospedagem: totalHospedagem,
+        dataReserva: reserva.datareserva || reserva.datainclusao || reserva.dataentrada,
         valorReserva: valorReservaPago,
         pagtoReserva: pagtoReservaDetalhado,
-        produtosLojinha: produtosLojinhaConcat,
-        valorLojinha: valorLojinha,
-        pagtoLojinha: pagtoLojinha,
-        produtosBar: produtosBarConcat,
         valorBar: valorBar,
         pagtoBar: pagtoBar,
+        produtosBar: produtosBarConcat,
+        valorLojinha: valorLojinha,
+        pagtoLojinha: pagtoLojinha,
+        produtosLojinha: produtosLojinhaConcat,
         valorCheckout: valorCheckoutPago,
         pagtoCheckout: pagtoCheckoutDetalhado,
         total: totalGeral,
+        saldoPendente: saldoPendente,
         totalHospedes: totalHospedesReserva,
         status: status,
+        observacoes: reserva.observacoes || '',
+        observacoes_checkout: reserva.observacoes_checkout || '',
       };
-    }).sort((a, b) => new Date(b.dataEntrada).getTime() - new Date(a.dataEntrada).getTime());
+    }).sort((a, b) => String(a.quarto || '').localeCompare(String(b.quarto || ''), undefined, { numeric: true, sensitivity: 'base' }));
   }, [reservasDoPeriodo, consumosDessasReservas, pagamentosDoPeriodo, quartos]);
 
   // 4. CÁLCULOS FINANCEIROS GERAIS
@@ -212,20 +207,20 @@ export const PaginaFinanceiro: React.FC = () => {
     const totalVendasBar = resumoReservas.reduce((acc, r) => acc + Number(r.valorBar || 0), 0);
     const totalSinalReserva = resumoReservas.reduce((acc, r) => acc + Number(r.valorReserva || 0), 0);
     const totalSaldoReserva = resumoReservas.reduce((acc, r) => acc + Number(r.valorCheckout || 0), 0);
+    const totalHospedagem = resumoReservas.reduce((acc, r) => acc + Number(r.totalHospedagem || 0), 0);
     const totalHospedes = resumoReservas.reduce((acc, r) => acc + Number(r.totalHospedes || 0), 0);
     const totalAdultos = resumoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
 
     const receitaTotalRealizada = totalSinalReserva + totalSaldoReserva;
 
-    const totalSaldosPendentes = reservasDoPeriodo
-      .filter((r) => Number(r.saldo || 0) > 0)
-      .reduce((acc, r) => acc + Number(r.saldo || 0), 0);
+    const totalSaldosPendentes = resumoReservas.reduce((acc, r) => acc + Number(r.saldoPendente || 0), 0);
 
     return {
       receitaTotalRealizada,
       totalSinalReserva,
       totalSaldoReserva,
+      totalHospedagem,
       totalVendasLoja,
       totalVendasBar,
       totalConsumosFrigobar,
@@ -234,9 +229,9 @@ export const PaginaFinanceiro: React.FC = () => {
       totalAdultos,
       totalCriancas,
     };
-  }, [consumosDessasReservas, reservasDoPeriodo, resumoReservas]);
+  }, [consumosDessasReservas, resumoReservas]);
 
-  // 5. EXPORTAÇÃO EXCEL COM TODAS AS 18 COLUNAS ALINHADAS E DETALHADAS
+  // 5. EXPORTAÇÃO EXCEL
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
@@ -249,232 +244,253 @@ export const PaginaFinanceiro: React.FC = () => {
     const titulo = 'HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO';
     const periodo = `Período: ${formatarData(dataInicioFiltro || '')} a ${formatarData(dataFimFiltro || '')}`;
 
-    // CABEÇALHO COMPLETO (18 colunas: A a R)
-    wsData.push([titulo]);
-    wsData.push([periodo]);
-    wsData.push([
+    const colunas = [
       'Nº Quarto',
       'Nome do Hóspede',
       'Adultos',
       'Crianças',
       'Data Entrada',
       'Data Saída',
+      'Total da Hospedagem (R$)',
       'Data Reserva',
       'Valor Reserva (R$)',
-      'Pag. Reserva (Detalhado)',
-      'Produtos (Loja)',
-      'Valor Loja (R$)',
-      'Pag. Loja',
-      'Produtos (Bar)',
+      'Pag. Reserva',
       'Valor Bar (R$)',
+      'Produtos (Bar)',
       'Pag. Bar',
+      'Valor Loja (R$)',
+      'Produtos (Loja)',
+      'Pag. Loja',
       'Valor Check-out (R$)',
-      'Pag. Check-out (Detalhado c/ Parcelas)',
+      'Pag. Check-out',
       'Total Geral (R$)',
-    ]);
+      'Saldo Pendente (R$)',
+      'Status'
+    ];
 
-    let totalValorReserva = 0;
-    let totalValorLoja = 0;
-    let totalValorBar = 0;
-    let totalValorCheckout = 0;
-    let totalGeral = 0;
-    let totalAdultosExcel = 0;
-    let totalCriancasExcel = 0;
+    wsData.push([titulo]);
+    wsData.push([periodo]);
+    wsData.push(colunas);
 
-    resumoReservas.forEach((resumo) => {
+    resumoReservas.forEach((r) => {
       wsData.push([
-        resumo.quarto,
-        resumo.hospede,
-        resumo.adultos,
-        resumo.criancas,
-        formatarData(resumo.dataEntrada),
-        formatarData(resumo.dataSaida),
-        formatarData(resumo.dataReserva || ''),
-        Number(resumo.valorReserva || 0),
-        resumo.pagtoReserva || '',
-        resumo.produtosLojinha || '',
-        Number(resumo.valorLojinha || 0),
-        resumo.pagtoLojinha || '',
-        resumo.produtosBar || '',
-        Number(resumo.valorBar || 0),
-        resumo.pagtoBar || '',
-        Number(resumo.valorCheckout || 0),
-        resumo.pagtoCheckout || '',
-        Number(resumo.total || 0),
+        r.quarto,
+        r.hospede,
+        r.adultos,
+        r.criancas,
+        formatarData(r.dataEntrada),
+        formatarData(r.dataSaida),
+        Number(r.totalHospedagem || 0),
+        formatarData(r.dataReserva || ''),
+        Number(r.valorReserva || 0),
+        r.pagtoReserva || '',
+        Number(r.valorBar || 0),
+        r.produtosBar || '',
+        r.pagtoBar || '',
+        Number(r.valorLojinha || 0),
+        r.produtosLojinha || '',
+        r.pagtoLojinha || '',
+        Number(r.valorCheckout || 0),
+        r.pagtoCheckout || '',
+        Number(r.total || 0),
+        Number(r.saldoPendente || 0),
+        r.status
       ]);
-
-      totalAdultosExcel += Number(resumo.adultos || 0);
-      totalCriancasExcel += Number(resumo.criancas || 0);
-      totalValorReserva += Number(resumo.valorReserva || 0);
-      totalValorLoja += Number(resumo.valorLojinha || 0);
-      totalValorBar += Number(resumo.valorBar || 0);
-      totalValorCheckout += Number(resumo.valorCheckout || 0);
-      totalGeral += Number(resumo.total || 0);
     });
 
-    // LINHA TOTAL GERAL
-    const linhaTotalIndex = wsData.length;
+    const totalRowIdx = wsData.length;
     wsData.push([
-      'Total Geral',        // A (0)
-      '',                   // B (1)
-      totalAdultosExcel,    // C (2) - Adultos
-      totalCriancasExcel,   // D (3) - Crianças
-      '',                   // E (4)
-      '',                   // F (5)
-      '',                   // G (6)
-      totalValorReserva,    // H (7) - Vlr Reserva
-      '',                   // I (8)
-      '',                   // J (9)
-      totalValorLoja,       // K (10) - Vlr Loja
-      '',                   // L (11)
-      '',                   // M (12)
-      totalValorBar,        // N (13) - Vlr Bar
-      '',                   // O (14)
-      totalValorCheckout,   // P (15) - Vlr Checkout
-      '',                   // Q (16)
-      totalGeral,           // R (17) - Total Geral
+      'Total Geral',
+      '',
+      analytics.totalAdultos,
+      analytics.totalCriancas,
+      '',
+      '',
+      analytics.totalHospedagem,
+      '',
+      analytics.totalSinalReserva,
+      '',
+      analytics.totalVendasBar,
+      '',
+      '',
+      analytics.totalVendasLoja,
+      '',
+      '',
+      analytics.totalSaldoReserva,
+      '',
+      analytics.receitaTotalRealizada,
+      analytics.totalSaldosPendentes,
+      ''
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    // LARGURAS EXPANDIDAS PARA CABER A DISCRIMINAÇÃO
-    ws['!cols'] = [
-      { wch: 10 }, // A Nº Quarto
-      { wch: 28 }, // B Nome
-      { wch: 9 },  // C Adultos
-      { wch: 9 },  // D Crianças
-      { wch: 11 }, // E Data Entrada
-      { wch: 11 }, // F Data Saída
-      { wch: 11 }, // G Data Reserva
-      { wch: 18 }, // H Valor Reserva
-      { wch: 30 }, // I Pag. Reserva Detalhado
-      { wch: 35 }, // J Produtos Loja
-      { wch: 15 }, // K Valor Loja
-      { wch: 25 }, // L Pag. Loja
-      { wch: 35 }, // M Produtos Bar
-      { wch: 15 }, // N Valor Bar
-      { wch: 25 }, // O Pag. Bar
-      { wch: 18 }, // P Valor Checkout
-      { wch: 40 }, // Q Pag. Checkout Detalhado
-      { wch: 19 }, // R Total Geral
-    ];
-
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 17 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 17 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colunas.length - 1 } },
     ];
 
-    const COR_TITULO = '2E5A27';
-    const COR_CABECALHO = '4A7C59';
-    const COR_ZEBRA = 'F2F6F0';
-    const COR_BORDA = '6B8066';
-    const COR_TOTAL = '375623';
+    const COR_TITULO = '1E4620';
+    const COR_PERIODO = '2E5D31';
+    const COR_CABECALHO = '3D7241';
+    const COR_TOTAL = '1E4620';
+    const COR_ZEBRA = 'F9FAF9';
     const BRANCO = 'FFFFFF';
     const PRETO = '000000';
 
-    const bordaFina = {
-      top: { style: 'thin', color: { rgb: COR_BORDA } },
-      bottom: { style: 'thin', color: { rgb: COR_BORDA } },
-      left: { style: 'thin', color: { rgb: COR_BORDA } },
-      right: { style: 'thin', color: { rgb: COR_BORDA } },
+    const borderThinGray = {
+      top: { style: 'thin', color: { rgb: 'D1D5DB' } },
+      bottom: { style: 'thin', color: { rgb: 'D1D5DB' } },
+      left: { style: 'thin', color: { rgb: 'D1D5DB' } },
+      right: { style: 'thin', color: { rgb: 'D1D5DB' } },
     };
 
-    const fonteBase = { name: 'Calibri', sz: 11, color: { rgb: PRETO } };
     const formatoMoeda = '[$R$-pt-BR] #,##0.00;[$R$-pt-BR] #,##0.00;[$R$-pt-BR] -';
 
-    // Título
-    for (let c = 0; c < 18; c++) {
-      const addr = XLSX.utils.encode_col(c) + '1';
+    // Linha 1 (Título)
+    for (let c = 0; c < colunas.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
       ws[addr].s = {
         fill: { fgColor: { rgb: COR_TITULO } },
-        font: { name: 'Calibri', sz: 16, bold: true, color: { rgb: BRANCO } },
+        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: BRANCO } },
         alignment: { horizontal: 'center', vertical: 'center' },
       };
     }
 
-    // Período
-    for (let c = 0; c < 18; c++) {
-      const addr = XLSX.utils.encode_col(c) + '2';
+    // Linha 2 (Período)
+    for (let c = 0; c < colunas.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 1, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
       ws[addr].s = {
-        fill: { fgColor: { rgb: COR_CABECALHO } },
-        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: BRANCO } },
+        fill: { fgColor: { rgb: COR_PERIODO } },
+        font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
         alignment: { horizontal: 'center', vertical: 'center' },
       };
     }
 
-    // Cabeçalho
-    for (let c = 0; c < 18; c++) {
-      const addr = XLSX.utils.encode_col(c) + '3';
-      ws[addr].s = {
-        fill: { fgColor: { rgb: COR_CABECALHO } },
-        font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: BRANCO } },
-        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: bordaFina,
-      };
-    }
-
-    // Dados das linhas
-    const primeiraLinhaDadosExcel = 4;
-    const ultimaLinhaDadosExcel = linhaTotalIndex;
-
-    for (let excelRow = primeiraLinhaDadosExcel; excelRow <= ultimaLinhaDadosExcel; excelRow++) {
-      const arrayRow = excelRow - 1;
-      const dados = wsData[arrayRow];
-      if (!dados || dados.length === 0) continue;
-
-      const corFundo = (excelRow - primeiraLinhaDadosExcel) % 2 === 0 ? BRANCO : COR_ZEBRA;
-
-      for (let c = 0; c < 18; c++) {
-        const addr = XLSX.utils.encode_col(c) + excelRow;
-        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
-
-        let horizontal: 'left' | 'center' | 'right' = 'center';
-        if (c === 1 || c === 8 || c === 9 || c === 11 || c === 12 || c === 14 || c === 16) horizontal = 'left';
-        if (c === 7 || c === 10 || c === 13 || c === 15 || c === 17) horizontal = 'right';
-
+    // Linha 3 (Cabeçalhos)
+    for (let c = 0; c < colunas.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 2, c });
+      if (ws[addr]) {
         ws[addr].s = {
-          fill: { fgColor: { rgb: corFundo } },
-          font: fonteBase,
-          alignment: { horizontal, vertical: 'center', wrapText: true },
-          border: bordaFina,
+          fill: { fgColor: { rgb: COR_CABECALHO } },
+          font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+          border: { top: { style: 'thin', color: { rgb: BRANCO } }, bottom: { style: 'thin', color: { rgb: BRANCO } }, left: { style: 'thin', color: { rgb: BRANCO } }, right: { style: 'thin', color: { rgb: BRANCO } } },
         };
-
-        if (c === 7 || c === 10 || c === 13 || c === 15 || c === 17) {
-          ws[addr].z = formatoMoeda;
-        }
       }
     }
 
-    // Total Geral
-    const totalExcelRow = linhaTotalIndex + 1;
-    for (let c = 0; c < 18; c++) {
-      const addr = XLSX.utils.encode_col(c) + totalExcelRow;
+    const colunasMoeda = new Set([6, 8, 10, 13, 16, 18, 19]);
+    const colunasCentro = new Set([0, 2, 3, 4, 5, 7, 20]);
+
+    // Dados das linhas
+    resumoReservas.forEach((r, idx) => {
+      const rowIdx = 3 + idx;
+      const corFundo = idx % 2 === 1 ? COR_ZEBRA : BRANCO;
+
+      for (let c = 0; c < colunas.length; c++) {
+        const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+        const cell = ws[addr];
+        if (!cell) continue;
+
+        let horizontal: 'left' | 'center' | 'right' = 'left';
+        if (colunasMoeda.has(c)) horizontal = 'right';
+        else if (colunasCentro.has(c)) horizontal = 'center';
+
+        cell.s = {
+          fill: { fgColor: { rgb: corFundo } },
+          font: { name: 'Arial', sz: 10, color: { rgb: PRETO } },
+          alignment: { horizontal, vertical: 'center', wrapText: true },
+          border: borderThinGray,
+        };
+
+        if (colunasMoeda.has(c)) {
+          cell.z = formatoMoeda;
+        }
+      }
+
+      if (r.observacoes) {
+        const refReserva = XLSX.utils.encode_cell({ r: rowIdx, c: 8 });
+        const celula = ws[refReserva];
+        if (celula) {
+          celula.c = [{
+            a: 'Kevin Jhonny Prestes Maia',
+            t: r.observacoes,
+            r: `<r><rPr><b/><sz val="9"/></rPr><t>Kevin Jhonny Prestes Maia:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes}</t></r>`,
+            T: true,
+            hidden: true,
+          }];
+        }
+      }
+
+      if (r.observacoes_checkout) {
+        const refCheckout = XLSX.utils.encode_cell({ r: rowIdx, c: 16 });
+        const celula = ws[refCheckout];
+        if (celula) {
+          celula.c = [{
+            a: 'Kevin Jhonny Prestes Maia',
+            t: r.observacoes_checkout,
+            r: `<r><rPr><b/><sz val="9"/></rPr><t>Kevin Jhonny Prestes Maia:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes_checkout}</t></r>`,
+            T: true,
+            hidden: true,
+          }];
+        }
+      }
+    });
+
+    // Linha Final de Totais
+    for (let c = 0; c < colunas.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: totalRowIdx, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+
+      let horizontal: 'left' | 'center' | 'right' = 'center';
+      if (colunasMoeda.has(c)) horizontal = 'right';
 
       ws[addr].s = {
         fill: { fgColor: { rgb: COR_TOTAL } },
-        font: { name: 'Calibri', sz: 13, bold: true, color: { rgb: BRANCO } },
-        alignment: {
-          horizontal: c === 0 || c === 2 || c === 3 ? 'center' : 'right',
-          vertical: 'center',
-          wrapText: false,
-        },
-        border: {
-          top: { style: 'medium', color: { rgb: PRETO } },
-          bottom: { style: 'medium', color: { rgb: PRETO } },
-          left: { style: 'thin', color: { rgb: PRETO } },
-          right: { style: 'thin', color: { rgb: PRETO } },
-        },
+        font: { name: 'Arial', sz: 10, bold: true, color: { rgb: '86EFAC' } },
+        alignment: { horizontal, vertical: 'center' },
+        border: { top: { style: 'thin', color: { rgb: '2E5D31' } }, bottom: { style: 'thin', color: { rgb: '2E5D31' } }, left: { style: 'thin', color: { rgb: '2E5D31' } }, right: { style: 'thin', color: { rgb: '2E5D31' } } },
       };
 
-      if (c === 7 || c === 10 || c === 13 || c === 15 || c === 17) {
+      if (colunasMoeda.has(c)) {
         ws[addr].z = formatoMoeda;
       }
     }
 
-    ws['!rows'] = [{ hpt: 27 }, { hpt: 22 }, { hpt: 35 }];
+    ws['!cols'] = colunas.map((col, c) => {
+      let maxLen = col.length;
+      resumoReservas.forEach((r) => {
+        let val = '';
+        if (c === 0) val = String(r.quarto || '');
+        else if (c === 1) val = String(r.hospede || '');
+        else if (c === 2) val = String(r.adultos || '');
+        else if (c === 3) val = String(r.criancas || '');
+        else if (c === 4) val = formatarData(r.dataEntrada);
+        else if (c === 5) val = formatarData(r.dataSaida);
+        else if (c === 6) val = `R$ ${Number(r.totalHospedagem || 0).toFixed(2)}`;
+        else if (c === 7) val = formatarData(r.dataReserva || '');
+        else if (c === 8) val = `R$ ${Number(r.valorReserva || 0).toFixed(2)}`;
+        else if (c === 9) val = String(r.pagtoReserva || '');
+        else if (c === 10) val = `R$ ${Number(r.valorBar || 0).toFixed(2)}`;
+        else if (c === 11) val = String(r.produtosBar || '');
+        else if (c === 12) val = String(r.pagtoBar || '');
+        else if (c === 13) val = `R$ ${Number(r.valorLojinha || 0).toFixed(2)}`;
+        else if (c === 14) val = String(r.produtosLojinha || '');
+        else if (c === 15) val = String(r.pagtoLojinha || '');
+        else if (c === 16) val = `R$ ${Number(r.valorCheckout || 0).toFixed(2)}`;
+        else if (c === 17) val = String(r.pagtoCheckout || '');
+        else if (c === 18) val = `R$ ${Number(r.total || 0).toFixed(2)}`;
+        else if (c === 19) val = `R$ ${Number(r.saldoPendente || 0).toFixed(2)}`;
+        else if (c === 20) val = String(r.status || '');
+        if (val.length > maxLen) maxLen = val.length;
+      });
+      return { wch: Math.max(maxLen + 3, 12) };
+    });
+
+    ws['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 28 }];
     ws['!freeze'] = { xSplit: 0, ySplit: 3 };
 
     XLSX.utils.book_append_sheet(wb, ws, 'Relatório Financeiro');
@@ -500,18 +516,6 @@ export const PaginaFinanceiro: React.FC = () => {
       setUsarFiltroData(true);
       setTimeout(() => setCarregando(false), 400);
     }
-  };
-
-  const getCorStatus = (status: string) => {
-    if (status === 'PAGO') return 'bg-[#e6f4ea] text-[#137333] border border-[#b8f0c2]';
-    if (status === 'PARCIAL') return 'bg-[#fff8e1] text-[#b58900] border border-[#ffe088]';
-    return 'bg-[#ffdad6] text-[#93000a] border border-[#f1a9a3]';
-  };
-
-  const getIconeStatus = (status: string) => {
-    if (status === 'PAGO') return <CheckCircle2 className="w-3.5 h-3.5" />;
-    if (status === 'PARCIAL') return <Clock className="w-3.5 h-3.5" />;
-    return <AlertCircle className="w-3.5 h-3.5" />;
   };
 
   return (
@@ -661,9 +665,9 @@ export const PaginaFinanceiro: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid: Tabela Detalhada com Quebra de Linha em Múltiplos Pagamentos */}
+      {/* Grid: Tabela com ordenação idêntica ao Macro Financeiro + colunas detalhadas */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl shadow-xs overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#c1c9bf] flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[#c1c9bf] flex items-center justify-between">
           <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d]">
             Resumo Financeiro por Reserva
           </h3>
@@ -672,80 +676,105 @@ export const PaginaFinanceiro: React.FC = () => {
           </span>
         </div>
 
-        {resumoReservas.length === 0 ? (
-          <div className="p-12 text-center text-[#717971]">
-            <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-semibold text-sm text-[#191c1d]">Nenhuma reserva encontrada</p>
-            <p className="text-xs mt-1">Nenhum registro para os critérios informados.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[#f8f9fa] border-b border-[#c1c9bf] text-[#414941] font-semibold uppercase text-[10px]">
+        <div className="p-5 space-y-4">
+          {/* Container com moldura idêntica à Imagem 1 */}
+          <div className="w-full overflow-x-auto rounded-xl border border-[#e1e3e4] shadow-2xs">
+            <table className="w-full min-w-[1350px] text-left text-[11px] leading-tight">
+              <thead className="bg-[#f8f9fa] border-b border-[#e1e3e4] text-[#414941] font-bold uppercase text-[10px]">
                 <tr>
-                  <th className="py-3 px-3 whitespace-nowrap">Quarto</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Hóspede</th>
-                  <th className="py-3 px-3 text-center whitespace-nowrap">Adultos</th>
-                  <th className="py-3 px-3 text-center whitespace-nowrap">Crianças</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Entrada</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Saída</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Data Res.</th>
-                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Reserva</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Pag. Reserva</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Produtos Lojinha</th>
-                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Lojinha</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Pag. Lojinha</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Produtos Bar</th>
-                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Bar</th>
-                  <th className="py-3 px-3 whitespace-nowrap">Pag. Bar</th>
-                  <th className="py-3 px-3 text-right whitespace-nowrap">Vlr. Check-out</th>
-                  <th className="py-3 px-3 whitespace-nowrap min-w-[200px]">Pag. Check-out (Detalhes)</th>
-                  <th className="py-3 px-3 text-right whitespace-nowrap">Total Pago</th>
-                  <th className="py-3 px-3 text-center whitespace-nowrap">Status</th>
+                  {/* 1. QUARTO NA PRIMEIRA COLUNA */}
+                  <th className="py-2.5 px-2 text-center whitespace-nowrap w-16">Quarto</th>
+                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[180px]">Hóspede</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-12">Ad.</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-12">Cri.</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Entrada</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Saída</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[105px]">Total Hosp.</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Data Res.</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[100px]">Vlr. Res.</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[85px]">Vlr. Bar</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[85px]">Vlr. Loj.</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[105px]">Vlr. Checkout</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[105px]">Total Geral</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[95px]">Sal. Pend.</th>
+
+                  {/* Colunas complementares */}
+                  <th className="py-2.5 px-2 whitespace-nowrap min-w-[120px]">Pag. Reserva</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap min-w-[130px]">Produtos Lojinha</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap min-w-[110px]">Pag. Lojinha</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap min-w-[130px]">Produtos Bar</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap min-w-[110px]">Pag. Bar</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap min-w-[180px]">Pag. Check-out (Detalhes)</th>
+                  <th className="py-2.5 px-2 text-center whitespace-nowrap w-20">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e1e3e4] text-[#191c1d]">
-                {resumoReservas.map((resumo, indice) => (
-                  <tr
-                    key={indice}
-                    className={`hover:bg-[#f8f9fa] transition-colors ${resumo.valorCheckout > 0 ? 'bg-[#e6f4ea]/20' : ''}`}
-                  >
-                    <td className="py-3 px-3 font-bold text-[#053d1e]">{resumo.quarto}</td>
-                    <td className="py-3 px-3 font-medium">{resumo.hospede}</td>
-                    <td className="py-3 px-3 text-center font-semibold">{resumo.adultos}</td>
-                    <td className="py-3 px-3 text-center font-semibold">{resumo.criancas}</td>
-                    <td className="py-3 px-3">{formatarData(resumo.dataEntrada)}</td>
-                    <td className="py-3 px-3">{formatarData(resumo.dataSaida)}</td>
-                    <td className="py-3 px-3">{formatarData(resumo.dataReserva || '')}</td>
-                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorReserva)}</td>
-                    <td className="py-3 px-3">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoReserva ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
-                        {resumo.pagtoReserva || '-'}
-                      </span>
+                {resumoReservas.map((r, indice) => (
+                  <tr key={indice} className="hover:bg-[#f8f9fa] transition-colors">
+                    {/* Célula do Quarto na 1ª posição */}
+                    <td className="py-2 px-2 text-center font-bold text-[#053d1e]">{r.quarto || '-'}</td>
+                    <td className="py-2 px-2 font-semibold truncate max-w-[220px]" title={r.hospede}>{r.hospede}</td>
+                    <td className="py-2 px-1.5 text-center font-bold text-[11px] whitespace-nowrap">{r.adultos}</td>
+                    <td className="py-2 px-1.5 text-center font-bold text-amber-900 text-[11px] whitespace-nowrap">{r.criancas}</td>
+                    <td className="py-2 px-1.5 text-center text-[11px] whitespace-nowrap">{formatarData(r.dataEntrada)}</td>
+                    <td className="py-2 px-1.5 text-center text-[11px] whitespace-nowrap">{formatarData(r.dataSaida)}</td>
+                    <td className="py-2 px-2 text-right font-bold text-[#053d1e] bg-[#e6f4ea]/20 text-[11px] whitespace-nowrap">
+                      {formatarMoeda(r.totalHospedagem)}
                     </td>
-                    <td className="py-3 px-3 max-w-[180px] truncate" title={resumo.produtosLojinha}>
-                      {resumo.produtosLojinha || '-'}
+                    <td className="py-2 px-1.5 text-center text-[#717971] text-[11px] whitespace-nowrap">{formatarData(r.dataReserva || '')}</td>
+                    <td className="py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">
+                      {r.observacoes ? (
+                        <div className="relative group inline-flex items-center gap-1 justify-end cursor-help py-1">
+                          <span className="underline decoration-dotted decoration-amber-600 underline-offset-4">
+                            {formatarMoeda(r.valorReserva)}
+                          </span>
+                          <span className="text-[10px] text-amber-600 select-none">💬</span>
+                          <div className="hidden group-hover:block absolute z-50 right-0 top-full mt-0.5 w-[360px] p-3.5 bg-[#191c1d] text-white text-xs rounded-xl shadow-2xl border border-slate-700 whitespace-pre-wrap break-words text-left leading-relaxed cursor-default before:content-[''] before:absolute before:-top-1.5 before:left-0 before:right-0 before:h-2">
+                            <span className="text-[10px] font-bold text-[#86efac] block mb-1 uppercase tracking-wider">
+                              Observações da Reserva
+                            </span>
+                            <span className="text-slate-200 font-normal">{r.observacoes}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        formatarMoeda(r.valorReserva)
+                      )}
                     </td>
-                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorLojinha)}</td>
-                    <td className="py-3 px-3">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoLojinha && resumo.pagtoLojinha !== '-' ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
-                        {resumo.pagtoLojinha || '-'}
-                      </span>
+                    <td className="py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">{formatarMoeda(r.valorBar)}</td>
+                    <td className="py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">{formatarMoeda(r.valorLojinha)}</td>
+                    <td className="py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">
+                      {r.observacoes_checkout ? (
+                        <div className="relative group inline-flex items-center gap-1 justify-end cursor-help py-1">
+                          <span className="underline decoration-dotted decoration-emerald-600 underline-offset-4">
+                            {formatarMoeda(r.valorCheckout)}
+                          </span>
+                          <span className="text-[10px] text-emerald-600 select-none">💬</span>
+                          <div className="hidden group-hover:block absolute z-50 right-0 top-full mt-0.5 w-[360px] p-3.5 bg-[#191c1d] text-white text-xs rounded-xl shadow-2xl border border-slate-700 whitespace-pre-wrap break-words text-left leading-relaxed cursor-default before:content-[''] before:absolute before:-top-1.5 before:left-0 before:right-0 before:h-2">
+                            <span className="text-[10px] font-bold text-[#86efac] block mb-1 uppercase tracking-wider">
+                              Observações do Check-out
+                            </span>
+                            <span className="text-slate-200 font-normal">{r.observacoes_checkout}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        formatarMoeda(r.valorCheckout)
+                      )}
                     </td>
-                    <td className="py-3 px-3 max-w-[180px] truncate" title={resumo.produtosBar}>
-                      {resumo.produtosBar || '-'}
+                    <td className="py-2 px-2 text-right font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">{formatarMoeda(r.total)}</td>
+                    <td className={`py-2 px-2 text-right font-bold text-[11px] whitespace-nowrap ${r.saldoPendente > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}`}>
+                      {formatarMoeda(r.saldoPendente)}
                     </td>
-                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorBar)}</td>
-                    <td className="py-3 px-3">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${resumo.pagtoBar && resumo.pagtoBar !== '-' ? 'bg-[#e6f4ea] text-[#137333]' : 'bg-[#f3f4f5] text-[#717971]'}`}>
-                        {resumo.pagtoBar || '-'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-right font-semibold">{formatarMoeda(resumo.valorCheckout)}</td>
-                    <td className="py-3 px-3 font-medium">
-                      {resumo.pagtoCheckout ? (
+
+                    {/* Restante das colunas complementares */}
+                    <td className="py-2 px-2 text-slate-700">{r.pagtoReserva || '-'}</td>
+                    <td className="py-2 px-2 max-w-[160px] truncate text-slate-600" title={r.produtosLojinha}>{r.produtosLojinha || '-'}</td>
+                    <td className="py-2 px-2 text-slate-700">{r.pagtoLojinha || '-'}</td>
+                    <td className="py-2 px-2 max-w-[160px] truncate text-slate-600" title={r.produtosBar}>{r.produtosBar || '-'}</td>
+                    <td className="py-2 px-2 text-slate-700">{r.pagtoBar || '-'}</td>
+                    <td className="py-2 px-2 font-medium">
+                      {r.pagtoCheckout ? (
                         <div className="flex flex-col gap-0.5">
-                          {resumo.pagtoCheckout.split(' | ').map((item, idx) => (
+                          {r.pagtoCheckout.split(' | ').map((item, idx) => (
                             <span key={idx} className="inline-block bg-slate-100 text-slate-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-200 w-fit">
                               {item}
                             </span>
@@ -755,44 +784,70 @@ export const PaginaFinanceiro: React.FC = () => {
                         <span className="text-slate-400">-</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-right font-extrabold text-[#053d1e]">{formatarMoeda(resumo.total)}</td>
-                    <td className="py-3 px-3 text-center">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${getCorStatus(resumo.status)}`}>
-                        {getIconeStatus(resumo.status)}
-                        {resumo.status}
+                    <td className="py-2 px-2 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                        r.status === 'PAGO' ? 'bg-[#e6f4ea] text-[#137333] border border-[#b8f0c2]' :
+                        r.status === 'PARCIAL' ? 'bg-[#fff8e1] text-[#b58900] border border-[#ffe088]' :
+                        'bg-[#ffdad6] text-[#93000a] border border-[#f1a9a3]'
+                      }`}>
+                        {r.status}
                       </span>
                     </td>
                   </tr>
                 ))}
+                {resumoReservas.length === 0 && (
+                  <tr>
+                    <td colSpan={21} className="py-12 text-center text-[#717971]">
+                      <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                      <p className="font-semibold text-sm text-[#191c1d]">Nenhuma reserva encontrada</p>
+                      <p className="text-xs mt-1">Nenhum registro para os critérios informados.</p>
+                    </td>
+                  </tr>
+                )}
               </tbody>
               {resumoReservas.length > 0 && (
-                <tfoot className="bg-[#f8f9fa] font-bold text-[#053d1e] border-t-2 border-[#c1c9bf]">
+                <tfoot className="bg-[#e6f4ea]/40 border-t-2 border-[#053d1e] text-[#191c1d] font-bold text-[11px]">
                   <tr>
-                    <td colSpan={2} className="py-3 px-3 text-right">Total do Período:</td>
-                    <td className="py-3 px-3 text-center">{analytics.totalAdultos}</td>
-                    <td className="py-3 px-3 text-center">{analytics.totalCriancas}</td>
-                    <td colSpan={3}></td>
-                    <td className="py-3 px-3 text-right">{formatarMoeda(analytics.totalSinalReserva)}</td>
-                    <td></td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right">{formatarMoeda(analytics.totalVendasLoja)}</td>
-                    <td></td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right">{formatarMoeda(analytics.totalVendasBar)}</td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right">{formatarMoeda(analytics.totalSaldoReserva)}</td>
-                    <td></td>
-                    <td className="py-3 px-3 text-right">{formatarMoeda(analytics.receitaTotalRealizada)}</td>
-                    <td></td>
+                    <td className="py-2.5 px-2 text-center font-extrabold text-[#053d1e]">-</td>
+                    <td className="py-2.5 px-2 font-extrabold uppercase text-[#053d1e] tracking-wider text-[11px] truncate">
+                      Total ({resumoReservas.length})
+                    </td>
+                    <td className="py-2.5 px-1.5 text-center font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">{analytics.totalAdultos}</td>
+                    <td className="py-2.5 px-1.5 text-center font-extrabold text-amber-900 text-[11px] whitespace-nowrap">{analytics.totalCriancas}</td>
+                    <td className="py-2.5 px-1.5 text-center text-[#717971] font-semibold">-</td>
+                    <td className="py-2.5 px-1.5 text-center text-[#717971] font-semibold">-</td>
+                    <td className="py-2.5 px-2 text-right font-extrabold text-[#053d1e] bg-[#e6f4ea]/30 text-[11px] whitespace-nowrap">
+                      {formatarMoeda(analytics.totalHospedagem)}
+                    </td>
+                    <td className="py-2.5 px-1.5 text-center text-[#717971] font-semibold">-</td>
+                    <td className="py-2.5 px-2 text-right font-bold text-[#191c1d] text-[11px] whitespace-nowrap">
+                      {formatarMoeda(analytics.totalSinalReserva)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-bold text-[#191c1d] text-[11px] whitespace-nowrap">
+                      {formatarMoeda(analytics.totalVendasBar)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-bold text-[#191c1d] text-[11px] whitespace-nowrap">
+                      {formatarMoeda(analytics.totalVendasLoja)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-bold text-[#191c1d] text-[11px] whitespace-nowrap">
+                      {formatarMoeda(analytics.totalSaldoReserva)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">
+                      {formatarMoeda(analytics.receitaTotalRealizada)}
+                    </td>
+                    <td className={`py-2.5 px-2 text-right font-extrabold text-[11px] whitespace-nowrap ${analytics.totalSaldosPendentes > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}`}>
+                      {formatarMoeda(analytics.totalSaldosPendentes)}
+                    </td>
+                    <td colSpan={7} className="py-2.5 px-2 text-center text-[#717971] font-semibold">-</td>
                   </tr>
                 </tfoot>
               )}
             </table>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Rodapé: Demonstrativo */}
+      {/* Demonstrativos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-[#e6f4ea] border border-[#b8f0c2] rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-3">

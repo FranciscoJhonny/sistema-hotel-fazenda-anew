@@ -149,8 +149,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         dataentrada: novaDataEntrada,
         datasaida: novaDataSaida,
         quartoid: quartoDestinoId,
-        quartonumero: quartoEscolhido?.codigoidentificador || quartoEscolhido?.numero || reserva.quartonumero,
-        quartocategoria: quartoEscolhido?.categoria || reserva.quartocategoria,
       };
 
       if (reserva.statusreserva === 'CREDITO') {
