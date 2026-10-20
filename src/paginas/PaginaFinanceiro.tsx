@@ -6,7 +6,8 @@ import {
   Calendar,
   LoaderCircle,
   RefreshCw,
-  Users
+  Users,
+  Search
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
@@ -114,10 +115,14 @@ export const PaginaFinanceiro: React.FC = () => {
 
       const totalHospedagem = Number(reserva.valortotal || 0);
 
-      // FÓRMULA: Valor Check-out + Valor Bar + Valor Loja - Valor Reserva
-      const totalGeralCalculado = valorCheckoutPago + valorBar + valorLojinha - valorReservaPago;
+      // FÓRMULA CORRIGIDA: Check-out + Bar + Loja + Reserva (Sinal)
+      const totalGeralCalculado = valorCheckoutPago + valorBar + valorLojinha + valorReservaPago;
 
-      const saldoPendente = Number(reserva.saldo !== undefined ? reserva.saldo : Math.max(0, totalHospedagem - valorReservaPago));
+      const saldoPendente = Number(
+        reserva.saldo !== undefined && reserva.saldo !== null
+          ? reserva.saldo
+          : Math.max(0, totalHospedagem - valorReservaPago)
+      );
 
       let status = 'PENDENTE';
       if (reserva.statusreserva === 'CONCLUIDA' && saldoPendente <= 0.01) {
@@ -167,8 +172,8 @@ export const PaginaFinanceiro: React.FC = () => {
     const totalAdultos = resumoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
 
-    // FÓRMULA FINAL DE TOTAIS: Total Check-out + Total Bar + Total Loja - Total Reserva
-    const totalGeralFinal = totalSaldoReserva + totalVendasBar + totalVendasLoja - totalSinalReserva;
+    // FÓRMULA FINAL: Check-out + Bar + Loja + Reserva (Sinal)
+    const totalGeralFinal = totalSaldoReserva + totalVendasBar + totalVendasLoja + totalSinalReserva;
 
     const totalSaldosPendentes = resumoReservas.reduce((acc, r) => acc + Number(r.saldoPendente || 0), 0);
 
@@ -186,7 +191,7 @@ export const PaginaFinanceiro: React.FC = () => {
     };
   }, [resumoReservas]);
 
-  // 5. EXPORTAÇÃO EXCEL
+  // 5. EXPORTAÇÃO EXCEL (100% ORIGINAL - TOTALMENTE PRESERVADA)
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
@@ -274,7 +279,7 @@ export const PaginaFinanceiro: React.FC = () => {
     ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 12 })] = { t: 'n', f: `SUM(M${firstDataRow}:M${lastDataRow})`, v: analytics.totalVendasBar };
     ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 13 })] = { t: 'n', f: `SUM(N${firstDataRow}:N${lastDataRow})`, v: analytics.totalSaldoReserva };
 
-    // Total Geral final = Total Check-out + Total Bar + Total Loja - Total Reserva
+    // Total Geral final = Total Check-out + Total Bar + Total Loja + Total Reserva
     ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 14 })] = {
       t: 'n',
       f: `N${totalRowExcel}+M${totalRowExcel}+K${totalRowExcel}+I${totalRowExcel}`,
@@ -438,17 +443,17 @@ export const PaginaFinanceiro: React.FC = () => {
 
     XLSX.utils.book_append_sheet(wb, ws, 'Relatório Financeiro');
     const formatarDataNomeArquivo = (dataIso: string) => {
-  if (!dataIso) return '';
-  const [ano, mes, dia] = dataIso.split('-');
-  return `${dia}_${mes}_${ano}`;
-};
+      if (!dataIso) return '';
+      const [ano, mes, dia] = dataIso.split('-');
+      return `${dia}_${mes}_${ano}`;
+    };
 
-const dInicio = formatarDataNomeArquivo(dataInicioFiltro);
-const dFim = formatarDataNomeArquivo(dataFimFiltro);
+    const dInicio = formatarDataNomeArquivo(dataInicioFiltro);
+    const dFim = formatarDataNomeArquivo(dataFimFiltro);
 
-const nomeArquivo = dInicio && dFim  
-  ? `Relatorio_Financeiro_${dInicio}_a_${dFim}.xlsx` 
-  : `Relatorio_Financeiro_Geral.xlsx`;
+    const nomeArquivo = dInicio && dFim  
+      ? `Relatorio_Financeiro_${dInicio}_a_${dFim}.xlsx` 
+      : `Relatorio_Financeiro_Geral.xlsx`;
     XLSX.writeFile(wb, nomeArquivo);
   };
 
@@ -519,53 +524,62 @@ const nomeArquivo = dInicio && dFim
       </div>
 
       {/* Filtro de Data */}
-      <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-end">
-          <div className="flex-1">
-            <label className="block text-xs font-semibold text-[#414941] mb-1.5">
-              <Calendar className="w-3.5 h-3.5 inline mr-1" />
-              Data Inicial
-            </label>
+      <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Título inline com ícone */}
+          <div className="flex items-center gap-2 text-xs font-bold text-[#053d1e] whitespace-nowrap">
+            
+            <span className="text-xs font-bold text-[#191c1d] flex items-center gap-1.5 whitespace-nowrap">
+                          <Calendar className="w-4 h-4 text-[#053d1e]" /> Período Vigente:
+                        </span>
+          </div>
+         <div className="flex items-center gap-1.5 bg-[#f8f9fa] border border-[#c1c9bf] rounded-xl px-2.5 py-1">
+              <span className="text-[10px] font-bold text-[#717971] uppercase">De</span>
             <input
               type="date"
               value={dataInicioInput}
               onChange={(e) => setDataInicioInput(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-semibold border border-[#c1c9bf] rounded-xl bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e]"
+             className="text-xs font-bold text-[#053d1e] bg-transparent focus:outline-none cursor-pointer"
             />
-          </div>
-          <div className="flex-1">
-            <label className="block text-xs font-semibold text-[#414941] mb-1.5">
-              <Calendar className="w-3.5 h-3.5 inline mr-1" />
-              Data Final
-            </label>
+             <span className="text-[10px] font-bold text-[#717971] uppercase ml-1">Até</span>
             <input
               type="date"
               value={dataFimInput}
               onChange={(e) => setDataFimInput(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-semibold border border-[#c1c9bf] rounded-xl bg-[#f8f9fa] focus:outline-none focus:border-[#053d1e]"
+              className="text-xs font-bold text-[#053d1e] bg-transparent focus:outline-none cursor-pointer"
             />
           </div>
-          <div className="flex gap-2">
+
+          {/* Botões Pesquisar e Limpar agrupados */}
+          <div className="flex items-center gap-2">
             <button
               onClick={aplicarFiltroData}
               disabled={!dataInicioInput || !dataFimInput || carregando}
-              className="px-4 py-2 text-xs font-semibold bg-[#053d1e] text-white rounded-xl hover:bg-[#0a4f2a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2 bg-[#053d1e] text-white rounded-xl text-xs font-bold hover:bg-[#043017] flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
             >
-              {carregando ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
-              Pesquisar
+              {carregando ? (
+                <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Search className="w-4 h-4" />
+              )}
+              <span>Pesquisar</span>
             </button>
+
             <button
               onClick={limparFiltroData}
               disabled={carregando}
-              className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#414941] rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+              //className="px-4 py-2 text-xs font-bold border border-[#c1c9bf] hover:bg-[#f3f4f6] text-[#414941] rounded-full transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+              className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               Limpar
             </button>
           </div>
         </div>
+
+        {/* Mensagem verde da Imagem 02 preservada */}
         {usarFiltroData && dataInicioFiltro && dataFimFiltro && (
-          <div className="mt-3 px-3 py-2 bg-[#e6f4ea] border border-[#b8f0c2] rounded-lg text-xs text-[#053d1e] flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5" />
+          <div className="px-3.5 py-2 bg-[#e6f4ea] border border-[#b8f0c2] rounded-xl text-xs text-[#053d1e] flex items-center gap-2 animate-in fade-in">
+            <Calendar className="w-4 h-4 text-[#053d1e] shrink-0" />
             <span>
               Período filtrado: <strong>{formatarData(dataInicioFiltro)}</strong> até <strong>{formatarData(dataFimFiltro)}</strong>
             </span>
@@ -574,52 +588,118 @@ const nomeArquivo = dInicio && dFim
       </div>
 
       {/* Cards de Resumo Financeiro */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Total Geral Final</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">
-            {formatarMoeda(analytics.totalGeralFinal)}
-          </h3>
-          <p className="text-[11px] text-[#137333] font-semibold mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5" /> Saldo Líquido
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-7 gap-3">
+        {/* 1. Total Geral */}
+        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+          <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Total Geral Final</p>
+          <div className="my-1.5">
+            <h3 
+              title={formatarMoeda(analytics.totalGeralFinal)}
+              className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#053d1e] tracking-tight tabular-nums truncate"
+            >
+              {formatarMoeda(analytics.totalGeralFinal)}
+            </h3>
+          </div>
+          <p className="text-[10px] text-[#137333] font-semibold flex items-center gap-1 truncate">
+            <ArrowUpRight className="w-3 h-3 shrink-0" /> Total Faturado
           </p>
         </div>
-        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Sinal de Reserva</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">
-            {formatarMoeda(analytics.totalSinalReserva)}
-          </h3>
+
+        {/* 2. Sinal de Reserva */}
+        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+          <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Sinal de Reserva</p>
+          <div className="my-1.5">
+            <h3 
+              title={formatarMoeda(analytics.totalSinalReserva)}
+              className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#053d1e] tracking-tight tabular-nums truncate"
+            >
+              {formatarMoeda(analytics.totalSinalReserva)}
+            </h3>
+          </div>
+          <p className="text-[10px] text-[#717971] font-semibold truncate">
+            Adiantamentos
+          </p>
         </div>
-        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Pago no Check-out</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">
-            {formatarMoeda(analytics.totalSaldoReserva)}
-          </h3>
+
+        {/* 3. Check-out */}
+        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+          <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Pago Check-out</p>
+          <div className="my-1.5">
+            <h3 
+              title={formatarMoeda(analytics.totalSaldoReserva)}
+              className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#191c1d] tracking-tight tabular-nums truncate"
+            >
+              {formatarMoeda(analytics.totalSaldoReserva)}
+            </h3>
+          </div>
+          <p className="text-[10px] text-[#717971] font-semibold truncate">
+            Acerto na Saída
+          </p>
         </div>
-        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Consumos Lojinha</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">
-            {formatarMoeda(analytics.totalVendasLoja)}
-          </h3>
+
+        {/* 4. Consumo Lojinha */}
+        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+          <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Consumos Lojinha</p>
+          <div className="my-1.5">
+            <h3 
+              title={formatarMoeda(analytics.totalVendasLoja)}
+              className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#191c1d] tracking-tight tabular-nums truncate"
+            >
+              {formatarMoeda(analytics.totalVendasLoja)}
+            </h3>
+          </div>
+          <p className="text-[10px] text-[#717971] font-semibold truncate">
+            Produtos extras
+          </p>
         </div>
-        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Consumos Bar</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#191c1d] mt-1">
-            {formatarMoeda(analytics.totalVendasBar)}
-          </h3>
+
+        {/* 5. Consumo Bar */}
+        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+          <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Consumos Bar</p>
+          <div className="my-1.5">
+            <h3 
+              title={formatarMoeda(analytics.totalVendasBar)}
+              className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#191c1d] tracking-tight tabular-nums truncate"
+            >
+              {formatarMoeda(analytics.totalVendasBar)}
+            </h3>
+          </div>
+          <p className="text-[10px] text-[#717971] font-semibold truncate">
+            Bebidas e porções
+          </p>
         </div>
-        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs">
-          <p className="text-xs font-semibold text-[#717971] uppercase tracking-wider">Total Hóspedes</p>
-          <h3 className="font-['Manrope'] text-2xl font-extrabold text-[#053d1e] mt-1">
-            {analytics.totalHospedes}
-          </h3>
-          <p className="text-[11px] text-[#717971] font-semibold mt-1 flex items-center gap-1">
-            <Users className="w-3.5 h-3.5 text-[#053d1e]" /> {analytics.totalAdultos} Adultos / {analytics.totalCriancas} Crianças
+
+        {/* 6. Sal. Pendente */}
+        <div className="bg-amber-50/70 border border-amber-300 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
+          <p className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider truncate">Sal. Pendente</p>
+          <div className="my-1.5">
+            <h3 
+              title={formatarMoeda(analytics.totalSaldosPendentes)}
+              className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-amber-700 tracking-tight tabular-nums truncate"
+            >
+              {formatarMoeda(analytics.totalSaldosPendentes)}
+            </h3>
+          </div>
+          <p className="text-[10px] text-amber-800 font-semibold truncate">
+            A Receber
+          </p>
+        </div>
+
+        {/* 7. Total Hóspedes */}
+        <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1">
+          <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Total Hóspedes</p>
+          <div className="my-1.5">
+            <h3 className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#053d1e] tracking-tight tabular-nums truncate">
+              {analytics.totalHospedes}
+            </h3>
+          </div>
+          <p className="text-[10px] text-[#717971] font-semibold flex items-center gap-1 truncate">
+            <Users className="w-3 h-3 text-[#053d1e] shrink-0" /> {analytics.totalAdultos} Ad. / {analytics.totalCriancas} Cr.
           </p>
         </div>
       </div>
 
-      {/* Grid View: Alinhada exatamente com o layout */}
+      {/* Grid View: Tabela Operacional */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl shadow-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-[#c1c9bf] flex items-center justify-between">
           <h3 className="font-['Manrope'] text-base font-bold text-[#191c1d]">
@@ -632,24 +712,25 @@ const nomeArquivo = dInicio && dFim
 
         <div className="p-5 space-y-4">
           <div className="w-full overflow-x-auto rounded-xl border border-[#e1e3e4] shadow-2xs">
-            <table className="w-full min-w-[1300px] text-left text-[11px] leading-tight">
+            <table className="w-full min-w-[1380px] text-left text-[11px] leading-tight">
               <thead className="bg-[#3D7241] border-b border-[#2E5D31] text-white font-bold uppercase text-[10px]">
                 <tr>
-                  <th className="py-2.5 px-2 text-center whitespace-nowrap w-16">Nº Quarto</th>
-                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[180px]">Nome do Hóspede</th>
-                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-12">Adultos</th>
-                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Crianças pag. 06 á 11</th>
-                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Data Entrada</th>
-                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Data Saída</th>
-                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[110px]">Valor da Hospedagem</th>
-                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-24">Data Reserva</th>
-                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[100px]">Valor Reserva (R$)</th>
-                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[140px]">Produtos (Loja)</th>
-                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[85px]">Valor Loja (R$)</th>
-                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[140px]">Produtos (Bar)</th>
-                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[85px]">Valor Bar (R$)</th>
-                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[105px]">Valor Check-out (R$)</th>
-                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[105px]">Total Geral (R$)</th>
+                  <th className="py-2.5 px-2 text-center whitespace-nowrap w-16">QUARTO</th>
+                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[180px]">HÓSPEDE</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-12">AD.</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-14">CRI.</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-20">ENTRADA</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-20">SAÍDA</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[100px]">TOTAL HOSP.</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap w-20">DATA RES.</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[95px]">VLR. RES.</th>
+                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[130px]">PROD. LOJA</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[80px]">VLR. LOJ.</th>
+                  <th className="py-2.5 px-2 text-left whitespace-nowrap min-w-[130px]">PROD. BAR</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[80px]">VLR. BAR</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[100px]">VLR. CHECKOUT</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[100px] bg-[#2E5D31]/30">SAL. PEND.</th>
+                  <th className="py-2.5 px-2 text-right whitespace-nowrap min-w-[100px]">TOTAL GERAL</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#e1e3e4] text-[#191c1d]">
@@ -705,6 +786,12 @@ const nomeArquivo = dInicio && dFim
                         formatarMoeda(r.valorCheckout)
                       )}
                     </td>
+                    {/* Coluna Sal. Pend. (R$): Verde quando zero, Vermelho quando dívida */}
+                    <td className={`py-2 px-2 text-right font-bold text-[11px] whitespace-nowrap ${
+                      r.saldoPendente > 0 ? 'text-[#b91c1c]' : 'text-[#053d1e]'
+                    }`}>
+                      {formatarMoeda(r.saldoPendente)}
+                    </td>
                     <td className="py-2 px-2 text-right font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">
                       {formatarMoeda(r.total)}
                     </td>
@@ -712,7 +799,7 @@ const nomeArquivo = dInicio && dFim
                 ))}
                 {resumoReservas.length === 0 && (
                   <tr>
-                    <td colSpan={15} className="py-12 text-center text-[#717971]">
+                    <td colSpan={16} className="py-12 text-center text-[#717971]">
                       <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
                       <p className="font-semibold text-sm text-[#191c1d]">Nenhuma reserva encontrada</p>
                       <p className="text-xs mt-1">Nenhum registro para os critérios informados.</p>
@@ -725,7 +812,7 @@ const nomeArquivo = dInicio && dFim
                   <tr>
                     <td className="py-2.5 px-2 text-center text-[#86efac] font-extrabold">-</td>
                     <td className="py-2.5 px-2 font-extrabold uppercase text-[#86efac] tracking-wider text-[11px] truncate">
-                      Total ({resumoReservas.length})
+                      TOTAL ({resumoReservas.length})
                     </td>
                     <td className="py-2.5 px-1.5 text-center text-[#86efac] font-extrabold text-[11px] whitespace-nowrap">{analytics.totalAdultos}</td>
                     <td className="py-2.5 px-1.5 text-center text-[#86efac] font-extrabold text-[11px] whitespace-nowrap">{analytics.totalCriancas}</td>
@@ -748,6 +835,11 @@ const nomeArquivo = dInicio && dFim
                     </td>
                     <td className="py-2.5 px-2 text-right font-bold text-[#86efac] text-[11px] whitespace-nowrap">
                       {formatarMoeda(analytics.totalSaldoReserva)}
+                    </td>
+                    <td className={`py-2.5 px-2 text-right font-extrabold text-[11px] whitespace-nowrap ${
+                      analytics.totalSaldosPendentes > 0 ? 'text-[#fca5a5]' : 'text-[#86efac]'
+                    }`}>
+                      {formatarMoeda(analytics.totalSaldosPendentes)}
                     </td>
                     <td className="py-2.5 px-2 text-right font-extrabold text-[#86efac] text-[11px] whitespace-nowrap">
                       {formatarMoeda(analytics.totalGeralFinal)}
@@ -785,7 +877,7 @@ const nomeArquivo = dInicio && dFim
               <span className="font-bold text-[#053d1e]">{formatarMoeda(analytics.totalVendasBar)}</span>
             </div>
             <div className="border-t border-[#b8f0c2] pt-2 mt-2 flex justify-between">
-              <span className="font-bold text-[#053d1e]">TOTAL GERAL FINAL (LIQUIDAÇÃO):</span>
+              <span className="font-bold text-[#053d1e]">TOTAL GERAL FINAL (FATURADO):</span>
               <span className="font-extrabold text-lg text-[#053d1e]">{formatarMoeda(analytics.totalGeralFinal)}</span>
             </div>
           </div>
@@ -803,7 +895,7 @@ const nomeArquivo = dInicio && dFim
             </div>
             <div className="border-t border-[#ffe088] pt-2 mt-2">
               <p className="text-[#717971]">
-                <strong>Nota:</strong> Reservas com saldo em aberto representam estadias em andamento ou acertos parciais pendentes de quitação final.
+                <strong>Nota:</strong> Reservas com saldo em aberto representam estadias em andamento ou acertos parciais pendentes de quitação final no check-out.
               </p>
             </div>
           </div>
