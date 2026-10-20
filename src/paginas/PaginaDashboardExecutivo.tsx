@@ -45,7 +45,7 @@ const calcularIdade = (dataNascStr?: string): number | null => {
 };
 
 export const PaginaDashboardExecutivo: React.FC = () => {
-  const { reservas, consumosExtras, pagamentos, quartos, pacotes, hospedes, recarregarDados } = useHotel();
+  const { reservas, consumosExtras, pagamentos, quartos, pacotes, hospedes, usuarioAtual, recarregarDados } = useHotel();
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState<boolean>(false);
 
   // Estados de dados de acompanhantes e hóspedes para cálculo dinâmico de idades
@@ -181,7 +181,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     );
   }, [pagamentos, idsReservasPeriodo]);
 
-  // 3. DETALHAMENTO ANALÍTICO POR RESERVA COM REGRAS ETÁRIAS (ADULTO >= 12, CRIANÇA MEIA 6-11, 0-5 NÃO CONTA)
+  // 3. DETALHAMENTO ANALÍTICO POR RESERVA
   const resumoAnaliticoReservas = useMemo(() => {
     const hospedeMap = new Map<number, Hospede>();
     (hospedes || []).forEach(h => hospedeMap.set(Number(h.hospedeid), h));
@@ -206,10 +206,10 @@ export const PaginaDashboardExecutivo: React.FC = () => {
       const somaPagosSinal = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
       const valorReservaPago = somaPagosSinal > 0 ? somaPagosSinal : Number(reserva.valorpago || 0);
 
-      const pagamentosCheckout = pagamentosDaReserva.filter(p => p.tipolancamento === 'SALDO_RESERVA');
-      const valorSaldoHospedagemPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-
-      const valorCheckout = Number((valorSaldoHospedagemPago + valorBar + valorLojinha).toFixed(2));
+      const pagamentosCheckout = pagamentosDaReserva.filter(
+        p => p.tipolancamento === 'SALDO_RESERVA' || p.tipolancamento === 'CONSUMO_EXTRA'
+      );
+      const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
 
       const titular = hospedeMap.get(Number(reserva.hospedeid));
       const idadeTitular = calcularIdade(titular?.datanascimento);
@@ -274,7 +274,8 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         totalHospedagem = (qtdAdultos * valorBasePessoa) + (qtdCriancasMeia * (valorBasePessoa * 0.5));
       }
 
-      const totalGeral = Number((valorReservaPago + valorCheckout).toFixed(2));
+      // FÓRMULA PADRÃO: Check-out + Bar + Lojinha + Reserva
+      const totalGeral = Number((valorCheckoutPago + valorBar + valorLojinha + valorReservaPago).toFixed(2));
 
       return {
         quarto: quarto?.codigoidentificador || reserva.quartocodigo || reserva.quartonumero || '',
@@ -287,12 +288,11 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         totalHospedagem,
         dataReserva: reserva.datareserva || reserva.datainclusao || reserva.dataentrada,
         valorReserva: valorReservaPago,
-        valorSaldoHospedagemPago,
         valorLojinha,
         valorBar,
-        valorCheckout,
+        valorCheckout: valorCheckoutPago,
         total: totalGeral,
-        saldoPendente: Number(reserva.saldo || 0),
+        saldoPendente: Number(reserva.saldo !== undefined && reserva.saldo !== null ? reserva.saldo : Math.max(0, totalHospedagem - valorReservaPago)),
         status: reserva.statusreserva,
         observacoes: reserva.observacoes || '',
         observacoes_checkout: reserva.observacoes_checkout || '',
@@ -303,7 +303,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
   // 4. INDICADORES MACRO EXECUTIVOS
   const analyticsExecutivo = useMemo(() => {
     const totalSinalReserva = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorReserva || 0), 0);
-    const totalSaldoCheckout = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorSaldoHospedagemPago || 0), 0);
+    const totalSaldoCheckout = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorCheckout || 0), 0);
     const totalReceitaHospedagem = totalSinalReserva + totalSaldoCheckout;
 
     const totalLojinha = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorLojinha || 0), 0);
@@ -323,9 +323,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
 
     const totalFormasPagamento = receitaPIX + receitaCredito + receitaDebito + receitaDinheiro + receitaOutros || 1;
 
-    const totalSaldosPendentes = reservasFiltradas
-      .filter(r => Number(r.saldo || 0) > 0)
-      .reduce((acc, r) => acc + Number(r.saldo || 0), 0);
+    const totalSaldosPendentes = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.saldoPendente || 0), 0);
 
     const totalAdultos = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
@@ -373,7 +371,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
       pctDebito: Math.round((receitaDebito / totalFormasPagamento) * 100),
       pctDinheiro: Math.round((receitaDinheiro / totalFormasPagamento) * 100),
     };
-  }, [resumoAnaliticoReservas, consumosFiltrados, pagamentosFiltrados, reservasFiltradas, quartos]);
+  }, [resumoAnaliticoReservas, consumosFiltrados, pagamentosFiltrados, quartos]);
 
   const tabelaFiltrada = useMemo(() => {
     if (!buscaTabela.trim()) return resumoAnaliticoReservas;
@@ -409,44 +407,46 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     });
   }, [tabelaFiltrada]);
 
-  // Exportar dados para Excel
+  // 5. EXPORTAÇÃO EXCEL (100% NUMÉRICA - SEM COLUNAS DE TEXTO DE PRODUTOS)
   const exportarRelatorioExecutivo = () => {
     if (resumoAnaliticoReservas.length === 0) {
       alert('Não há dados para exportar no período selecionado.');
       return;
     }
 
+    const nomeAutorComentario = (usuarioAtual as any)?.nomecompleto || (usuarioAtual as any)?.nome || 'Sistema';
+
     const wb = XLSX.utils.book_new();
-
-    const colunas = [
-      'Nº Quarto',
-      'Nome do Hóspede',
-      'Adultos',
-      'Crianças',
-      'Data Entrada',
-      'Data Saída',
-      'Total da Hospedagem (R$)',
-      'Data Reserva',
-      'Valor Reserva (R$)',
-      'Valor Bar (R$)',
-      'Valor Loja (R$)',
-      'Valor Check-out (R$)',
-      'Total Geral (R$)',
-      'Saldo Pendente (R$)'
-    ];
-
     const wsData: any[][] = [];
 
-    wsData.push(['HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO']);
-
-    const periodoTexto = (dataInicioFiltro && dataFimFiltro)
+    const titulo = 'HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO';
+    const periodo = (dataInicioFiltro && dataFimFiltro)
       ? `Período: ${formatarData(dataInicioFiltro)} a ${formatarData(dataFimFiltro)}`
-      : 'Período: -- a --';
-    wsData.push([periodoTexto]);
+      : 'Período: Geral';
 
+    const colunas = [
+      'Nº Quarto',                     // A (0)
+      'Nome do Hóspede',               // B (1)
+      'Adultos',                       // C (2)
+      'Crianças',                      // D (3)
+      'Data Entrada',                  // E (4)
+      'Data Saída',                    // F (5)
+      'Total da Hospedagem (R$)',      // G (6)
+      'Data Reserva',                  // H (7)
+      'Valor Reserva (R$)',            // I (8)
+      'Valor Bar (R$)',                // J (9)
+      'Valor Loja (R$)',               // K (10)
+      'Valor Check-out (R$)',          // L (11)
+      'Total Geral (R$)',              // M (12)
+      'Saldo Pendente (R$)'            // N (13)
+    ];
+
+    wsData.push([titulo]);
+    wsData.push([periodo]);
     wsData.push(colunas);
 
-    resumoAnaliticoReservas.forEach(r => {
+    // Linhas de dados (iniciam na linha 4 do Excel -> índice r = 3)
+    resumoAnaliticoReservas.forEach((r) => {
       wsData.push([
         r.quarto,
         r.hospede,
@@ -455,7 +455,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         formatarData(r.dataEntrada),
         formatarData(r.dataSaida),
         Number(r.totalHospedagem || 0),
-        formatarData(r.dataReserva),
+        formatarData(r.dataReserva || ''),
         Number(r.valorReserva || 0),
         Number(r.valorBar || 0),
         Number(r.valorLojinha || 0),
@@ -465,206 +465,185 @@ export const PaginaDashboardExecutivo: React.FC = () => {
       ]);
     });
 
-    const totalAdultos = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
-    const totalCriancas = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
-    const totalHospedagem = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.totalHospedagem || 0), 0);
-    const totalValorReserva = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorReserva || 0), 0);
-    const totalValorBar = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorBar || 0), 0);
-    const totalValorLoja = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorLojinha || 0), 0);
-    const totalValorCheckout = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorCheckout || 0), 0);
-    const totalGeral = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.total || 0), 0);
-    const totalSaldoPendente = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.saldoPendente || 0), 0);
-
+    // Linha de Totais (placeholder)
     wsData.push([
-      'Total Geral',
-      '',
-      totalAdultos,
-      totalCriancas,
-      '',
-      '',
-      totalHospedagem,
-      '',
-      totalValorReserva,
-      totalValorBar,
-      totalValorLoja,
-      totalValorCheckout,
-      totalGeral,
-      totalSaldoPendente
+      'Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', ''
     ]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    const totalRowIndex = wsData.length - 1; // 0-based
+    const totalRowExcel = totalRowIndex + 1; // 1-based (Excel)
+    const firstDataRow = 4;                 // Linha 4
+    const lastDataRow = totalRowIndex;      // Última linha com hóspede
+
+    // 1. FÓRMULA EM CADA LINHA NA COLUNA "TOTAL GERAL (R$)" (COLUNA M - índice 12)
+    // Total Geral = Check-out (L) + Loja (K) + Bar (J) + Reserva (I)
+    resumoAnaliticoReservas.forEach((r, idx) => {
+      const rowExcel = firstDataRow + idx;
+      const cellRef = XLSX.utils.encode_cell({ r: 3 + idx, c: 12 });
+      ws[cellRef] = {
+        t: 'n',
+        f: `L${rowExcel}+K${rowExcel}+J${rowExcel}+I${rowExcel}`,
+        v: Number(r.total || 0)
+      };
+    });
+
+    // 2. FÓRMULAS DE SOMA AUTOMÁTICA NAS COLUNAS DE TOTAIS (LINHA FINAL)
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 2 })] = { t: 'n', f: `SUM(C${firstDataRow}:C${lastDataRow})`, v: analyticsExecutivo.totalAdultos };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 3 })] = { t: 'n', f: `SUM(D${firstDataRow}:D${lastDataRow})`, v: analyticsExecutivo.totalCriancas };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 6 })] = { t: 'n', f: `SUM(G${firstDataRow}:G${lastDataRow})`, v: totaisGrid.totalHospedagem };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 8 })] = { t: 'n', f: `SUM(I${firstDataRow}:I${lastDataRow})`, v: analyticsExecutivo.totalSinalReserva };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 9 })] = { t: 'n', f: `SUM(J${firstDataRow}:J${lastDataRow})`, v: analyticsExecutivo.totalBar };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 10 })] = { t: 'n', f: `SUM(K${firstDataRow}:K${lastDataRow})`, v: analyticsExecutivo.totalLojinha };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 11 })] = { t: 'n', f: `SUM(L${firstDataRow}:L${lastDataRow})`, v: analyticsExecutivo.totalSaldoCheckout };
+
+    // Total Geral final = Check-out + Loja + Bar + Reserva
+    const totalGeralFinal = analyticsExecutivo.totalSaldoCheckout + analyticsExecutivo.totalBar + analyticsExecutivo.totalLojinha + analyticsExecutivo.totalSinalReserva;
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 12 })] = {
+      t: 'n',
+      f: `L${totalRowExcel}+K${totalRowExcel}+J${totalRowExcel}+I${totalRowExcel}`,
+      v: totalGeralFinal
+    };
+
+    // Saldo Pendente Total (Coluna N - índice 13)
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 13 })] = {
+      t: 'n',
+      f: `SUM(N${firstDataRow}:N${lastDataRow})`,
+      v: analyticsExecutivo.totalSaldosPendentes
+    };
+
+    // Mesclagens do Cabeçalho
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: colunas.length - 1 } },
+    ];
+
+    const COR_TITULO = '1E4620';
+    const COR_PERIODO = '2E5D31';
+    const COR_CABECALHO = '3D7241';
+    const COR_TOTAL = '1E4620';
+    const COR_ZEBRA = 'F9FAF9';
+    const BRANCO = 'FFFFFF';
+    const PRETO = '000000';
 
     const borderThinGray = {
       top: { style: 'thin', color: { rgb: 'D1D5DB' } },
       bottom: { style: 'thin', color: { rgb: 'D1D5DB' } },
       left: { style: 'thin', color: { rgb: 'D1D5DB' } },
-      right: { style: 'thin', color: { rgb: 'D1D5DB' } }
+      right: { style: 'thin', color: { rgb: 'D1D5DB' } },
     };
 
-    const borderHeaderWhite = {
-      top: { style: 'thin', color: { rgb: 'FFFFFF' } },
-      bottom: { style: 'thin', color: { rgb: 'FFFFFF' } },
-      left: { style: 'thin', color: { rgb: 'FFFFFF' } },
-      right: { style: 'thin', color: { rgb: 'FFFFFF' } }
-    };
+    const formatoMoeda = '[$R$-pt-BR] #,##0.00;[$R$-pt-BR] #,##0.00;[$R$-pt-BR] -';
 
-    const borderTotalGreen = {
-      top: { style: 'thin', color: { rgb: '2E5D31' } },
-      bottom: { style: 'thin', color: { rgb: '2E5D31' } },
-      left: { style: 'thin', color: { rgb: '2E5D31' } },
-      right: { style: 'thin', color: { rgb: '2E5D31' } }
-    };
-
+    // Cabeçalhos (Título e Período)
     for (let c = 0; c < colunas.length; c++) {
-      const ref = XLSX.utils.encode_cell({ r: 0, c });
-      if (!ws[ref]) ws[ref] = { t: 's', v: '' };
-      ws[ref].s = {
-        fill: { fgColor: { rgb: '1E4620' } },
-        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: 'FFFFFF' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      };
-    }
+      const a0 = XLSX.utils.encode_cell({ r: 0, c });
+      if (!ws[a0]) ws[a0] = { t: 's', v: '' };
+      ws[a0].s = { fill: { fgColor: { rgb: COR_TITULO } }, font: { name: 'Arial', sz: 12, bold: true, color: { rgb: BRANCO } }, alignment: { horizontal: 'center', vertical: 'center' } };
 
-    for (let c = 0; c < colunas.length; c++) {
-      const ref = XLSX.utils.encode_cell({ r: 1, c });
-      if (!ws[ref]) ws[ref] = { t: 's', v: '' };
-      ws[ref].s = {
-        fill: { fgColor: { rgb: '2E5D31' } },
-        font: { name: 'Arial', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-        alignment: { horizontal: 'center', vertical: 'center' }
-      };
-    }
+      const a1 = XLSX.utils.encode_cell({ r: 1, c });
+      if (!ws[a1]) ws[a1] = { t: 's', v: '' };
+      ws[a1].s = { fill: { fgColor: { rgb: COR_PERIODO } }, font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } }, alignment: { horizontal: 'center', vertical: 'center' } };
 
-    for (let c = 0; c < colunas.length; c++) {
-      const ref = XLSX.utils.encode_cell({ r: 2, c });
-      if (ws[ref]) {
-        ws[ref].s = {
-          fill: { fgColor: { rgb: '3D7241' } },
-          font: { name: 'Arial', sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+      const a2 = XLSX.utils.encode_cell({ r: 2, c });
+      if (ws[a2]) {
+        ws[a2].s = {
+          fill: { fgColor: { rgb: COR_CABECALHO } },
+          font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
           alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          border: borderHeaderWhite
+          border: { top: { style: 'thin', color: { rgb: BRANCO } }, bottom: { style: 'thin', color: { rgb: BRANCO } }, left: { style: 'thin', color: { rgb: BRANCO } }, right: { style: 'thin', color: { rgb: BRANCO } } },
         };
       }
     }
-
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: colunas.length - 1 } }
-    ];
 
     const colunasMoeda = new Set([6, 8, 9, 10, 11, 12, 13]);
     const colunasCentro = new Set([0, 2, 3, 4, 5, 7]);
 
+    // Formatação de Linhas e Comentários Ocultos
     resumoAnaliticoReservas.forEach((r, idx) => {
       const rowIdx = 3 + idx;
+      const corFundo = idx % 2 === 1 ? COR_ZEBRA : BRANCO;
 
       for (let c = 0; c < colunas.length; c++) {
-        const ref = XLSX.utils.encode_cell({ r: rowIdx, c });
-        const cell = ws[ref];
+        const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+        const cell = ws[addr];
         if (!cell) continue;
 
-        const style: any = {
-          font: { name: 'Arial', sz: 10, color: { rgb: '000000' } },
+        let horizontal: 'left' | 'center' | 'right' = 'left';
+        if (colunasMoeda.has(c)) horizontal = 'right';
+        else if (colunasCentro.has(c)) horizontal = 'center';
+
+        cell.s = {
+          fill: { fgColor: { rgb: corFundo } },
+          font: { name: 'Arial', sz: 10, color: { rgb: PRETO } },
+          alignment: { horizontal, vertical: 'center', wrapText: true },
           border: borderThinGray,
-          alignment: { vertical: 'center' },
-          fill: idx % 2 === 1 ? { fgColor: { rgb: 'F9FAF9' } } : { fgColor: { rgb: 'FFFFFF' } }
         };
 
         if (colunasMoeda.has(c)) {
-          style.alignment.horizontal = 'right';
-          style.numFmt = 'R$ #,##0.00';
-          cell.z = 'R$ #,##0.00';
-        } else if (colunasCentro.has(c)) {
-          style.alignment.horizontal = 'center';
-        } else {
-          style.alignment.horizontal = 'left';
+          cell.z = formatoMoeda;
         }
-
-        cell.s = style;
       }
 
+      // Comentário da Reserva com o Usuário Logado (Coluna I - índice 8)
       if (r.observacoes) {
         const refReserva = XLSX.utils.encode_cell({ r: rowIdx, c: 8 });
         const celula = ws[refReserva];
         if (celula) {
-          const textoObservacao = r.observacoes;
-          const textoEscapado = textoObservacao
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;');
-
-          celula.c = [{
-            a: 'Kevin Jhonny Prestes Maia',
-            t: `${textoObservacao}`,
-            r: `<r><rPr><b/><sz val="9"/></rPr><t>Kevin Jhonny Prestes Maia:</t></r><r><rPr><sz val="9"/></rPr><t>\n${textoEscapado}</t></r>`,
+          const itemComment: any = {
+            a: nomeAutorComentario,
+            t: r.observacoes,
+            r: `<r><rPr><b/><sz val="9"/></rPr><t>${nomeAutorComentario}:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes}</t></r>`,
             T: true,
-            hidden: true
-          }];
-          if (celula.c) {
-            (celula.c as any).hidden = true;
-            delete (celula.c as any).visible;
-          }
+            hidden: true,
+          };
+          celula.c = [itemComment];
+          (celula.c as any).hidden = true;
         }
       }
 
+      // Comentário do Check-out com o Usuário Logado (Coluna L - índice 11)
       if (r.observacoes_checkout) {
         const refCheckout = XLSX.utils.encode_cell({ r: rowIdx, c: 11 });
         const celula = ws[refCheckout];
         if (celula) {
-          const textoObservacao = r.observacoes_checkout;
-          const textoEscapado = textoObservacao
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;');
-
-          celula.c = [{
-            a: 'Kevin Jhonny Prestes Maia',
-            t: `${textoObservacao}`,
-            r: `<r><rPr><b/><sz val="9"/></rPr><t>Kevin Jhonny Prestes Maia:</t></r><r><rPr><sz val="9"/></rPr><t>\n${textoEscapado}</t></r>`,
+          const itemComment: any = {
+            a: nomeAutorComentario,
+            t: r.observacoes_checkout,
+            r: `<r><rPr><b/><sz val="9"/></rPr><t>${nomeAutorComentario}:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes_checkout}</t></r>`,
             T: true,
-            hidden: true
-          }];
-          if (celula.c) {
-            (celula.c as any).hidden = true;
-            delete (celula.c as any).visible;
-          }
+            hidden: true,
+          };
+          celula.c = [itemComment];
+          (celula.c as any).hidden = true;
         }
       }
     });
 
-    const totalRowIdx = 3 + resumoAnaliticoReservas.length;
+    // Formatação da Linha de Totais
     for (let c = 0; c < colunas.length; c++) {
-      const ref = XLSX.utils.encode_cell({ r: totalRowIdx, c });
-      const cell = ws[ref];
-      if (!cell) continue;
+      const addr = XLSX.utils.encode_cell({ r: totalRowIndex, c });
+      if (!ws[addr]) ws[addr] = { t: 's', v: '' };
 
-      const style: any = {
-        fill: { fgColor: { rgb: '1E4620' } },
+      let horizontal: 'left' | 'center' | 'right' = 'center';
+      if (colunasMoeda.has(c)) horizontal = 'right';
+
+      ws[addr].s = {
+        fill: { fgColor: { rgb: COR_TOTAL } },
         font: { name: 'Arial', sz: 10, bold: true, color: { rgb: '86EFAC' } },
-        border: borderTotalGreen,
-        alignment: { vertical: 'center' }
+        alignment: { horizontal, vertical: 'center' },
+        border: { top: { style: 'thin', color: { rgb: '2E5D31' } }, bottom: { style: 'thin', color: { rgb: '2E5D31' } }, left: { style: 'thin', color: { rgb: '2E5D31' } }, right: { style: 'thin', color: { rgb: '2E5D31' } } },
       };
 
       if (colunasMoeda.has(c)) {
-        style.alignment.horizontal = 'right';
-        style.numFmt = 'R$ #,##0.00';
-        cell.z = 'R$ #,##0.00';
-      } else if (c === 0 || c === 2 || c === 3) {
-        style.alignment.horizontal = 'center';
-      } else {
-        style.alignment.horizontal = 'center';
+        ws[addr].z = formatoMoeda;
       }
-
-      cell.s = style;
     }
 
-    const colWidths = colunas.map((col, c) => {
+    ws['!cols'] = colunas.map((col, c) => {
       let maxLen = col.length;
-      resumoAnaliticoReservas.forEach(r => {
+      resumoAnaliticoReservas.forEach((r) => {
         let val = '';
         if (c === 0) val = String(r.quarto || '');
         else if (c === 1) val = String(r.hospede || '');
@@ -673,7 +652,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         else if (c === 4) val = formatarData(r.dataEntrada);
         else if (c === 5) val = formatarData(r.dataSaida);
         else if (c === 6) val = `R$ ${Number(r.totalHospedagem || 0).toFixed(2)}`;
-        else if (c === 7) val = formatarData(r.dataReserva);
+        else if (c === 7) val = formatarData(r.dataReserva || '');
         else if (c === 8) val = `R$ ${Number(r.valorReserva || 0).toFixed(2)}`;
         else if (c === 9) val = `R$ ${Number(r.valorBar || 0).toFixed(2)}`;
         else if (c === 10) val = `R$ ${Number(r.valorLojinha || 0).toFixed(2)}`;
@@ -684,21 +663,26 @@ export const PaginaDashboardExecutivo: React.FC = () => {
       });
       return { wch: Math.max(maxLen + 3, 12) };
     });
-    ws['!cols'] = colWidths;
 
-    const rowHeights: Array<{ hpt: number }> = [
-      { hpt: 28 },
-      { hpt: 20 },
-      { hpt: 28 },
-    ];
-    for (let i = 0; i < resumoAnaliticoReservas.length; i++) {
-      rowHeights.push({ hpt: 20 });
-    }
-    rowHeights.push({ hpt: 24 });
-    ws['!rows'] = rowHeights;
+    ws['!rows'] = [{ hpt: 28 }, { hpt: 20 }, { hpt: 28 }];
+    ws['!freeze'] = { xSplit: 0, ySplit: 3 };
 
-    XLSX.utils.book_append_sheet(wb, ws, 'Gestão de Hospedagem');
-    XLSX.writeFile(wb, `Relatorio_Executivo_${dataInicioFiltro}_a_${dataFimFiltro}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Relatório Executivo');
+
+    const formatarDataNomeArquivo = (dataIso: string) => {
+      if (!dataIso) return '';
+      const [ano, mes, dia] = dataIso.split('-');
+      return `${dia}_${mes}_${ano}`;
+    };
+
+    const dInicio = formatarDataNomeArquivo(dataInicioFiltro);
+    const dFim = formatarDataNomeArquivo(dataFimFiltro);
+
+    const nomeArquivo = dInicio && dFim  
+      ? `Relatorio_Executivo_${dInicio}_a_${dFim}.xlsx` 
+      : `Relatorio_Executivo_Geral.xlsx`;
+
+    XLSX.writeFile(wb, nomeArquivo);
   };
 
   return (
@@ -736,10 +720,19 @@ export const PaginaDashboardExecutivo: React.FC = () => {
             <RefreshCw className={`w-4 h-4 text-slate-600 ${carregandoAtualizacao ? 'animate-spin' : ''}`} />
             <span>{carregandoAtualizacao ? 'Atualizando...' : 'Atualizar Dados'}</span>
           </button>
+
+          <button
+            onClick={exportarRelatorioExecutivo}
+            disabled={resumoAnaliticoReservas.length === 0}
+            className="px-4 py-2 text-xs font-bold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Relatório Excel</span>
+          </button>
         </div>
       </div>
 
-      {/* SELETOR DE PERÍODO COM BUSCA POR DATA INÍCIO E FIM INLINE + BOTÃO PESQUISAR EXCLUSIVO */}
+      {/* SELETOR DE PERÍODO COM BUSCA POR DATA INÍCIO E FIM INLINE + BOTÃO PESQUISAR */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -1024,9 +1017,9 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                 <CheckCircle2 className="w-4 h-4 text-[#053d1e]" /> 📋 Resumo das Regras Etárias & Tarifação:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-[#414941] pt-1">
-                <div>• <strong>Grátis (0 a 5 anos):</strong> 100% isento (não entra na contagem nem no valor).</div>
-                <div>• <strong>Meia-diária (6 a 11 anos):</strong> Paga 50% da diária (contabilizado em Crianças).</div>
-                <div>• <strong>Integral (12 anos ou mais):</strong> Paga 100% da diária (contabilizado em Adultos).</div>
+                <div><strong>Grátis (0 a 5 anos):</strong> 100% isento (não entra na contagem nem no valor).</div>
+                <div><strong>Meia-diária (6 a 11 anos):</strong> Paga 50% da diária (contabilizado em Crianças).</div>
+                <div><strong>Integral (12 anos ou mais):</strong> Paga 100% da diária (contabilizado em Adultos).</div>
               </div>
             </div>
 
