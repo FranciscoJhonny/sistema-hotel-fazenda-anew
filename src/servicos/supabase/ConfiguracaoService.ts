@@ -67,7 +67,7 @@ export class ConfiguracaoService extends BaseService<Configuracao> implements IC
     try {
       const existente = await this.obterPorChave(chave);
 
-      if (existente.sucesso && existente.dados) {
+      if (existente.sucesso && existente.dados?.configuracaoid) {
         return this.atualizar(existente.dados.configuracaoid, {
           valor: valor,
           descricao: descricao ?? existente.dados.descricao,

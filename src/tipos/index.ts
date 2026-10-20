@@ -50,9 +50,9 @@ export type CategoriaProduto = 'LOJINHA' | 'BAR' | 'RESTAURANTE' | 'SERVICO' | '
 // =============================================================================
 export interface EntidadeAuditavel {
   ativo: boolean;
-  usuarioinclusao?: number | string;
+  usuarioinclusao?: number | string | null;
   datainclusao: string;
-  usuariooperacao?: number | string;
+  usuariooperacao?: number | string | null;
   dataoperacao: string;
   naturezaoperacao?: string;
 }
@@ -211,9 +211,9 @@ export interface CadastroFnrh {
 
   // Auditoria
   ativo?: boolean;
-  usuarioinclusao?: number | string;
+  usuarioinclusao?: number | string | null;
   datainclusao?: string;
-  usuariooperacao?: number | string;
+  usuariooperacao?: number | string | null;
   dataoperacao?: string;
   naturezaoperacao?: string;
 }
@@ -328,9 +328,9 @@ export interface ConsumoExtra {
   dataconsumo?: string;
   data_consumo?: string;
   ativo: boolean;
-  usuarioinclusao?: number | string;
+  usuarioinclusao?: number | string | null;
   datainclusao?: string;
-  usuariooperacao?: number | string;
+  usuariooperacao?: number | string | null;
   dataoperacao?: string;
   naturezaoperacao?: string;
 }

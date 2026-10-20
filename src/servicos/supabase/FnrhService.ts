@@ -148,7 +148,7 @@ export class FnrhService {
         assinatura_url: c.assinatura_url || '',
         datainclusao: c.datainclusao || '',
         dataoperacao: c.dataoperacao || '',
-        usuariooperacao: c.usuariooperacao ? Number(c.usuariooperacao) : null,
+        usuariooperacao: c.usuariooperacao ? Number(c.usuariooperacao) : undefined,
         naturezaoperacao: c.naturezaoperacao || 'INSERT',
         acompanhantes: acompanhantesPorCadastro.get(Number(c.cadastroid)) || [],
       }));
