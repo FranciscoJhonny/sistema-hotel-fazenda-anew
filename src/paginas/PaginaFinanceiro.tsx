@@ -16,7 +16,7 @@ import { Pagamento, Reserva, ConsumoExtra } from '../tipos';
 import * as XLSX from 'xlsx-js-style';
 
 export const PaginaFinanceiro: React.FC = () => {
-  const { reservas, consumosExtras, pagamentos, quartos, recarregarDados } = useHotel();
+  const { reservas, consumosExtras, pagamentos, quartos, usuarioAtual, recarregarDados } = useHotel();
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState<boolean>(false);
 
   const [dataInicioInput, setDataInicioInput] = useState<string>('');
@@ -191,12 +191,14 @@ export const PaginaFinanceiro: React.FC = () => {
     };
   }, [resumoReservas]);
 
-  // 5. EXPORTAÇÃO EXCEL (100% ORIGINAL - TOTALMENTE PRESERVADA)
+  // 5. EXPORTAÇÃO EXCEL (100% ORIGINAL - COM NOME DO USUÁRIO LOGADO)
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
       return;
     }
+
+    const nomeAutorComentario = (usuarioAtual as any)?.nomecompleto || (usuarioAtual as any)?.nome || 'Sistema';
 
     const wb = XLSX.utils.book_new();
     const wsData: any[][] = [];
@@ -359,15 +361,15 @@ export const PaginaFinanceiro: React.FC = () => {
         }
       }
 
-      // Comentário da Reserva (Coluna I - índice 8) com hidden: true
+      // Comentário da Reserva com o Usuário Logado
       if (r.observacoes) {
         const refReserva = XLSX.utils.encode_cell({ r: rowIdx, c: 8 });
         const celula = ws[refReserva];
         if (celula) {
           const itemComment: any = {
-            a: 'Kevin Jhonny Prestes Maia',
+            a: nomeAutorComentario,
             t: r.observacoes,
-            r: `<r><rPr><b/><sz val="9"/></rPr><t>Kevin Jhonny Prestes Maia:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes}</t></r>`,
+            r: `<r><rPr><b/><sz val="9"/></rPr><t>${nomeAutorComentario}:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes}</t></r>`,
             T: true,
             hidden: true,
           };
@@ -376,15 +378,15 @@ export const PaginaFinanceiro: React.FC = () => {
         }
       }
 
-      // Comentário do Check-out (Coluna N - índice 13) com hidden: true
+      // Comentário do Check-out com o Usuário Logado
       if (r.observacoes_checkout) {
         const refCheckout = XLSX.utils.encode_cell({ r: rowIdx, c: 13 });
         const celula = ws[refCheckout];
         if (celula) {
           const itemComment: any = {
-            a: 'Kevin Jhonny Prestes Maia',
+            a: nomeAutorComentario,
             t: r.observacoes_checkout,
-            r: `<r><rPr><b/><sz val="9"/></rPr><t>Kevin Jhonny Prestes Maia:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes_checkout}</t></r>`,
+            r: `<r><rPr><b/><sz val="9"/></rPr><t>${nomeAutorComentario}:</t></r><r><rPr><sz val="9"/></rPr><t>\n${r.observacoes_checkout}</t></r>`,
             T: true,
             hidden: true,
           };
@@ -528,20 +530,19 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           {/* Título inline com ícone */}
           <div className="flex items-center gap-2 text-xs font-bold text-[#053d1e] whitespace-nowrap">
-            
             <span className="text-xs font-bold text-[#191c1d] flex items-center gap-1.5 whitespace-nowrap">
-                          <Calendar className="w-4 h-4 text-[#053d1e]" /> Período Vigente:
-                        </span>
+              <Calendar className="w-4 h-4 text-[#053d1e]" /> Período Vigente:
+            </span>
           </div>
-         <div className="flex items-center gap-1.5 bg-[#f8f9fa] border border-[#c1c9bf] rounded-xl px-2.5 py-1">
-              <span className="text-[10px] font-bold text-[#717971] uppercase">De</span>
+          <div className="flex items-center gap-1.5 bg-[#f8f9fa] border border-[#c1c9bf] rounded-xl px-2.5 py-1">
+            <span className="text-[10px] font-bold text-[#717971] uppercase">De</span>
             <input
               type="date"
               value={dataInicioInput}
               onChange={(e) => setDataInicioInput(e.target.value)}
-             className="text-xs font-bold text-[#053d1e] bg-transparent focus:outline-none cursor-pointer"
+              className="text-xs font-bold text-[#053d1e] bg-transparent focus:outline-none cursor-pointer"
             />
-             <span className="text-[10px] font-bold text-[#717971] uppercase ml-1">Até</span>
+            <span className="text-[10px] font-bold text-[#717971] uppercase ml-1">Até</span>
             <input
               type="date"
               value={dataFimInput}
@@ -567,8 +568,7 @@ export const PaginaFinanceiro: React.FC = () => {
 
             <button
               onClick={limparFiltroData}
-              disabled={carregando}
-              //className="px-4 py-2 text-xs font-bold border border-[#c1c9bf] hover:bg-[#f3f4f6] text-[#414941] rounded-full transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+              disabled={carregando}              
               className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               Limpar
@@ -576,7 +576,7 @@ export const PaginaFinanceiro: React.FC = () => {
           </div>
         </div>
 
-        {/* Mensagem verde da Imagem 02 preservada */}
+        {/* Mensagem de Período Filtrado */}
         {usarFiltroData && dataInicioFiltro && dataFimFiltro && (
           <div className="px-3.5 py-2 bg-[#e6f4ea] border border-[#b8f0c2] rounded-xl text-xs text-[#053d1e] flex items-center gap-2 animate-in fade-in">
             <Calendar className="w-4 h-4 text-[#053d1e] shrink-0" />
