@@ -234,7 +234,7 @@ export const PaginaRelatorioFazenda: React.FC = () => {
   // Define padrão do final de semana atual/próximo
   const obterFimDeSemanaPadrao = () => {
     const hoje = new Date();
-    const diaSemana = hoje.getDay(); // 0 = Domingo, 5 = Sexta, 6 = Sábado
+    const diaSemana = hoje.getDay();
     const diffParaSexta = (5 - diaSemana + 7) % 7;
     const sexta = new Date(hoje);
     sexta.setDate(hoje.getDate() + (diaSemana === 0 ? -2 : diaSemana === 6 ? -1 : diffParaSexta));
@@ -379,16 +379,14 @@ export const PaginaRelatorioFazenda: React.FC = () => {
     }).sort((a, b) => (a.quartoCodigo || '').localeCompare(b.quartoCodigo || ''));
   }, [reservasDoPeriodo, quartos, mapaHospedes, acompanhantesDb]);
 
-  // Agrupamento por Bloco (Bloco B, Bloco C, Bloco D e Chalés/Outros) para a Aba 1
+  // Agrupamento exclusivo por Bloco B, C e D (removido Chalés & Outros)
   const quartosPorBloco = useMemo(() => {
     const blocos: Record<string, any[]> = {
       'Bloco B': [],
       'Bloco C': [],
-      'Bloco D': [],
-      'Chalés & Outros': []
+      'Bloco D': []
     };
 
-    // Ordena os quartos fisicamente
     const quartosOrdenados = [...(quartos || [])]
       .filter(q => {
         const cod = String(q.codigoidentificador || q.numero || '').toUpperCase();
@@ -398,19 +396,24 @@ export const PaginaRelatorioFazenda: React.FC = () => {
 
     quartosOrdenados.forEach(q => {
       const cod = String(q.codigoidentificador || q.numero || '').toUpperCase();
-      let nomeBloco = 'Chalés & Outros';
+      let nomeBloco: string | null = null;
       if (cod.startsWith('B')) nomeBloco = 'Bloco B';
       else if (cod.startsWith('C')) nomeBloco = 'Bloco C';
       else if (cod.startsWith('D')) nomeBloco = 'Bloco D';
 
-      const reservaAtiva = reservasEnriquecidas.find(r => String(r.quartoid) === String(q.quartoid));
+      if (!nomeBloco) return;
+
+      const reservasDoQuarto = reservasEnriquecidas
+        .filter(r => String(r.quartoid) === String(q.quartoid))
+        .sort((a, b) => String(a.dataentrada || '').localeCompare(String(b.dataentrada || '')));
 
       blocos[nomeBloco].push({
         quarto: q,
         codigo: cod,
         categoria: q.categoria || 'Standard',
-        reserva: reservaAtiva,
-        ocupado: Boolean(reservaAtiva),
+        reservas: reservasDoQuarto,
+        reserva: reservasDoQuarto[0] || null,
+        ocupado: reservasDoQuarto.length > 0,
       });
     });
 
@@ -448,17 +451,19 @@ export const PaginaRelatorioFazenda: React.FC = () => {
       texto += `🏨 *${bloco.toUpperCase()}*\n`;
 
       lista.forEach(item => {
-        if (item.reserva) {
-          const r = item.reserva;
-          let acompsStr = '';
-          if (r.acompanhantes && r.acompanhantes.length > 0) {
-            acompsStr = ' + ' + r.acompanhantes.map((a: any) => {
-              const idade = calcularIdade(a.datanascimento);
-              const idadeStr = idade !== null ? ` (${idade}a)` : '';
-              return `${a.nomecompleto || a.nome}${idadeStr}`;
-            }).join(', ');
-          }
-          texto += `• *${item.codigo}:* ${r.titularNome}${acompsStr}\n`;
+        const listaReservas = item.reservas && item.reservas.length > 0 ? item.reservas : (item.reserva ? [item.reserva] : []);
+        if (listaReservas.length > 0) {
+          listaReservas.forEach((r: any) => {
+            let acompsStr = '';
+            if (r.acompanhantes && r.acompanhantes.length > 0) {
+              acompsStr = ' + ' + r.acompanhantes.map((a: any) => {
+                const idade = calcularIdade(a.datanascimento);
+                const idadeStr = idade !== null ? ` (${idade}a)` : '';
+                return `${a.nomecompleto || a.nome}${idadeStr}`;
+              }).join(', ');
+            }
+            texto += `• *${item.codigo} [${formatarData(r.dataentrada)} a ${formatarData(r.datasaida)}]:* ${r.titularNome}${acompsStr}\n`;
+          });
         } else {
           texto += `• *${item.codigo}:* _LIVRE / DISPONÍVEL_\n`;
         }
@@ -514,17 +519,17 @@ export const PaginaRelatorioFazenda: React.FC = () => {
     // Cabeçalho Institucional
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(13);
-    doc.setTextColor(30, 70, 32); // #1E4620
+    doc.setTextColor(30, 70, 32);
     doc.text('HOTEL FAZENDA ANEW — FOLHA DE CAMPO', 105, 13, { align: 'center' });
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
-    doc.setTextColor(65, 73, 65); // #414941
+    doc.setTextColor(65, 73, 65);
     doc.text(`Período: ${formatarData(dataInicio)} à ${formatarData(dataFim)}`, 105, 18.5, { align: 'center' });
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.setTextColor(113, 121, 113); // #717971
+    doc.setTextColor(113, 121, 113);
     doc.text(`${tituloAba} • ${reservasEnriquecidas.length} Reservas Ativas no Período`, 105, 23.5, { align: 'center' });
 
     if (abaAtiva === 'QUARTOS') {
@@ -532,7 +537,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
       const body: any[] = [];
 
       Object.entries(quartosPorBloco).forEach(([bloco, lista]) => {
-        // Linha de Cabeçalho do Bloco
         body.push([
           {
             content: `${bloco} (${lista.filter(i => i.ocupado).length} Ocupados / ${lista.length} Total)`,
@@ -548,24 +552,27 @@ export const PaginaRelatorioFazenda: React.FC = () => {
         ]);
 
         lista.forEach(item => {
-          if (item.ocupado && item.reserva) {
-            const r = item.reserva;
-            let acompsTexto = `${r.titularNome} (Titular)`;
-            if (r.acompanhantes && r.acompanhantes.length > 0) {
-              acompsTexto += '\nAcompanhantes:\n' + r.acompanhantes.map((a: any) => {
-                const idade = calcularIdade(a.datanascimento);
-                const idadeStr = idade !== null ? ` (${idade}a)` : '';
-                const parentescoStr = a.parentesco ? ` - ${a.parentesco}` : '';
-                return `• ${a.nomecompleto || a.nome}${idadeStr}${parentescoStr}`;
-              }).join('\n');
-            }
+          const listaReservas = item.reservas && item.reservas.length > 0 ? item.reservas : (item.reserva ? [item.reserva] : []);
 
-            body.push([
-              { content: item.codigo, styles: { fontStyle: 'bold', halign: 'center', textColor: [5, 61, 30] } },
-              { content: `OCUPADO\n${item.categoria || 'Standard'}`, styles: { halign: 'center', fontSize: 7 } },
-              { content: acompsTexto, styles: { halign: 'left' } },
-              { content: `${formatarData(r.dataentrada)}\na\n${formatarData(r.datasaida)}`, styles: { halign: 'center' } },
-            ]);
+          if (listaReservas.length > 0) {
+            listaReservas.forEach((r: any) => {
+              let acompsTexto = `${r.titularNome} (Titular)`;
+              if (r.acompanhantes && r.acompanhantes.length > 0) {
+                acompsTexto += '\nAcompanhantes:\n' + r.acompanhantes.map((a: any) => {
+                  const idade = calcularIdade(a.datanascimento);
+                  const idadeStr = idade !== null ? ` (${idade}a)` : '';
+                  const parentescoStr = a.parentesco ? ` - ${a.parentesco}` : '';
+                  return `• ${a.nomecompleto || a.nome}${idadeStr}${parentescoStr}`;
+                }).join('\n');
+              }
+
+              body.push([
+                { content: item.codigo, styles: { fontStyle: 'bold', halign: 'center', textColor: [5, 61, 30] } },
+                { content: `OCUPADO\n${item.categoria || 'Standard'}`, styles: { halign: 'center', fontSize: 7 } },
+                { content: acompsTexto, styles: { halign: 'left' } },
+                { content: `${formatarData(r.dataentrada)}\na\n${formatarData(r.datasaida)}`, styles: { halign: 'center' } },
+              ]);
+            });
           } else {
             body.push([
               { content: item.codigo, styles: { fontStyle: 'bold', halign: 'center', textColor: [120, 120, 120] } },
@@ -730,7 +737,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
       });
     }
 
-    // Paginação no rodapé de todas as páginas geradas
     const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
@@ -744,10 +750,8 @@ export const PaginaRelatorioFazenda: React.FC = () => {
 
   return (
     <div className="area-impressao-fazenda space-y-6 max-w-7xl mx-auto p-2 sm:p-4 print:p-0 font-['Inter']">
-      {/* BLOCO DEDICADO DE ESTILOS DE IMPRESSÃO (PDF / A4) */}
       <style>{`
         @media print {
-          /* Esconder toda a barra lateral, menus de navegação, cabeçalhos do sistema e rodapés */
           aside, 
           nav, 
           header, 
@@ -758,7 +762,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             display: none !important;
           }
 
-          /* Reset de margens e largura para ocupar 100% da folha A4 */
           @page {
             size: A4 portrait;
             margin: 8mm 10mm;
@@ -776,7 +779,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             padding-left: 0 !important;
           }
 
-          /* Container exclusivo da folha de campo */
           .area-impressao-fazenda {
             display: block !important;
             width: 100% !important;
@@ -786,7 +788,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             box-shadow: none !important;
           }
 
-          /* Manter fundos coloridos e bordas nas tabelas */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -800,7 +801,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
 
       {/* BARRA DE FILTRO DE DATA E BOTÕES DE AÇÃO (OCULTA NA IMPRESSÃO) */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
-        {/* Filtro de Período */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-[#191c1d] flex items-center gap-1.5">
             <Calendar className="w-4 h-4 text-[#053d1e]" /> Período da Folha:
@@ -823,7 +823,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             />
           </div>
 
-          {/* Atalho Fim de Semana */}
           <button
             type="button"
             onClick={() => {
@@ -837,9 +836,7 @@ export const PaginaRelatorioFazenda: React.FC = () => {
           </button>
         </div>
 
-        {/* Botões de Ação */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Botão Copiar WhatsApp */}
           <button
             type="button"
             onClick={handleCopiarWhatsApp}
@@ -853,7 +850,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             <span>{copiadoWhatsApp ? 'Copiado para WhatsApp!' : 'Copiar Resumo WhatsApp'}</span>
           </button>
 
-          {/* Botão Manual Operacional */}
           <button
             type="button"
             onClick={exportarManualOperacionalPdf}
@@ -864,7 +860,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             <span>Manual Operacional</span>
           </button>
 
-          {/* Botão Principal: Exportar PDF */}
           <button
             type="button"
             onClick={exportarPdfDireto}
@@ -874,7 +869,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
             <span>Exportar PDF</span>
           </button>
 
-          {/* Botão Imprimir na Folha */}
           <button
             type="button"
             onClick={() => window.print()}
@@ -927,11 +921,7 @@ export const PaginaRelatorioFazenda: React.FC = () => {
         id="area-relatorio-fazenda"
         className="area-impressao-fazenda bg-white border border-[#c1c9bf] rounded-2xl p-6 shadow-xs print:border-none print:p-0 print:shadow-none"
       >
-        {/* Cabeçalho da Folha de Campo */}
         <div className="relative text-center pb-4 mb-4 border-b border-[#e1e3e4]">
-          {/* <div className="absolute left-2 top-0 h-14 w-14 hidden sm:block print:block">
-            <img src={logoTucanoImg} alt="Hotel Fazenda Anew" className="h-full w-full object-contain" />
-          </div> */}
           <h1 className="font-['Manrope'] text-lg font-extrabold uppercase text-[#1E4620] tracking-wide">
             HOTEL FAZENDA ANEW — FOLHA DE CAMPO
           </h1>
@@ -944,7 +934,7 @@ export const PaginaRelatorioFazenda: React.FC = () => {
         </div>
 
         {/* ========================================================================= */}
-        {/* ABA 1: OCUPAÇÃO POR QUARTO (MODELO IMAGEM 1 - BLOCOS B, C, D)             */}
+        {/* ABA 1: OCUPAÇÃO POR QUARTO (BLOCOS B, C, D)                                */}
         {/* ========================================================================= */}
         {abaAtiva === 'QUARTOS' && (
           <div className="space-y-6">
@@ -970,76 +960,99 @@ export const PaginaRelatorioFazenda: React.FC = () => {
 
                       {/* Lista de Quartos do Bloco */}
                       {lista.map((item, qIdx) => {
-                        const r = item.reserva;
+                        const listaReservas = item.reservas && item.reservas.length > 0
+                          ? item.reservas
+                          : (item.reserva ? [item.reserva] : []);
+
+                        if (listaReservas.length > 0) {
+                          return (
+                            <React.Fragment key={qIdx}>
+                              {listaReservas.map((r: any, rIdx: number) => (
+                                <tr
+                                  key={`${qIdx}-${rIdx}`}
+                                  className="border-b border-slate-200 transition-colors hover:bg-slate-50"
+                                >
+                                  {rIdx === 0 && (
+                                    <td
+                                      rowSpan={listaReservas.length}
+                                      className="py-2.5 px-3 font-extrabold text-center border-r border-slate-200 text-[#053d1e] text-sm bg-[#e6f4ea]/20 align-middle"
+                                    >
+                                      {item.codigo}
+                                    </td>
+                                  )}
+
+                                  <td className="py-2.5 px-3 text-center border-r border-slate-200">
+                                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800">
+                                      Ocupado
+                                    </span>
+                                    <div className="text-[10px] text-slate-500 mt-0.5 font-medium">{item.categoria}</div>
+                                  </td>
+
+                                  <td className="py-2.5 px-3 border-r border-slate-200">
+                                    <div className="space-y-1">
+                                      <div className="font-bold text-[#191c1d] text-xs flex items-center gap-2">
+                                        <span>{r.titularNome}</span>
+                                        <span className="text-[10px] font-semibold text-[#053d1e] bg-[#e6f4ea] px-1.5 py-0.2 rounded-md">
+                                          {r.qtdAdultos} Ad. {r.qtdCriancasMeia > 0 ? `/ ${r.qtdCriancasMeia} Cri.` : ''}
+                                        </span>
+                                      </div>
+
+                                      {r.acompanhantes && r.acompanhantes.length > 0 && (
+                                        <div className="text-[11px] text-slate-600 pl-2 border-l-2 border-[#c1c9bf] space-y-0.5">
+                                          {r.acompanhantes.map((a: any, aIdx: number) => {
+                                            const idade = calcularIdade(a.datanascimento);
+                                            const parentesco = a.parentesco || a.grauparentesco || a.relacao || '';
+                                            return (
+                                              <div key={aIdx} className="flex items-center gap-1.5">
+                                                <span className="font-medium text-slate-800">{a.nomecompleto || a.nome}</span>
+                                                {parentesco && (
+                                                  <span className="text-[10px] text-slate-500 capitalize">({parentesco})</span>
+                                                )}
+                                                {idade !== null && (
+                                                  <span className="text-[10px] text-slate-500 font-semibold">— {idade} anos</span>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  <td className="py-2.5 px-3 text-center text-xs text-slate-700">
+                                    <div>
+                                      <span className="font-semibold">{formatarData(r.dataentrada)}</span>
+                                      <span className="text-[10px] text-slate-500 block">à {formatarData(r.datasaida)}</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          );
+                        }
+
                         return (
                           <tr
                             key={qIdx}
-                            className={`border-b border-slate-200 transition-colors ${
-                              item.ocupado ? 'hover:bg-slate-50' : 'bg-slate-50/50 hover:bg-slate-100'
-                            }`}
+                            className="border-b border-slate-200 transition-colors bg-slate-50/50 hover:bg-slate-100"
                           >
-                            {/* Quarto */}
                             <td className="py-2.5 px-3 font-extrabold text-center border-r border-slate-200 text-[#053d1e] text-sm bg-[#e6f4ea]/20">
                               {item.codigo}
                             </td>
 
-                            {/* Categoria & Status */}
                             <td className="py-2.5 px-3 text-center border-r border-slate-200">
-                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                                item.ocupado ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                              }`}>
-                                {item.ocupado ? 'Ocupado' : 'Livre'}
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-slate-200 text-slate-600">
+                                Livre
                               </span>
                               <div className="text-[10px] text-slate-500 mt-0.5 font-medium">{item.categoria}</div>
                             </td>
 
-                            {/* Hóspedes / Acompanhantes */}
                             <td className="py-2.5 px-3 border-r border-slate-200">
-                              {r ? (
-                                <div className="space-y-1">
-                                  <div className="font-bold text-[#191c1d] text-xs flex items-center gap-2">
-                                    <span>{r.titularNome}</span>
-                                    <span className="text-[10px] font-semibold text-[#053d1e] bg-[#e6f4ea] px-1.5 py-0.2 rounded-md">
-                                      {r.qtdAdultos} Ad. {r.qtdCriancasMeia > 0 ? `/ ${r.qtdCriancasMeia} Cri.` : ''}
-                                    </span>
-                                  </div>
-
-                                  {/* Lista de Acompanhantes */}
-                                  {r.acompanhantes && r.acompanhantes.length > 0 && (
-                                    <div className="text-[11px] text-slate-600 pl-2 border-l-2 border-[#c1c9bf] space-y-0.5">
-                                      {r.acompanhantes.map((a: any, aIdx: number) => {
-                                        const idade = calcularIdade(a.datanascimento);
-                                        const parentesco = a.parentesco || a.grauparentesco || a.relacao || '';
-                                        return (
-                                          <div key={aIdx} className="flex items-center gap-1.5">
-                                            <span className="font-medium text-slate-800">• {a.nomecompleto || a.nome}</span>
-                                            {parentesco && (
-                                              <span className="text-[10px] text-slate-500 capitalize">({parentesco})</span>
-                                            )}
-                                            {idade !== null && (
-                                              <span className="text-[10px] text-slate-500 font-semibold">— {idade} anos</span>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-slate-400 font-medium italic">LIVRE / DISPONÍVEL</span>
-                              )}
+                              <span className="text-slate-400 font-medium italic">LIVRE / DISPONÍVEL</span>
                             </td>
 
-                            {/* Período */}
                             <td className="py-2.5 px-3 text-center text-xs text-slate-700">
-                              {r ? (
-                                <div>
-                                  <span className="font-semibold">{formatarData(r.dataentrada)}</span>
-                                  <span className="text-[10px] text-slate-500 block">à {formatarData(r.datasaida)}</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400">-</span>
-                              )}
+                              <span className="text-slate-400">-</span>
                             </td>
                           </tr>
                         );
@@ -1062,9 +1075,9 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                 <Info className="w-4 h-4 text-[#053d1e]" /> Regras de Ocupação do Refeitório:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[#414941] text-[11px]">
-                <div>• <strong>Adultos (≥ 12 anos):</strong> Refeição integral (100%).</div>
-                <div>• <strong>Crianças (6 a 11 anos):</strong> Meia refeição (50%).</div>
-                <div>• <strong>Crianças (0 a 5 anos):</strong> Isentas / Grátis.</div>
+                <div><strong>Adultos (≥ 12 anos):</strong> Refeição integral (100%).</div>
+                <div><strong>Crianças (6 a 11 anos):</strong> Meia refeição (50%).</div>
+                <div><strong>Crianças (0 a 5 anos):</strong> Isentas / Grátis.</div>
               </div>
             </div>
 
@@ -1084,17 +1097,14 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                 <tbody>
                   {reservasEnriquecidas.map((r, idx) => (
                     <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                      {/* Quarto */}
                       <td className="py-2 px-3 text-center font-extrabold text-[#053d1e] border-r border-slate-200">
                         {r.quartoCodigo}
                       </td>
 
-                      {/* Período */}
                       <td className="py-2 px-3 text-center border-r border-slate-200 text-[11px] whitespace-nowrap">
                         {formatarData(r.dataentrada)} à {formatarData(r.datasaida)}
                       </td>
 
-                      {/* Nome do Hóspede & Acompanhantes */}
                       <td className="py-2 px-3 border-r border-slate-200">
                         <div className="font-bold text-[#191c1d]">{r.titularNome}</div>
                         {r.acompanhantes && r.acompanhantes.length > 0 && (
@@ -1106,25 +1116,20 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                             }).join(', ')}
                           </div>
                         )}
-                        
                       </td>
 
-                      {/* Adultos */}
                       <td className="py-2 px-3 text-center font-bold text-[#191c1d] border-r border-slate-200 text-sm">
                         {r.qtdAdultos}
                       </td>
 
-                      {/* Crianças Meia */}
                       <td className="py-2 px-3 text-center font-bold text-amber-900 border-r border-slate-200 text-sm">
                         {r.qtdCriancasMeia}
                       </td>
 
-                      {/* Grátis */}
                       <td className="py-2 px-3 text-center font-bold text-slate-500 border-r border-slate-200 text-sm">
                         {r.qtdCriancasGratis}
                       </td>
 
-                      {/* Total Pessoas */}
                       <td className="py-2 px-3 text-center font-extrabold text-[#053d1e] text-sm bg-[#e6f4ea]/30">
                         {r.totalPessoas}
                       </td>
@@ -1140,7 +1145,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                   )}
                 </tbody>
 
-                {/* Linha Final de Totalização do Refeitório */}
                 {reservasEnriquecidas.length > 0 && (
                   <tfoot className="bg-[#1E4620] text-white font-extrabold text-xs">
                     <tr>
@@ -1193,17 +1197,14 @@ export const PaginaRelatorioFazenda: React.FC = () => {
 
                     return (
                       <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                        {/* Quarto */}
                         <td className="py-2 px-3 text-center font-extrabold text-[#053d1e] border-r border-slate-200">
                           {r.quartoCodigo}
                         </td>
 
-                        {/* Hóspede */}
                         <td className="py-2 px-3 font-bold text-[#191c1d] border-r border-slate-200">
                           {r.titularNome}
                         </td>
 
-                        {/* Contato com link WhatsApp */}
                         <td className="py-2 px-3 text-center border-r border-slate-200">
                           {r.titularTelefone ? (
                             <a
@@ -1220,24 +1221,20 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                           )}
                         </td>
 
-                        {/* Total Hospedagem */}
                         <td className="py-2 px-3 text-right font-medium border-r border-slate-200">
                           {formatarMoeda(r.valorTotal)}
                         </td>
 
-                        {/* Já Pago / Sinal */}
                         <td className="py-2 px-3 text-right font-medium text-emerald-700 border-r border-slate-200">
                           {formatarMoeda(r.valorPago)}
                         </td>
 
-                        {/* Saldo Pendente */}
                         <td className={`py-2 px-3 text-right font-bold border-r border-slate-200 ${
                           r.saldoPendente > 0 ? 'text-[#ba1a1a]' : 'text-emerald-800'
                         }`}>
                           {formatarMoeda(r.saldoPendente)}
                         </td>
 
-                        {/* Status */}
                         <td className="py-2 px-3 text-center">
                           <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
                             pagoIntegral
@@ -1262,7 +1259,6 @@ export const PaginaRelatorioFazenda: React.FC = () => {
                   )}
                 </tbody>
 
-                {/* Linha Final de Totalização Financeira */}
                 {reservasEnriquecidas.length > 0 && (
                   <tfoot className="bg-[#1E4620] text-white font-extrabold text-xs">
                     <tr>
