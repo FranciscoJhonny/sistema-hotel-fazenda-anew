@@ -32,7 +32,7 @@ import {
   formatarData,
   formatarMoeda,
   formatarTelefone,
-  calcularIdadeNaData
+  calcularIdadeNumerica
 } from '../utilitarios/formatadores';
 
 export interface ValoresCalculadosReserva {
@@ -186,12 +186,12 @@ export const calcularValoresReserva = (
   if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
     cadastro.acompanhantes.forEach((a) => {
       if (a.datanascimento) {
-        // Idade exata na data de entrada da reserva
-        const idade = calcularIdadeNaData(a.datanascimento, dataEntradaStr);
-        if (idade <= idadeLimiteGratis) {
+        // Idade atual calculada com segurança
+        const idadeNum = Number(calcularIdadeNumerica(a.datanascimento));
+        if (idadeNum <= idadeLimiteGratis) {
           // 0 a 5 anos: Bebê / Criança Grátis
           criancasGratis++;
-        } else if (idade <= idadeLimiteMeia) {
+        } else if (idadeNum <= idadeLimiteMeia) {
           // 6 a 11 anos: Criança Pagante (Meia)
           criancasMeia++;
         } else {
@@ -320,7 +320,7 @@ export const PaginaFnrhAdmin: React.FC = () => {
       if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
         cadastro.acompanhantes.forEach((a) => {
           if (a.datanascimento) {
-            const age = calcularIdadeNaData(a.datanascimento, dataEntradaRef);
+            const age = calcularIdadeNumerica(a.datanascimento);
             if (age >= 0 && age <= 11) {
               idadesCriancasCalculadas.push(age);
             }

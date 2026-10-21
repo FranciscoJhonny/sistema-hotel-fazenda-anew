@@ -7,7 +7,8 @@ import {
   LoaderCircle,
   Clock,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Users
 } from 'lucide-react';
 import { CadastroFnrh, Pacote } from '../../tipos';
 import { FnrhService } from '../../servicos/supabase/FnrhService';
@@ -15,7 +16,8 @@ import { useHotel } from '../../contextos/ContextoHotel';
 import {
   formatarMoeda,
   aplicarMascaraMoeda,
-  desformatarMoeda
+  desformatarMoeda,
+  calcularIdadeNumerica
 } from '../../utilitarios/formatadores';
 
 interface ModalConfirmarSinalFnrhProps {
@@ -44,12 +46,98 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const sinalCalculado = useMemo(() => {
-    if (valorTotalSugerido && valorTotalSugerido > 0) {
-      return valorTotalSugerido * 0.5;
+  const valorBasePacote = useMemo(() => {
+    if (pacoteSugerido?.valor && Number(pacoteSugerido.valor) > 0) {
+      return Number(pacoteSugerido.valor);
     }
-    return 0;
-  }, [valorTotalSugerido]);
+    return 750;
+  }, [pacoteSugerido]);
+
+  // Classificação dos acompanhantes e tarifas
+  const acompanhantesETarifas = useMemo(() => {
+    if (!cadastro) return [];
+    const dEntrada = (cadastro.dataentrada || '').slice(0, 10).trim();
+    const lista: Array<{
+      nome: string;
+      tipoHospede: string;
+      idade: number;
+      tarifaTexto: string;
+      percentual: number;
+      valor: number;
+      badgeClasse: string;
+    }> = [];
+
+    // Titular
+    lista.push({
+      nome: cadastro.nomecompleto || 'Titular da Reserva',
+      tipoHospede: 'Titular (Adulto)',
+      idade: 30,
+      tarifaTexto: 'Inteira (100%)',
+      percentual: 100,
+      valor: valorBasePacote,
+      badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+    });
+
+    // Acompanhantes
+    if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
+      cadastro.acompanhantes.forEach((acomp) => {
+        let idade = 30;
+        if (acomp.datanascimento) {
+          idade = calcularIdadeNumerica(acomp.datanascimento);
+        } else if (acomp.menoridade) {
+          idade = 8;
+        }
+
+        const idadeNum = Number(idade);
+
+        if (idadeNum <= 5) {
+          lista.push({
+            nome: acomp.nomecompleto,
+            tipoHospede: 'Criança (Grátis)',
+            idade: idadeNum,
+            tarifaTexto: 'Grátis (0%)',
+            percentual: 0,
+            valor: 0,
+            badgeClasse: 'bg-blue-50 text-blue-700 border-blue-200',
+          });
+        } else if (idadeNum <= 11) {
+          lista.push({
+            nome: acomp.nomecompleto,
+            tipoHospede: 'Criança Pagante',
+            idade: idadeNum,
+            tarifaTexto: 'Meia (50%)',
+            percentual: 50,
+            valor: valorBasePacote * 0.5,
+            badgeClasse: 'bg-amber-50 text-amber-800 border-amber-300',
+          });
+        } else {
+          lista.push({
+            nome: acomp.nomecompleto,
+            tipoHospede: 'Acompanhante Adulto',
+            idade: idadeNum,
+            tarifaTexto: 'Inteira (100%)',
+            percentual: 100,
+            valor: valorBasePacote,
+            badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+          });
+        }
+      });
+    }
+
+    return lista;
+  }, [cadastro, valorBasePacote]);
+
+  // Soma do valor total e do sinal da modal:
+  // Total = (Qtd Adultos * ValorPacote) + (Qtd Crianças Meia [6 a 11 anos] * (ValorPacote * 0.5))
+  // Sinal = Total / 2
+  const { totalCalculado, sinalCalculado } = useMemo(() => {
+    if (acompanhantesETarifas.length > 0) {
+      const total = acompanhantesETarifas.reduce((acc, h) => acc + h.valor, 0);
+      return { totalCalculado: total, sinalCalculado: total * 0.5 };
+    }
+    const total = valorTotalSugerido || 0;
+    return { totalCalculado: total, sinalCalculado: total * 0.5 };
+  }, [acompanhantesETarifas, valorTotalSugerido]);
 
   useEffect(() => {
     if (cadastro) {
@@ -122,8 +210,8 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     }
 
     // Vincula o valor total estimado ao cadastro em memória
-    if (valorTotalSugerido && valorTotalSugerido > 0) {
-      cadastro.valor_total = valorTotalSugerido;
+    if (totalCalculado && totalCalculado > 0) {
+      cadastro.valor_total = totalCalculado;
     }
 
     // Recarrega todos os dados para sincronizar o mapa de reservas
@@ -176,12 +264,12 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
           )}
 
           {/* Resumo de Valores Calculados */}
-          {valorTotalSugerido && valorTotalSugerido > 0 ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-950">
+          {totalCalculado && totalCalculado > 0 ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-950 space-y-2">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-semibold text-emerald-800">Total Previsto da Estadia:</span>
                 <span className="font-extrabold text-sm text-[#053d1e] font-['Manrope']">
-                  {formatarMoeda(valorTotalSugerido)}
+                  {formatarMoeda(totalCalculado)}
                 </span>
               </div>
               <div className="flex items-center justify-between text-[11px] text-emerald-700">
@@ -191,12 +279,45 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
                 </span>
               </div>
               {pacoteSugerido && (
-                <div className="mt-2 pt-2 border-t border-emerald-200/60 flex items-center justify-between text-[11px]">
+                <div className="mt-1.5 pt-1.5 border-t border-emerald-200/60 flex items-center justify-between text-[11px]">
                   <span className="text-emerald-700 flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                     Pacote Aplicado:
                   </span>
                   <span className="font-semibold text-emerald-900">{pacoteSugerido.nome}</span>
+                </div>
+              )}
+
+              {/* Bloco: Acompanhantes & Tarifas */}
+              {acompanhantesETarifas.length > 0 && (
+                <div className="mt-2.5 pt-2.5 border-t border-emerald-200/80 space-y-1.5">
+                  <span className="font-bold text-[11px] text-emerald-950 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5 text-[#053d1e]" />
+                    Acompanhantes & Tarifas ({acompanhantesETarifas.length} pessoas):
+                  </span>
+                  <div className="space-y-1 max-h-36 overflow-y-auto">
+                    {acompanhantesETarifas.map((h, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between p-1.5 rounded-lg bg-white/90 border border-emerald-200/80 text-xs"
+                      >
+                        <div className="truncate mr-2">
+                          <span className="font-bold text-slate-800 block truncate">{h.nome}</span>
+                          <span className="text-[10px] text-slate-500">
+                            {h.tipoHospede} {h.idade !== undefined ? `• ${h.idade} ${h.idade === 1 ? 'ano' : 'anos'}` : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${h.badgeClasse}`}>
+                            {h.tarifaTexto}
+                          </span>
+                          <span className="font-extrabold text-[#053d1e] font-['Manrope'] text-xs">
+                            {formatarMoeda(h.valor)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
