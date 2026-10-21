@@ -1,5 +1,6 @@
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
 import { CadastroFnrh, CadastroFnrhAcompanhante } from '../../tipos';
+import { calcularIdadeNumerica } from '../../utilitarios/formatadores';
 
 /**
  * Retorna a origem atual da URL de forma segura (tanto no browser quanto em SSR).
@@ -642,14 +643,7 @@ export class FnrhService {
           const paraInserir = acompanhantes.map((acomp) => {
             let menoridade = Boolean(acomp.menoridade);
             if (acomp.datanascimento) {
-              const dataNasc = new Date(acomp.datanascimento.includes('T') ? acomp.datanascimento : `${acomp.datanascimento}T00:00:00`);
-              if (!isNaN(dataNasc.getTime())) {
-                const hoje = new Date();
-                let id = hoje.getFullYear() - dataNasc.getFullYear();
-                const m = hoje.getMonth() - dataNasc.getMonth();
-                if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) id--;
-                menoridade = id < 18;
-              }
+              menoridade = calcularIdadeNumerica(acomp.datanascimento) < 18;
             }
 
             return {

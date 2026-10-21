@@ -5,7 +5,7 @@ import { Quarto, Pacote, FormaPagamento } from '../../tipos';
 import {
   formatarData,
   formatarMoeda,
-  calcularIdadeNaData,
+  calcularIdadeNumerica,
   aplicarMascaraMoeda,
   desformatarMoeda,
 } from '../../utilitarios/formatadores';
@@ -311,7 +311,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           if (acompsFnrh && acompsFnrh.length > 0) {
             acompsFnrh.forEach((a: any) => {
               if (a.datanascimento) {
-                const age = calcularIdadeNaData(a.datanascimento, dataEntrada);
+                const age = calcularIdadeNumerica(a.datanascimento);
                 if (age >= 12) {
                   qtdAdultosAcomps++;
                 } else if (age >= 0 && age <= 11) {
@@ -332,7 +332,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           if (acompsOficial && acompsOficial.length > 0) {
             acompsOficial.forEach((a: any) => {
               if (a.datanascimento) {
-                const age = calcularIdadeNaData(a.datanascimento, dataEntrada);
+                const age = calcularIdadeNumerica(a.datanascimento);
                 if (age >= 12) {
                   qtdAdultosAcomps++;
                 } else if (age >= 0 && age <= 11) {

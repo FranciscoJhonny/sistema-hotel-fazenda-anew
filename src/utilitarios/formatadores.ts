@@ -146,26 +146,48 @@ export function calcularDiarias(dataEntrada: string, dataSaida: string): number 
   return diffDays > 0 ? diffDays : 1;
 }
 
-export function calcularIdade(dataNascimentoStr?: string): string {
-  if (!dataNascimentoStr) return '--';
-  let dataNasc: Date;
-  if (dataNascimentoStr.includes('/')) {
-    const partes = dataNascimentoStr.split('/');
-    if (partes.length === 3) {
-      dataNasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
-    } else {
-      dataNasc = new Date(dataNascimentoStr);
+/**
+ * Converte com segurança strings de datas nos formatos brasileiro (DD/MM/YYYY) ou ISO (YYYY-MM-DD)
+ * para objetos Date locais, sem o bug de inversão mês/dia ou problemas de fuso horário UTC.
+ */
+export function parseDataSegura(str?: string): Date | null {
+  if (!str) return null;
+  const s = str.trim().slice(0, 10);
+  if (s.includes('/')) {
+    const partes = s.split('/').map(Number);
+    if (partes.length === 3 && !partes.some(isNaN)) {
+      if (partes[0] > 1000) {
+        return new Date(partes[0], partes[1] - 1, partes[2]);
+      }
+      const [dia, mes, ano] = partes;
+      return new Date(ano, mes - 1, dia);
     }
-  } else {
-    dataNasc = new Date(dataNascimentoStr.includes('T') ? dataNascimentoStr : `${dataNascimentoStr}T00:00:00`);
   }
+  if (s.includes('-')) {
+    const partes = s.split('-').map(Number);
+    if (partes.length === 3 && !partes.some(isNaN)) {
+      if (partes[0] > 1000) {
+        return new Date(partes[0], partes[1] - 1, partes[2]);
+      }
+      if (partes[2] > 1000) {
+        return new Date(partes[2], partes[1] - 1, partes[0]);
+      }
+      const [ano, mes, dia] = partes;
+      return new Date(ano, mes - 1, dia);
+    }
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
 
-  if (isNaN(dataNasc.getTime())) return '--';
+export function calcularIdade(dataNascimentoStr?: string): string {
+  const dNasc = parseDataSegura(dataNascimentoStr);
+  if (!dNasc) return '--';
 
   const hoje = new Date();
-  let idade = hoje.getFullYear() - dataNasc.getFullYear();
-  const m = hoje.getMonth() - dataNasc.getMonth();
-  if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) {
+  let idade = hoje.getFullYear() - dNasc.getFullYear();
+  const m = hoje.getMonth() - dNasc.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dNasc.getDate())) {
     idade--;
   }
 
@@ -175,25 +197,13 @@ export function calcularIdade(dataNascimentoStr?: string): string {
 }
 
 export function calcularIdadeNumerica(dataNascimentoStr?: string): number {
-  if (!dataNascimentoStr) return 0;
-  let dataNasc: Date;
-  if (dataNascimentoStr.includes('/')) {
-    const partes = dataNascimentoStr.split('/');
-    if (partes.length === 3) {
-      dataNasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
-    } else {
-      dataNasc = new Date(dataNascimentoStr);
-    }
-  } else {
-    dataNasc = new Date(dataNascimentoStr.includes('T') ? dataNascimentoStr : `${dataNascimentoStr}T00:00:00`);
-  }
-
-  if (isNaN(dataNasc.getTime())) return 0;
+  const dNasc = parseDataSegura(dataNascimentoStr);
+  if (!dNasc) return 0;
 
   const hoje = new Date();
-  let idade = hoje.getFullYear() - dataNasc.getFullYear();
-  const m = hoje.getMonth() - dataNasc.getMonth();
-  if (m < 0 || (m === 0 && hoje.getDate() < dataNasc.getDate())) {
+  let idade = hoje.getFullYear() - dNasc.getFullYear();
+  const m = hoje.getMonth() - dNasc.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < dNasc.getDate())) {
     idade--;
   }
   return Math.max(0, idade);
@@ -202,50 +212,14 @@ export function calcularIdadeNumerica(dataNascimentoStr?: string): number {
 /**
  * Calcula a idade exata com base em uma data de referência (ex: data de entrada da reserva).
  */
-export function calcularIdadeNaData(dataNascimentoStr?: string, dataReferenciaStr?: string): number {
-  if (!dataNascimentoStr) return 0;
+export function calcularIdadeNaData(dataNascimento?: string, dataReferencia?: string): number {
+  const dNasc = parseDataSegura(dataNascimento);
+  if (!dNasc) return 0;
+  const dRef = dataReferencia ? parseDataSegura(dataReferencia) || new Date() : new Date();
 
-  let dataNasc: Date;
-  const strNasc = dataNascimentoStr.slice(0, 10).trim();
-  if (strNasc.includes('/')) {
-    const partes = strNasc.split('/');
-    if (partes.length === 3) {
-      dataNasc = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]));
-    } else {
-      dataNasc = new Date(strNasc);
-    }
-  } else if (strNasc.includes('-')) {
-    const partes = strNasc.split('-');
-    if (partes.length === 3) {
-      dataNasc = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
-    } else {
-      dataNasc = new Date(strNasc);
-    }
-  } else {
-    dataNasc = new Date(strNasc);
-  }
-
-  if (isNaN(dataNasc.getTime())) return 0;
-
-  let refDate = new Date();
-  if (dataReferenciaStr) {
-    const strRef = dataReferenciaStr.slice(0, 10).trim();
-    if (strRef.includes('/')) {
-      const p = strRef.split('/');
-      if (p.length === 3) {
-        refDate = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
-      }
-    } else if (strRef.includes('-')) {
-      const p = strRef.split('-');
-      if (p.length === 3) {
-        refDate = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
-      }
-    }
-  }
-
-  let idade = refDate.getFullYear() - dataNasc.getFullYear();
-  const m = refDate.getMonth() - dataNasc.getMonth();
-  if (m < 0 || (m === 0 && refDate.getDate() < dataNasc.getDate())) {
+  let idade = dRef.getFullYear() - dNasc.getFullYear();
+  const m = dRef.getMonth() - dNasc.getMonth();
+  if (m < 0 || (m === 0 && dRef.getDate() < dNasc.getDate())) {
     idade--;
   }
   return Math.max(0, idade);

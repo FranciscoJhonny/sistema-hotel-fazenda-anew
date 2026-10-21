@@ -30,7 +30,7 @@ import {
   aplicarMascaraCpf,
   aplicarMascaraTelefone,
   calcularIdade,
-  calcularIdadeNaData,
+  calcularIdadeNumerica,
   formatarCep,
   formatarCpf,
   formatarData,
@@ -126,29 +126,30 @@ export const calcularTarifaHospede = (
     valorBasePorPessoa = Number(pacoteMatch.valor);
   }
 
-  // Idade na data de entrada da reserva
+  // Idade calculada com base na data de nascimento
   let idade = 30; // Padrão adulto se não informada e não menor
   if (dataNascimento) {
-    idade = calcularIdadeNaData(dataNascimento, dEntrada);
+    idade = calcularIdadeNumerica(dataNascimento);
   } else if (menoridade) {
     idade = 8;
   }
 
   if (dataNascimento) {
-    if (idade <= 5) {
+    const idadeNum = Number(idade);
+    if (idadeNum <= 5) {
       return {
         tipo: 'GRATIS',
-        tipoTexto: 'Grátis (Isento)',
+        tipoTexto: 'Grátis (0%)',
         valor: 0,
-        idade,
+        idade: idadeNum,
         badgeClasse: 'bg-blue-50 text-blue-700 border-blue-200',
       };
-    } else if (idade <= 11) {
+    } else if (idadeNum <= 11) {
       return {
         tipo: 'MEIA',
         tipoTexto: 'Meia (50%)',
         valor: valorBasePorPessoa * 0.5,
-        idade,
+        idade: idadeNum,
         badgeClasse: 'bg-amber-50 text-amber-800 border-amber-300',
       };
     } else {
@@ -156,7 +157,7 @@ export const calcularTarifaHospede = (
         tipo: 'INTEIRA',
         tipoTexto: 'Inteira (100%)',
         valor: valorBasePorPessoa,
-        idade,
+        idade: idadeNum,
         badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
       };
     }
