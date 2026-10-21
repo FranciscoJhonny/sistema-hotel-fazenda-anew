@@ -85,7 +85,6 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
         const cadastro = data.cadastro || {};
         
         // Trava LGPD / Link de Uso Único:
-        // Se a ficha já foi preenchida/enviada ou o sinal já foi confirmado / reserva criada
         if (
           data.ja_enviado === true ||
           Boolean(cadastro.declaracao_aceita) ||
@@ -93,11 +92,12 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           cadastro.status === 'RESERVA_CRIADA'
         ) {
           setJaEnviado(true);
-          setNomeHospedeEnviado(cadastro.nomecompleto || data.nomecompleto || '');
+          setNomeHospedeEnviado(cadastro.nomecompleto ? String(cadastro.nomecompleto).toUpperCase() : (data.nomecompleto ? String(data.nomecompleto).toUpperCase() : ''));
           setCarregando(false);
           return;
         }
 
+        if (cadastro.nomecompleto) cadastro.nomecompleto = String(cadastro.nomecompleto).toUpperCase();
         if (cadastro.cpf) cadastro.cpf = aplicarMascaraCpf(String(cadastro.cpf));
         if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
         if (cadastro.telefone) cadastro.telefone = aplicarMascaraTelefone(String(cadastro.telefone));
@@ -110,6 +110,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           (data.acompanhantes || []).map((item: Acompanhante) => ({
             ...acompanhanteInicial(),
             ...item,
+            nomecompleto: item.nomecompleto ? String(item.nomecompleto).toUpperCase() : '',
             cpfresponsavel: item.cpfresponsavel ? aplicarMascaraCpf(String(item.cpfresponsavel)) : '',
           }))
         );
@@ -121,8 +122,11 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
   const alterar = (campo: string, valor: string | number | boolean) => {
     let novoValor = valor;
-    // Aplica máscara automática de CPF, Telefone e CEP enquanto digita
-    if (campo === 'cpf' || campo === 'cpfresponsavelmenor') {
+    
+    // Converte nome completo do titular em caixa alta
+    if (campo === 'nomecompleto') {
+      novoValor = String(valor).toUpperCase();
+    } else if (campo === 'cpf' || campo === 'cpfresponsavelmenor') {
       novoValor = aplicarMascaraCpf(String(valor));
     } else if (campo === 'telefone') {
       novoValor = aplicarMascaraTelefone(String(valor));
@@ -150,10 +154,14 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
   const alterarAcompanhante = (indice: number, campo: keyof Acompanhante, valor: string | boolean) => {
     let novoValor = valor;
-    // Aplica máscara automática de CPF no responsável do acompanhante menor
-    if (campo === 'cpfresponsavel') {
+
+    // Converte nome completo do acompanhante em caixa alta
+    if (campo === 'nomecompleto') {
+      novoValor = String(valor).toUpperCase();
+    } else if (campo === 'cpfresponsavel') {
       novoValor = aplicarMascaraCpf(String(valor));
     }
+
     setAcompanhantes((lista) =>
       lista.map((item, posicao) => (posicao === indice ? { ...item, [campo]: novoValor } : item))
     );
@@ -164,7 +172,8 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     setErro(null);
     setModalErro(null);
 
-    if (!dados.nomecompleto?.toString().trim()) {
+    const nomeTitularFormatado = dados.nomecompleto?.toString().trim().toUpperCase() || '';
+    if (!nomeTitularFormatado) {
       setModalErro('O campo "Nome Completo" do titular é de preenchimento obrigatório.');
       return;
     }
@@ -205,9 +214,10 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
 
-    // Garante que o CPF e o Telefone sejam salvos formatados com máscara no banco de dados
+    // Garante que o nome vá em caixa alta e os campos com máscaras corretas
     const dadosParaSalvar = {
       ...dados,
+      nomecompleto: nomeTitularFormatado,
       cpf: cpfFormatado,
       telefone: dados.telefone ? aplicarMascaraTelefone(String(dados.telefone)) : '',
       cep: dados.cep ? formatarCep(String(dados.cep)) : '',
@@ -216,6 +226,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
     const acompanhantesParaSalvar = acompanhantes.map((item) => ({
       ...item,
+      nomecompleto: item.nomecompleto ? String(item.nomecompleto).trim().toUpperCase() : '',
       cpfresponsavel: item.cpfresponsavel ? aplicarMascaraCpf(String(item.cpfresponsavel)) : '',
     }));
 
@@ -339,7 +350,8 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     tipo = 'text',
     obrigatorio = false,
     placeholder = '',
-    maxLength?: number
+    maxLength?: number,
+    classeExtra = ''
   ) => (
     <label className="text-xs font-semibold text-[#414941]">
       {rotulo}
@@ -351,7 +363,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
         maxLength={maxLength}
         value={String(dados[nome] ?? '')}
         onChange={(evento) => alterar(nome, evento.target.value)}
-        className="mt-1 w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 text-sm font-normal outline-none focus:border-[#053d1e]"
+        className={`mt-1 w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 text-sm font-normal outline-none focus:border-[#053d1e] ${classeExtra}`}
       />
     </label>
   );
@@ -371,7 +383,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           <section className="rounded-2xl border border-[#c1c9bf] bg-white p-5 shadow-xs">
             <h2 className="mb-4 font-['Manrope'] text-lg font-bold">Dados do hóspede titular</h2>
             <div className="grid gap-4 sm:grid-cols-2">
-              {campo('nomecompleto', 'Nome completo', 'text', true, 'Nome e sobrenome')}
+              {campo('nomecompleto', 'Nome completo', 'text', true, 'NOME COMPLETO', undefined, 'uppercase')}
               {campo('cpf', 'CPF', 'text', true, '000.000.000-00', 14)}
               {campo('rg', 'RG')}
               {campo('passaporte', 'Passaporte')}
@@ -455,9 +467,10 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
                   Nome completo *
                   <input
                     required
+                    placeholder="NOME DO ACOMPANHANTE"
                     value={item.nomecompleto}
                     onChange={(evento) => alterarAcompanhante(indice, 'nomecompleto', evento.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
+                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal uppercase outline-none focus:border-[#053d1e]"
                   />
                 </label>
                 <label className="text-xs font-semibold">
@@ -465,7 +478,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
                   <input
                     value={item.documento}
                     onChange={(evento) => alterarAcompanhante(indice, 'documento', evento.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
+                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal outline-none focus:border-[#053d1e]"
                   />
                 </label>
                 <label className="text-xs font-semibold">
@@ -474,7 +487,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
                     type="date"
                     value={item.datanascimento}
                     onChange={(evento) => alterarAcompanhante(indice, 'datanascimento', evento.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
+                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal outline-none focus:border-[#053d1e]"
                   />
                 </label>
                 <label className="text-xs font-semibold">
@@ -484,7 +497,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
                     placeholder="000.000.000-00"
                     value={item.cpfresponsavel}
                     onChange={(evento) => alterarAcompanhante(indice, 'cpfresponsavel', evento.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal"
+                    className="mt-1 w-full rounded-lg border border-[#c1c9bf] px-3 py-2 text-sm font-normal outline-none focus:border-[#053d1e]"
                   />
                 </label>
                 <button
