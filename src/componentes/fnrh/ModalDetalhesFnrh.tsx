@@ -22,7 +22,8 @@ import {
   Trash2,
   LoaderCircle,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  FileDown
 } from 'lucide-react';
 import { CadastroFnrh, Reserva, Pacote } from '../../tipos';
 import { FnrhService, gerarLinkPublicoFnrh } from '../../servicos/supabase/FnrhService';
@@ -38,6 +39,14 @@ import {
   formatarTelefone
 } from '../../utilitarios/formatadores';
 import { useHotel } from '../../contextos/ContextoHotel';
+import {
+  exportarFichaFnrhPdf,
+  calcularTarifaHospede,
+  TarifaIndividual
+} from '../../utilitarios/geradorPdfFnrh';
+
+export type { TarifaIndividual };
+export { calcularTarifaHospede };
 
 interface ModalDetalhesFnrhProps {
   aberto: boolean;
@@ -51,137 +60,6 @@ interface ModalDetalhesFnrhProps {
   onAtualizar?: () => void;
 }
 
-export interface TarifaIndividual {
-  tipo: 'INTEIRA' | 'MEIA' | 'GRATIS';
-  tipoTexto: string;
-  valor: number;
-  idade: number;
-  badgeClasse: string;
-}
-
-/**
- * Calcula a tarifa individual com base na idade na data de entrada da estadia:
- * - A partir de 12 anos: "Inteira (100%)"
- * - De 6 a 11 anos: "Meia (50%)"
- * - De 0 a 5 anos: "Grátis (Isento)"
- */
-export const calcularTarifaHospede = (
-  dataNascimento?: string,
-  menoridade?: boolean,
-  dataEntradaStr?: string,
-  dataSaidaStr?: string,
-  pacotesLista: Pacote[] = []
-): TarifaIndividual => {
-  const dEntrada = (dataEntradaStr || '').slice(0, 10).trim();
-  const dSaida = (dataSaidaStr || '').slice(0, 10).trim();
-
-  let dias = 2; // Padrão se não informado: 2 dias (Final de Semana)
-  if (dEntrada && dSaida) {
-    if (dEntrada === dSaida) {
-      dias = 1; // Day Use
-    } else {
-      let d1: Date;
-      let d2: Date;
-      if (dEntrada.includes('/')) {
-        const p1 = dEntrada.split('/');
-        d1 = new Date(Number(p1[2]), Number(p1[1]) - 1, Number(p1[0]));
-      } else {
-        const p1 = dEntrada.split('-');
-        d1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
-      }
-      if (dSaida.includes('/')) {
-        const p2 = dSaida.split('/');
-        d2 = new Date(Number(p2[2]), Number(p2[1]) - 1, Number(p2[0]));
-      } else {
-        const p2 = dSaida.split('-');
-        d2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
-      }
-      const diff = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
-      dias = diff > 0 ? diff + 1 : 1;
-    }
-  }
-
-  // Preço oficial do pacote por pessoa/adulto
-  let valorBasePorPessoa = 550;
-  if (dias === 1) {
-    valorBasePorPessoa = 200;
-  } else if (dias === 2) {
-    valorBasePorPessoa = 550;
-  } else if (dias === 3) {
-    valorBasePorPessoa = 750;
-  } else if (dias === 4) {
-    valorBasePorPessoa = 950;
-  } else {
-    const pEncontrado = pacotesLista.find((p) => Number(p.quantidadedias) === dias);
-    if (pEncontrado?.valor) {
-      valorBasePorPessoa = Number(pEncontrado.valor);
-    } else {
-      valorBasePorPessoa = 950 + (dias - 4) * 200;
-    }
-  }
-
-  // Se houver pacote correspondente cadastrado no banco com valor ativo
-  const pacoteMatch = pacotesLista.find((p) => Number(p.quantidadedias) === dias);
-  if (pacoteMatch?.valor && Number(pacoteMatch.valor) > 0) {
-    valorBasePorPessoa = Number(pacoteMatch.valor);
-  }
-
-  // Idade calculada com base na data de nascimento
-  let idade = 30; // Padrão adulto se não informada e não menor
-  if (dataNascimento) {
-    idade = calcularIdadeNumerica(dataNascimento);
-  } else if (menoridade) {
-    idade = 8;
-  }
-
-  if (dataNascimento) {
-    const idadeNum = Number(idade);
-    if (idadeNum <= 5) {
-      return {
-        tipo: 'GRATIS',
-        tipoTexto: 'Grátis (0%)',
-        valor: 0,
-        idade: idadeNum,
-        badgeClasse: 'bg-blue-50 text-blue-700 border-blue-200',
-      };
-    } else if (idadeNum <= 11) {
-      return {
-        tipo: 'MEIA',
-        tipoTexto: 'Meia (50%)',
-        valor: valorBasePorPessoa * 0.5,
-        idade: idadeNum,
-        badgeClasse: 'bg-amber-50 text-amber-800 border-amber-300',
-      };
-    } else {
-      return {
-        tipo: 'INTEIRA',
-        tipoTexto: 'Inteira (100%)',
-        valor: valorBasePorPessoa,
-        idade: idadeNum,
-        badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
-      };
-    }
-  }
-
-  if (menoridade) {
-    return {
-      tipo: 'MEIA',
-      tipoTexto: 'Meia (50%)',
-      valor: valorBasePorPessoa * 0.5,
-      idade: 8,
-      badgeClasse: 'bg-amber-50 text-amber-800 border-amber-300',
-    };
-  }
-
-  return {
-    tipo: 'INTEIRA',
-    tipoTexto: 'Inteira (100%)',
-    valor: valorBasePorPessoa,
-    idade,
-    badgeClasse: 'bg-emerald-50 text-emerald-800 border-emerald-300',
-  };
-};
-
 export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   aberto,
   cadastro,
@@ -193,8 +71,9 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   onCriarReserva,
   onAtualizar,
 }) => {
-  const { usuarioAtual, recarregarDados, pacotes } = useHotel();
+  const { usuarioAtual, recarregarDados, pacotes, quartos } = useHotel();
   const [copiado, setCopiado] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [dadosEditados, setDadosEditados] = useState<Partial<CadastroFnrh>>({});
   const [acompanhantesEditados, setAcompanhantesEditados] = useState<any[]>([]);
@@ -245,6 +124,25 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
       setTimeout(() => setCopiado(false), 3000);
     } catch {
       // fallback
+    }
+  };
+
+  const handleExportarPdf = async () => {
+    if (!cadastro) return;
+    setGerandoPdf(true);
+    try {
+      await exportarFichaFnrhPdf(
+        dadosEditados.cadastroid ? (dadosEditados as CadastroFnrh) : cadastro,
+        reservaVinculada,
+        pacotes,
+        quartos,
+        valorTotalSugerido,
+        pacoteSugerido
+      );
+    } catch (e) {
+      console.error('[ModalDetalhesFnrh] Erro ao exportar PDF da FNRH:', e);
+    } finally {
+      setGerandoPdf(false);
     }
   };
 
@@ -367,6 +265,22 @@ Qualquer dúvida estamos à disposição!`;
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {jaPossuiReserva && (
+              <button
+                type="button"
+                disabled={gerandoPdf}
+                onClick={handleExportarPdf}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700/80 hover:bg-emerald-700 text-xs font-bold text-white transition-colors cursor-pointer border border-emerald-500/40 disabled:opacity-50 shadow-2xs"
+                title="Exportar esta ficha completa em formato PDF oficial"
+              >
+                {gerandoPdf ? (
+                  <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileDown className="w-3.5 h-3.5 text-emerald-200" />
+                )}
+                <span>Exportar PDF</span>
+              </button>
+            )}
             {podeEditar && !modoEdicao && (
               <button
                 type="button"
@@ -1197,15 +1111,37 @@ Qualquer dúvida estamos à disposição!`;
                 )}
 
                 {jaPossuiReserva ? (
-                  <button
-                    type="button"
-                    disabled
-                    title={`Reserva já realizada (${codigoOuIdReserva}). Hóspede já importado.`}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-800 cursor-not-allowed shadow-2xs"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                    <span>Reserva Criada {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}</span>
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled
+                      title={`Reserva já realizada (${codigoOuIdReserva}). Hóspede já importado.`}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-800 cursor-not-allowed shadow-2xs"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                      <span>Reserva Criada {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={gerandoPdf}
+                      onClick={handleExportarPdf}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#053d1e] bg-[#053d1e] text-white hover:bg-[#043017] text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                      title="Exportar esta ficha completa em formato PDF oficial"
+                    >
+                      {gerandoPdf ? (
+                        <>
+                          <LoaderCircle className="w-4 h-4 animate-spin" />
+                          <span>Gerando PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileDown className="w-4 h-4" />
+                          <span>Exportar PDF</span>
+                        </>
+                      )}
+                    </button>
+                  </>
                 ) : cadastro.status === 'LIBERADA_PARA_RESERVA' && onCriarReserva ? (
                   <button
                     type="button"
