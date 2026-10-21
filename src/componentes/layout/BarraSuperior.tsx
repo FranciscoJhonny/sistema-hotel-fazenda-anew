@@ -106,7 +106,7 @@ export const BarraSuperior: React.FC<BarraSuperiorProps> = ({ onAbrirMobile }) =
                     : 'border-transparent text-[#6b7280] hover:text-[#111827]'
                 }`}
               >
-                Folha de Estadia (Fazenda)
+                Folha de Estadia (Fazenda) chicão
               </button>
             </div>
           )}
