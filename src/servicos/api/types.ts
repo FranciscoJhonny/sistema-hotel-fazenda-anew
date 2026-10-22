@@ -4,7 +4,11 @@ export interface ResultadoSupabase<T> {
   erro?: string;
   total?: number;
   statusHttp?: number;
+  mensagem?: string;
 }
+
+// Alias para nomenclatura semântica com a nova API REST
+export type ResultadoApi<T> = ResultadoSupabase<T>;
 
 export interface FiltrosConsulta {
   apenasAtivos?: boolean;

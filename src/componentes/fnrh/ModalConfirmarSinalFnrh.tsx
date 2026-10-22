@@ -11,7 +11,7 @@ import {
   Users
 } from 'lucide-react';
 import { CadastroFnrh, Pacote } from '../../tipos';
-import { FnrhService } from '../../servicos/supabase/FnrhService';
+import { FnrhService } from '../../servicos/api/FnrhService';
 import { useHotel } from '../../contextos/ContextoHotel';
 import {
   formatarMoeda,

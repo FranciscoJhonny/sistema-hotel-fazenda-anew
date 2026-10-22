@@ -9,7 +9,7 @@ import {
   aplicarMascaraMoeda,
   desformatarMoeda,
 } from '../../utilitarios/formatadores';
-import { FnrhService } from '../../servicos/supabase/FnrhService';
+import { FnrhService } from '../../servicos/api/FnrhService';
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
 
 interface ModalReservaRapidaProps {

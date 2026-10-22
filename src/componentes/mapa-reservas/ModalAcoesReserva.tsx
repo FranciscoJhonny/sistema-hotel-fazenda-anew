@@ -26,7 +26,8 @@ import {
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Reserva, Pacote, StatusPagamento } from '../../tipos';
 import { formatarData, formatarMoeda } from '../../utilitarios/formatadores';
-import { SupabaseService } from '../../servicos/supabase/SupabaseService';
+import { reservaService } from '../../servicos/api';
+import { obterClienteSupabase } from '../../lib/supabaseCliente';
 
 interface ModalAcoesReservaProps {
   aberto: boolean;
@@ -51,6 +52,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     recarregarDados,
     atualizarStatusQuarto,
     quartos,
+    reservas,
     pacotes,
     usuarioAtual,
   } = useHotel();
@@ -274,7 +276,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
 
       setCarregandoAcomp(true);
       try {
-        const supabase = SupabaseService.getInstance().getClient();
+        const supabase = obterClienteSupabase();
         if (!supabase) return;
 
         // 1. Busca da tabela oficial acompanhante
@@ -493,30 +495,21 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
 
     try {
       setCarregando(true);
-      const supabase = SupabaseService.getInstance().getClient();
-      if (!supabase) {
-        setErro('Falha na conexão com o banco de dados.');
-        return;
-      }
 
       // 1. Verifica se o quarto já tem outra reserva ativa no novo período
-      const { data: conflitos, error: errConflito } = await supabase
-        .from('reserva')
-        .select('reservaid, codigo, dataentrada, datasaida')
-        .eq('quartoid', quartoDestinoId)
-        .neq('reservaid', reserva.reservaid)
-        .in('statusreserva', ['RESERVADO', 'HOSPEDADO', 'PRE_RESERVA'])
-        .lte('dataentrada', novaDataSaida)
-        .gte('datasaida', novaDataEntrada);
+      const conflito = reservas.find(
+        (r) =>
+          Number(r.quartoid) === Number(quartoDestinoId) &&
+          Number(r.reservaid) !== Number(reserva.reservaid) &&
+          ['RESERVADO', 'HOSPEDADO', 'PRE_RESERVA'].includes(r.statusreserva) &&
+          r.dataentrada <= novaDataSaida &&
+          r.datasaida >= novaDataEntrada
+      );
 
-      if (errConflito) {
-        console.warn('Erro ao verificar conflito de datas:', errConflito);
-      }
-
-      if (conflitos && conflitos.length > 0) {
+      if (conflito) {
         const qConflito = quartos.find((q) => q.quartoid === quartoDestinoId);
         setErro(
-          `O Quarto #${qConflito?.codigoidentificador || qConflito?.numero || quartoDestinoId} já possui outra reserva (${conflitos[0].codigo}) no período selecionado.`
+          `O Quarto #${qConflito?.codigoidentificador || qConflito?.numero || quartoDestinoId} já possui outra reserva (${conflito.codigo}) no período selecionado.`
         );
         return;
       }
@@ -572,34 +565,34 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         updatePayload.statusreserva = 'RESERVADO';
       }
 
-      const { error: errUpdate } = await supabase
-        .from('reserva')
-        .update(updatePayload)
-        .eq('reservaid', reserva.reservaid);
+      const resUpdate = await reservaService.atualizar(reserva.reservaid, updatePayload);
 
-      if (errUpdate) {
-        setErro(errUpdate.message || 'Erro ao atualizar dados da reserva.');
+      if (!resUpdate.sucesso) {
+        setErro(resUpdate.erro || 'Erro ao atualizar dados da reserva.');
         return;
       }
 
       // 3. Desvincula acompanhantes que foram explicitamente retirados
       if (acompanhantesRemovidosIds.length > 0) {
-        for (const acompId of acompanhantesRemovidosIds) {
-          try {
-            await supabase
-              .from('acompanhante')
-              .update({ ativo: false, reservaid: null, dataoperacao: agora })
-              .eq('acompanhanteid', acompId);
-          } catch (e) {
-            console.warn('Aviso ao desvincular acompanhante oficial:', e);
-          }
-          try {
-            await supabase
-              .from('cadastro_fnrh_acompanhante')
-              .update({ reservaid: null })
-              .eq('acompanhanteid', acompId);
-          } catch (e) {
-            console.warn('Aviso ao desvincular acompanhante FNRH:', e);
+        const supabase = obterClienteSupabase();
+        if (supabase) {
+          for (const acompId of acompanhantesRemovidosIds) {
+            try {
+              await supabase
+                .from('acompanhante')
+                .update({ ativo: false, reservaid: null, dataoperacao: agora })
+                .eq('acompanhanteid', acompId);
+            } catch (e) {
+              console.warn('Aviso ao desvincular acompanhante oficial:', e);
+            }
+            try {
+              await supabase
+                .from('cadastro_fnrh_acompanhante')
+                .update({ reservaid: null })
+                .eq('acompanhanteid', acompId);
+            } catch (e) {
+              console.warn('Aviso ao desvincular acompanhante FNRH:', e);
+            }
           }
         }
       }

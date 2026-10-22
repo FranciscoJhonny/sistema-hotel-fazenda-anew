@@ -19,7 +19,8 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
-import { SupabaseService } from '../../servicos/supabase/SupabaseService';
+import { reservaService, hospedeService } from '../../servicos/api';
+import { obterClienteSupabase } from '../../lib/supabaseCliente';
 import { Reserva, Quarto, Pacote, Hospede } from '../../tipos';
 import { verificarSobreposicaoDatas } from '../../servicos/conflitoReservas';
 import {
@@ -153,27 +154,27 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
 
   // Carregar dados de reservas, acompanhantes e hóspedes diretamente do Supabase em tempo real
   const carregarDadosCompletosLive = useCallback(async () => {
-    const supabase = SupabaseService.getInstance().getClient();
+    const supabase = obterClienteSupabase();
     if (!supabase) return;
 
     setCarregandoDadosLive(true);
     try {
       const [resRes, resHosp, resAcomp, resFnrhAcomp] = await Promise.all([
-        supabase.from('reserva').select('*'),
-        supabase.from('hospede').select('*'),
-        supabase.from('acompanhante').select('*'),
-        supabase.from('cadastro_fnrh_acompanhante').select('*'),
+        reservaService.listar({ apenasAtivos: true }),
+        hospedeService.listar({ apenasAtivos: true }),
+        supabase ? supabase.from('acompanhante').select('*') : Promise.resolve({ data: [] }),
+        supabase ? supabase.from('cadastro_fnrh_acompanhante').select('*') : Promise.resolve({ data: [] }),
       ]);
 
-      if (resRes.data) setReservasLive(resRes.data);
-      if (resHosp.data) setHospedesLive(resHosp.data);
+      if (resRes.dados) setReservasLive(resRes.dados);
+      if (resHosp.dados) setHospedesLive(resHosp.dados);
 
       const mapAcomp = new Map<string, any>();
-      (resAcomp.data || []).forEach((item: any) => {
+      ((resAcomp as any).data || []).forEach((item: any) => {
         const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
         mapAcomp.set(chave, item);
       });
-      (resFnrhAcomp.data || []).forEach((item: any) => {
+      ((resFnrhAcomp as any).data || []).forEach((item: any) => {
         const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
         if (!mapAcomp.has(chave)) {
           mapAcomp.set(chave, item);
@@ -683,37 +684,30 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       )}.`;
       const observacoesAtualizadas = reserva.observacoes ? `${reserva.observacoes} | ${notaAjuste}` : notaAjuste;
 
-      // 1. Atualizar a reserva no banco de dados Supabase
-      const supabase = SupabaseService.getInstance().getClient();
-      if (supabase) {
-        const payloadBanco: any = {
-          datasaida: novaDataSaida,
-          adultos: adultosFinal,
-          criancas: criancasFinal,
-          valortotal: novoTotal,
-          saldo: novoSaldo,
-          statuspagamento: novoStatusPagamento,
-          observacoes: observacoesAtualizadas,
-          dataoperacao: new Date().toISOString(),
-          naturezaoperacao: 'UPDATE',
-        };
+      // 1. Atualizar a reserva via API REST C# .NET 8
+      const payloadBanco: any = {
+        datasaida: novaDataSaida,
+        adultos: adultosFinal,
+        criancas: criancasFinal,
+        valortotal: novoTotal,
+        saldo: novoSaldo,
+        statuspagamento: novoStatusPagamento,
+        observacoes: observacoesAtualizadas,
+        dataoperacao: new Date().toISOString(),
+        naturezaoperacao: 'UPDATE',
+      };
 
-        if (infoPacote.pacoteId) {
-          payloadBanco.pacoteid = infoPacote.pacoteId;
-        }
+      if (infoPacote.pacoteId) {
+        payloadBanco.pacoteid = infoPacote.pacoteId;
+      }
 
-        if (quartoMudou && novoQuartoObj) {
-          payloadBanco.quartoid = novoQuartoObj.quartoid;
-        }
+      if (quartoMudou && novoQuartoObj) {
+        payloadBanco.quartoid = novoQuartoObj.quartoid;
+      }
 
-        const { error: errUpdate } = await supabase
-          .from('reserva')
-          .update(payloadBanco)
-          .eq('reservaid', reserva.reservaid);
-
-        if (errUpdate) {
-          throw new Error(`Falha ao gravar no banco: ${errUpdate.message}`);
-        }
+      const resUpdate = await reservaService.atualizar(reserva.reservaid, payloadBanco);
+      if (!resUpdate.sucesso) {
+        throw new Error(`Falha ao gravar na API: ${resUpdate.erro}`);
       }
 
       // 2. Se o quarto físico mudou, atualizar o status dos quartos envolvidos (apenas se for estadia em andamento hoje)

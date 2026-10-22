@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  SupabaseService,
   AuthService,
   UsuarioService,
   PerfilService,
@@ -14,10 +13,10 @@ import {
   ItemVendaService,
   ConfiguracaoService,
   StatusConexaoSupabase,
-} from '../servicos/supabase';
+  apiCliente,
+} from '../servicos/api';
 
 export function useSupabase() {
-  const supabase = useMemo(() => SupabaseService.getInstance(), []);
   const auth = useMemo(() => new AuthService(), []);
   const usuario = useMemo(() => new UsuarioService(), []);
   const perfil = useMemo(() => new PerfilService(), []);
@@ -32,10 +31,10 @@ export function useSupabase() {
   const configuracao = useMemo(() => new ConfiguracaoService(), []);
 
   const [statusConexao, setStatusConexao] = useState<StatusConexaoSupabase>({
-    conectado: supabase.estaConectado(),
-    urlConfigurada: Boolean(localStorage.getItem('anew_supabase_url')),
-    chaveConfigurada: Boolean(localStorage.getItem('anew_supabase_key')),
-    mensagem: 'Verificando conexão...',
+    conectado: true,
+    urlConfigurada: true,
+    chaveConfigurada: true,
+    mensagem: 'Conectado à API REST C# .NET 8',
   });
 
   const [verificando, setVerificando] = useState<boolean>(false);
@@ -43,29 +42,37 @@ export function useSupabase() {
   const testarConexao = useCallback(async () => {
     setVerificando(true);
     try {
-      const status = await supabase.testarConexao();
+      const res = await apiCliente.get('/api/quarto/get-lista-quarto');
+      const conectado = res.sucesso;
+      const status: StatusConexaoSupabase = {
+        conectado,
+        urlConfigurada: true,
+        chaveConfigurada: true,
+        mensagem: conectado ? 'Conectado à API REST C# .NET 8 com sucesso.' : 'Falha na comunicação com a API REST.',
+        ultimaVerificacao: new Date().toISOString(),
+      };
+      setStatusConexao(status);
+      return status;
+    } catch {
+      const status: StatusConexaoSupabase = {
+        conectado: false,
+        urlConfigurada: true,
+        chaveConfigurada: true,
+        mensagem: 'Erro ao conectar à API REST.',
+        ultimaVerificacao: new Date().toISOString(),
+      };
       setStatusConexao(status);
       return status;
     } finally {
       setVerificando(false);
     }
-  }, [supabase]);
-
-  const reconfigurar = useCallback(
-    (novaUrl: string, novaKey: string) => {
-      const res = supabase.reconfigurar(novaUrl, novaKey);
-      testarConexao();
-      return res;
-    },
-    [supabase, testarConexao]
-  );
+  }, []);
 
   useEffect(() => {
     testarConexao();
   }, [testarConexao]);
 
   return {
-    supabase,
     auth,
     usuario,
     perfil,
@@ -81,7 +88,6 @@ export function useSupabase() {
     statusConexao,
     verificando,
     testarConexao,
-    reconfigurar,
     estaConectado: statusConexao.conectado,
   };
 }

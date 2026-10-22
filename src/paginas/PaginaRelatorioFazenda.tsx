@@ -22,7 +22,8 @@ import autoTable from 'jspdf-autotable';
 import logoTucanoImg from '../imagens/logo-tucano-transparente.png';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarMoeda, formatarData } from '../utilitarios/formatadores';
-import { SupabaseService } from '../servicos/supabase/SupabaseService';
+import { hospedeService } from '../servicos/api';
+import { obterClienteSupabase } from '../lib/supabaseCliente';
 import { Hospede } from '../tipos';
 
 type AbaRelatorio = 'QUARTOS' | 'REFEITORIO' | 'FINANCEIRO';
@@ -254,13 +255,13 @@ export const PaginaRelatorioFazenda: React.FC = () => {
   // Carrega acompanhantes do banco de dados (Supabase)
   const carregarAcompanhantes = useCallback(async () => {
     try {
-      const supabase = SupabaseService.getInstance().getClient();
+      const supabase = obterClienteSupabase();
       if (!supabase) return;
 
       const [resAcomp, resFnrhAcomp, resHosp] = await Promise.all([
         supabase.from('acompanhante').select('*'),
         supabase.from('cadastro_fnrh_acompanhante').select('*'),
-        supabase.from('hospede').select('*'),
+        hospedeService.listar({ apenasAtivos: true }),
       ]);
 
       const mapAcomp = new Map<string, any>();
@@ -276,8 +277,8 @@ export const PaginaRelatorioFazenda: React.FC = () => {
       });
 
       setAcompanhantesDb(Array.from(mapAcomp.values()));
-      if (resHosp.data) {
-        setHospedesLive(resHosp.data as Hospede[]);
+      if (resHosp.dados) {
+        setHospedesLive(resHosp.dados as Hospede[]);
       }
     } catch (err) {
       console.warn('[PaginaRelatorioFazenda] Erro ao carregar acompanhantes:', err);

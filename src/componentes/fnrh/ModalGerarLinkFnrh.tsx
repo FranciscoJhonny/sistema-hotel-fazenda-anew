@@ -14,7 +14,7 @@ import {
   LoaderCircle,
   AlertCircle
 } from 'lucide-react';
-import { FnrhService } from '../../servicos/supabase/FnrhService';
+import { FnrhService } from '../../servicos/api/FnrhService';
 import { CadastroFnrh } from '../../tipos';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { aplicarMascaraTelefone } from '../../utilitarios/formatadores';

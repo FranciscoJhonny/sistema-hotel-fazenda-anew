@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone, X } from 'lucide-react';
-import { obterClienteSupabase } from '../lib/supabaseCliente';
+import { fnrhService } from '../servicos/api';
 import { LogoHotel } from '../componentes/comuns/LogoHotel';
 import { aplicarMascaraCpf, aplicarMascaraTelefone, formatarCep } from '../utilitarios/formatadores';
 
@@ -72,27 +72,27 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
   useEffect(() => {
     const carregar = async () => {
-      const cliente = obterClienteSupabase();
-      if (!cliente) {
-        setErro('Não foi possível conectar ao sistema.');
-        setCarregando(false);
-        return;
-      }
-      const { data, error } = await cliente.rpc('obter_cadastro_fnrh_por_token', { p_token: token });
-      if (error || !data) {
-        setErro(error?.message || 'Link inválido ou expirado.');
-      } else {
-        const cadastro = data.cadastro || {};
-        
+      try {
+        const resultado = await fnrhService.obterPorToken(token);
+        if (!resultado.sucesso || !resultado.dados) {
+          setErro(resultado.erro || 'Link inválido ou expirado.');
+          setCarregando(false);
+          return;
+        }
+
+        const cadastro: any = resultado.dados;
+
         // Trava LGPD / Link de Uso Único:
         if (
-          data.ja_enviado === true ||
+          cadastro.ja_enviado === true ||
+          cadastro.jaEnviado === true ||
           Boolean(cadastro.declaracao_aceita) ||
+          Boolean(cadastro.declaracaoAceita) ||
           cadastro.status === 'LIBERADA_PARA_RESERVA' ||
           cadastro.status === 'RESERVA_CRIADA'
         ) {
           setJaEnviado(true);
-          setNomeHospedeEnviado(cadastro.nomecompleto ? String(cadastro.nomecompleto).toUpperCase() : (data.nomecompleto ? String(data.nomecompleto).toUpperCase() : ''));
+          setNomeHospedeEnviado(cadastro.nomecompleto ? String(cadastro.nomecompleto).toUpperCase() : (cadastro.nomeCompleto ? String(cadastro.nomeCompleto).toUpperCase() : ''));
           setCarregando(false);
           return;
         }
@@ -102,20 +102,23 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
         if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
         if (cadastro.telefone) cadastro.telefone = aplicarMascaraTelefone(String(cadastro.telefone));
         if (cadastro.cep) cadastro.cep = formatarCep(String(cadastro.cep));
-        if (!cadastro.horarioprevistochegada) cadastro.horarioprevistochegada = '07:00';
-        if (!cadastro.horarioprevistasaida) cadastro.horarioprevistasaida = '15:00';
+        if (!cadastro.horarioprevistochegada) cadastro.horarioprevistochegada = cadastro.horarioPrevistoChegada || '07:00';
+        if (!cadastro.horarioprevistasaida) cadastro.horarioprevistasaida = cadastro.horarioPrevistoSaida || '15:00';
 
         setDados((atual) => ({ ...atual, ...cadastro }));
         setAcompanhantes(
-          (data.acompanhantes || []).map((item: Acompanhante) => ({
+          (cadastro.acompanhantes || []).map((item: any) => ({
             ...acompanhanteInicial(),
             ...item,
-            nomecompleto: item.nomecompleto ? String(item.nomecompleto).toUpperCase() : '',
-            cpfresponsavel: item.cpfresponsavel ? aplicarMascaraCpf(String(item.cpfresponsavel)) : '',
+            nomecompleto: item.nomecompleto ? String(item.nomecompleto).toUpperCase() : (item.nomeCompleto ? String(item.nomeCompleto).toUpperCase() : ''),
+            cpfresponsavel: item.cpfresponsavel ? aplicarMascaraCpf(String(item.cpfresponsavel)) : (item.cpfResponsavel ? aplicarMascaraCpf(String(item.cpfResponsavel)) : ''),
           }))
         );
+      } catch (err: any) {
+        setErro(err?.message || 'Erro ao carregar cadastro.');
+      } finally {
+        setCarregando(false);
       }
-      setCarregando(false);
     };
     carregar();
   }, [token]);
@@ -208,12 +211,6 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
 
-    const cliente = obterClienteSupabase();
-    if (!cliente) {
-      setModalErro('Não foi possível conectar ao sistema. Verifique sua conexão.');
-      return;
-    }
-
     // Garante que o nome vá em caixa alta e os campos com máscaras corretas
     const dadosParaSalvar = {
       ...dados,
@@ -231,15 +228,17 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     }));
 
     setSalvando(true);
-    const { error } = await cliente.rpc('salvar_cadastro_fnrh_por_token', {
-      p_token: token,
-      p_dados: dadosParaSalvar,
-      p_acompanhantes: acompanhantesParaSalvar,
+    const resultado = await fnrhService.preencherFnrhPublica(token, {
+      ...dadosParaSalvar,
+      acompanhantes: acompanhantesParaSalvar,
     });
     setSalvando(false);
 
-    if (error) setModalErro(error.message || 'Ocorreu um erro ao salvar seu cadastro. Tente novamente.');
-    else setEnviado(true);
+    if (!resultado.sucesso) {
+      setModalErro(resultado.erro || 'Ocorreu um erro ao salvar seu cadastro. Tente novamente.');
+    } else {
+      setEnviado(true);
+    }
   };
 
   if (carregando) {

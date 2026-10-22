@@ -1,125 +1,42 @@
 // src/lib/supabaseClient.ts
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+// SupabaseClient alias stub para eliminar importação residual de pacotes
+export type SupabaseClient = any;
 
 // ========================================
-// CARREGAR VARIÁVEIS DE AMBIENTE
+// SUPABASE DESATIVADO (CORTE DO CABO)
+// Todo o tráfego foi redirecionado para a API C# .NET 8 (https://api-hotelfazendaanew.onrender.com)
 // ========================================
 
-// Suporte para Next.js (NEXT_PUBLIC_) e Vite (VITE_)
-const isBrowser = typeof window !== 'undefined';
+const isBrowser = typeof window !== "undefined";
 
-const getEnvVar = (key: string) => {
-  // Next.js
-  if (typeof process !== 'undefined' && process.env?.[`NEXT_PUBLIC_${key}`]) {
-    return process.env[`NEXT_PUBLIC_${key}`] as string;
-  }
-  // Vite
-  if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.[`VITE_${key}`]) {
-    return (import.meta as any).env[`VITE_${key}`] as string;
-  }
-  return '';
-};
-
-const SUPABASE_URL = getEnvVar('SUPABASE_URL');
-const SUPABASE_ANON_KEY = getEnvVar('SUPABASE_ANON_KEY');
-const SUPABASE_SERVICE_ROLE_KEY = typeof process !== 'undefined' 
-  ? (process.env?.SUPABASE_SERVICE_ROLE_KEY || process.env?.SUPABASE_SECRET_KEY || '')
-  : '';
-
-// ========================================
-// CLIENTE SINGLETON
-// ========================================
-
-let supabaseInstancia: SupabaseClient | null = null;
-
-export function obterClienteSupabase(
-  urlCustomizada?: string,
-  keyCustomizada?: string
-): SupabaseClient | null {
-  const url = urlCustomizada || 
-    (isBrowser ? localStorage.getItem('anew_supabase_url') : null) || 
-    SUPABASE_URL;
-
-  const key = keyCustomizada || 
-    (isBrowser ? localStorage.getItem('anew_supabase_key') : null) || 
-    SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    if (isBrowser) {
-      console.warn('⚠️ Supabase credentials not found. Check your .env.local file.');
-      console.warn('   URL:', url || '❌ NOT SET');
-      console.warn('   KEY:', key ? '✅ SET' : '❌ NOT SET');
-    }
-    return null;
-  }
-
+if (isBrowser) {
   try {
-    if (!supabaseInstancia) {
-      supabaseInstancia = createClient(url, key, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-        },
-        db: {
-          schema: 'public',
-        },
-        global: {
-          headers: {
-            'x-application-name': 'hotel-fazenda-anew',
-          },
-        },
-      });
-    }
-    return supabaseInstancia;
-  } catch (error) {
-    console.error('Failed to connect to Supabase:', error);
-    return null;
-  }
+    localStorage.removeItem("anew_supabase_url");
+    localStorage.removeItem("anew_supabase_key");
+  } catch {}
 }
 
-/**
- * Obtém o cliente Supabase com a Service Role Key
- * ⚠️ APENAS PARA SERVER-SIDE (migrações, operações administrativas)
- */
-export function obterClienteAdmin(): SupabaseClient | null {
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.error(' Service Role Key not configured.');
-    return null;
-  }
+export function obterClienteSupabase(
+  _urlCustomizada?: string,
+  _keyCustomizada?: string
+): SupabaseClient | null {
+  return null;
+}
 
-  try {
-    return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-      db: {
-        schema: 'public',
-      },
-    });
-  } catch (error) {
-    console.error('❌ Failed to create admin client:', error);
-    return null;
-  }
+export function obterClienteAdmin(): SupabaseClient | null {
+  return null;
 }
 
 export function resetarClienteSupabase(
-  novaUrl: string,
-  novaKey: string
+  _novaUrl: string,
+  _novaKey: string
 ): SupabaseClient | null {
-  if (isBrowser) {
-    localStorage.setItem('anew_supabase_url', novaUrl);
-    localStorage.setItem('anew_supabase_key', novaKey);
-  }
-  supabaseInstancia = null;
-  return obterClienteSupabase(novaUrl, novaKey);
+  return null;
 }
 
 export function isSupabaseConectado(): boolean {
-  return supabaseInstancia !== null;
+  return false;
 }
-
 // ========================================
 // SCRIPT SQL COMPLETO - SUPABASE (POSTGRESQL)
 // ========================================
@@ -812,7 +729,5 @@ CREATE TRIGGER TRG_Configuracao_Update
 `;
 
 // ========================================
-// EXPORTAR TIPOS
+// FIM
 // ========================================
-
-export type { SupabaseClient };

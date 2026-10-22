@@ -20,7 +20,8 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { Reserva, ConsumoExtra, Pagamento, Hospede } from '../tipos';
-import { SupabaseService } from '../servicos/supabase/SupabaseService';
+import { hospedeService } from '../servicos/api';
+import { obterClienteSupabase } from '../lib/supabaseCliente';
 import * as XLSX from 'xlsx-js-style';
 
 type TipoPeriodo = 'HOJE' | 'ESTE_MES' | 'MES_ANTERIOR' | 'ULTIMOS_30_DIAS' | 'PERSONALIZADO';
@@ -95,13 +96,13 @@ export const PaginaDashboardExecutivo: React.FC = () => {
   // Carregar dados de acompanhantes para o cálculo das idades de tarifação
   const carregarAcompanhantesEIdades = useCallback(async () => {
     try {
-      const supabase = SupabaseService.getInstance().getClient();
+      const supabase = obterClienteSupabase();
       if (!supabase) return;
 
       const [resAcomp, resFnrhAcomp, resHosp] = await Promise.all([
         supabase.from('acompanhante').select('*'),
         supabase.from('cadastro_fnrh_acompanhante').select('*'),
-        supabase.from('hospede').select('*'),
+        hospedeService.listar({ apenasAtivos: true }),
       ]);
 
       const mapAcomp = new Map<string, any>();
@@ -117,8 +118,8 @@ export const PaginaDashboardExecutivo: React.FC = () => {
       });
 
       setAcompanhantesDb(Array.from(mapAcomp.values()));
-      if (resHosp.data) {
-        setHospedesLive(resHosp.data as Hospede[]);
+      if (resHosp.dados) {
+        setHospedesLive(resHosp.dados as Hospede[]);
       }
     } catch (err) {
       console.warn('[PaginaDashboardExecutivo] Erro ao carregar acompanhantes:', err);

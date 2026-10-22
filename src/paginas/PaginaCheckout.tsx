@@ -26,7 +26,7 @@ import {
   formatarData,
   formatarMoeda
 } from '../utilitarios/formatadores';
-import { obterClienteSupabase } from '../lib/supabaseCliente';
+import { pagamentoService, reservaService } from '../servicos/api';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { SelectBuscaProduto } from '../componentes/comuns/SelectBuscaProduto';
 
@@ -375,7 +375,6 @@ export const PaginaCheckout: React.FC = () => {
         }
       }
 
-      const cliente = obterClienteSupabase();
       const agora = new Date().toISOString();
 
       // Monta os pagamentos com a taxa de R$ 65 já incorporada caso parcelado
@@ -418,22 +417,16 @@ export const PaginaCheckout: React.FC = () => {
           setFeedbackErro(res.mensagem);
         }
       } else {
-        if (!cliente) {
-          setFeedbackErro('Supabase não conectado.');
-          setProcessandoCheckout(false);
-          return;
-        }
-
         const registrosPagamento = linhasPagamento.map((l) => {
           const taxa = (l.formaPagamento === 'CARTAO_CREDITO' && (l.parcelas === 2 || l.parcelas === 3))
             ? TAXA_CARTAO_PARCELADO
             : 0;
           return {
-            reservaid: reservaSelecionada.reservaid,
+            reservaid: Number(reservaSelecionada.reservaid),
             valor: Number(l.valor) + taxa,
             formapagamento: l.formaPagamento,
             tipolancamento: l.tipoLancamento,
-            status: 'PAGO',
+            status: 'PAGO' as const,
             datapagamento: agora,
             ativo: true,
             usuarioinclusao: usuarioAtual?.usuarioid,
@@ -444,11 +437,13 @@ export const PaginaCheckout: React.FC = () => {
           };
         });
 
-        const { error: erroInsert } = await cliente.from('pagamento').insert(registrosPagamento);
-        if (erroInsert) {
-          setFeedbackErro(`Erro ao gravar pagamentos: ${erroInsert.message}`);
-          setProcessandoCheckout(false);
-          return;
+        for (const p of registrosPagamento) {
+          const resPag = await pagamentoService.criar(p);
+          if (!resPag.sucesso) {
+            setFeedbackErro(`Erro ao gravar pagamento: ${resPag.erro}`);
+            setProcessandoCheckout(false);
+            return;
+          }
         }
 
         const novoValorPago = Number((Number(reservaSelecionada.valorpago || 0) + totalInformado).toFixed(2));
@@ -465,22 +460,10 @@ export const PaginaCheckout: React.FC = () => {
           updatePayload.observacoes_checkout = observacoesCheckout;
         }
 
-        let { error: erroUpdate } = await cliente
-          .from('reserva')
-          .update(updatePayload)
-          .eq('reservaid', reservaSelecionada.reservaid);
+        const resUpdate = await reservaService.atualizar(reservaSelecionada.reservaid, updatePayload);
 
-        if (erroUpdate && (erroUpdate.message?.toLowerCase().includes('observacoes_checkout') || erroUpdate.code === 'PGRST204')) {
-          delete updatePayload.observacoes_checkout;
-          const retry = await cliente
-            .from('reserva')
-            .update(updatePayload)
-            .eq('reservaid', reservaSelecionada.reservaid);
-          erroUpdate = retry.error;
-        }
-
-        if (erroUpdate) {
-          setFeedbackErro(`Erro ao atualizar saldo: ${erroUpdate.message}`);
+        if (!resUpdate.sucesso) {
+          setFeedbackErro(`Erro ao atualizar saldo: ${resUpdate.erro}`);
         } else {
           setFeedbackSucesso(`Pagamento de ${formatarMoeda(totalInformado)} registrado! Saldo restante: ${formatarMoeda(novoSaldo)}`);
           await recarregarDados();

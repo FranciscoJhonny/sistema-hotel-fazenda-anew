@@ -26,7 +26,7 @@ import {
   FileDown
 } from 'lucide-react';
 import { CadastroFnrh, Reserva, Pacote } from '../../tipos';
-import { FnrhService, gerarLinkPublicoFnrh } from '../../servicos/supabase/FnrhService';
+import { FnrhService, gerarLinkPublicoFnrh } from '../../servicos/api/FnrhService';
 import {
   aplicarMascaraCpf,
   aplicarMascaraTelefone,

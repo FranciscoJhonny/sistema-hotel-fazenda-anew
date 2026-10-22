@@ -21,7 +21,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { CadastroFnrh, Reserva, Pacote, Quarto } from '../tipos';
-import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/supabase/FnrhService';
+import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/api/FnrhService';
 import { ModalGerarLinkFnrh } from '../componentes/fnrh/ModalGerarLinkFnrh';
 import { ModalDetalhesFnrh } from '../componentes/fnrh/ModalDetalhesFnrh';
 import { ModalConfirmarSinalFnrh } from '../componentes/fnrh/ModalConfirmarSinalFnrh';

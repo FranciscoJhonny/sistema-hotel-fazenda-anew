@@ -24,7 +24,7 @@ import {
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { Pacote } from '../tipos';
-import { obterClienteSupabase } from '../lib/supabaseCliente';
+import { pacoteService } from '../servicos/api/PacoteService';
 
 interface FormularioPacoteState {
   nome: string;
@@ -102,24 +102,15 @@ export const PaginaPacotes: React.FC = () => {
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-  // Buscar lista completa de pacotes diretamente do Supabase
+  // Buscar lista completa de pacotes diretamente da API .NET 8 via pacoteService
   const carregarPacotes = async () => {
     setCarregandoListagem(true);
     try {
-      const cliente = obterClienteSupabase();
-      if (!cliente) {
-        setMensagemErro('Cliente Supabase não está configurado.');
-        return;
-      }
-      const { data, error } = await cliente
-        .from('pacote')
-        .select('*')
-        .order('nome', { ascending: true });
-
-      if (error) {
-        setMensagemErro(`Erro ao carregar pacotes: ${error.message}`);
-      } else if (data) {
-        setPacotes(data as Pacote[]);
+      const res = await pacoteService.listar();
+      if (res.sucesso && res.dados) {
+        setPacotes(res.dados);
+      } else if (res.erro) {
+        setMensagemErro(`Erro ao carregar pacotes: ${res.erro}`);
       }
     } catch (err: any) {
       setMensagemErro(`Falha de conexão: ${err.message}`);
@@ -248,12 +239,6 @@ export const PaginaPacotes: React.FC = () => {
 
     setCarregandoAcao(true);
     try {
-      const cliente = obterClienteSupabase();
-      if (!cliente) {
-        exibirErro('Cliente Supabase não está configurado.');
-        return;
-      }
-
       const eDayUse = formulario.tipopacote === 'DAY_USE';
       const payload: Partial<Pacote> = {
         nome: formulario.nome.trim(),
@@ -273,14 +258,10 @@ export const PaginaPacotes: React.FC = () => {
       };
 
       if (pacoteEditando) {
-        // Atualização
-        const { error } = await cliente
-          .from('pacote')
-          .update(payload)
-          .eq('pacoteid', pacoteEditando.pacoteid);
-
-        if (error) {
-          exibirErro(`Erro ao atualizar pacote: ${error.message}`);
+        // Atualização via API REST C# .NET 8
+        const res = await pacoteService.atualizar(pacoteEditando.pacoteid, payload);
+        if (!res.sucesso) {
+          exibirErro(`Erro ao atualizar pacote: ${res.erro}`);
         } else {
           exibirSucesso(`Pacote "${payload.nome}" atualizado com sucesso!`);
           setModalAberta(false);
@@ -288,13 +269,10 @@ export const PaginaPacotes: React.FC = () => {
           await recarregarDados();
         }
       } else {
-        // Criação
-        const { error } = await cliente
-          .from('pacote')
-          .insert([payload]);
-
-        if (error) {
-          exibirErro(`Erro ao cadastrar pacote: ${error.message}`);
+        // Criação via API REST C# .NET 8
+        const res = await pacoteService.criar(payload);
+        if (!res.sucesso) {
+          exibirErro(`Erro ao cadastrar pacote: ${res.erro}`);
         } else {
           exibirSucesso(`Pacote "${payload.nome}" criado com sucesso!`);
           setModalAberta(false);
@@ -326,21 +304,11 @@ export const PaginaPacotes: React.FC = () => {
 
     setCarregandoAcao(true);
     try {
-      const cliente = obterClienteSupabase();
-      if (!cliente) {
-        exibirErro('Cliente Supabase não está configurado.');
-        return;
-      }
-
       if (qtdReservasVinculadas > 0) {
-        // Soft delete: Desativar pacote
-        const { error } = await cliente
-          .from('pacote')
-          .update({ ativo: false })
-          .eq('pacoteid', pacoteParaExcluir.pacoteid);
-
-        if (error) {
-          exibirErro(`Erro ao desativar pacote: ${error.message}`);
+        // Soft delete: Desativar pacote via API REST C# .NET 8
+        const res = await pacoteService.desativar(pacoteParaExcluir.pacoteid);
+        if (!res.sucesso) {
+          exibirErro(`Erro ao desativar pacote: ${res.erro}`);
         } else {
           exibirSucesso(`Pacote "${pacoteParaExcluir.nome}" foi desativado com sucesso (possuía reservas vinculadas).`);
           setModalExclusaoAberta(false);
@@ -349,21 +317,13 @@ export const PaginaPacotes: React.FC = () => {
           await recarregarDados();
         }
       } else {
-        // Tentativa de Hard delete (Exclusão física)
-        const { error } = await cliente
-          .from('pacote')
-          .delete()
-          .eq('pacoteid', pacoteParaExcluir.pacoteid);
-
-        if (error) {
-          // Se falhar devido à restrição FK, faz fallback para soft delete
-          const { error: softErr } = await cliente
-            .from('pacote')
-            .update({ ativo: false })
-            .eq('pacoteid', pacoteParaExcluir.pacoteid);
-
-          if (softErr) {
-            exibirErro(`Erro ao excluir pacote: ${error.message}`);
+        // Tentativa de Hard delete (Exclusão física) via API REST C# .NET 8
+        const res = await pacoteService.excluir(pacoteParaExcluir.pacoteid);
+        if (!res.sucesso) {
+          // Se falhar devido à restrição FK, tenta desativação lógica
+          const resSoft = await pacoteService.desativar(pacoteParaExcluir.pacoteid);
+          if (!resSoft.sucesso) {
+            exibirErro(`Erro ao excluir pacote: ${res.erro || resSoft.erro}`);
           } else {
             exibirSucesso(`Pacote "${pacoteParaExcluir.nome}" foi desativado com sucesso.`);
             setModalExclusaoAberta(false);

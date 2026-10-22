@@ -5,7 +5,7 @@ import { CardQuarto } from '../componentes/quartos/CardQuarto';
 import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
 import { Quarto, Reserva, StatusQuarto } from '../tipos';
 import { calcularStatusQuarto } from '../utilitarios/calculoSituacaoQuarto';
-import { ReservaService } from '../servicos/supabase/ReservaService';
+import { ReservaService } from '../servicos/api/ReservaService';
 
 type QuartoEnriquecido = Quarto & {
   statusCalculado: string;
