@@ -295,7 +295,7 @@ Qualquer dúvida, estamos à disposição!`;
                       type="text"
                       placeholder="Ex: João da Silva"
                       value={nome}
-                      onChange={(e) => setNome(e.target.value)}
+                      onChange={(e) => setNome(e.target.value.toUpperCase())}
                       className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e]"
                     />
                   </div>
