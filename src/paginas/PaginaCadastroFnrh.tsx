@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, LoaderCircle, Plus, Trash2, ShieldCheck, Lock, Phone, X } from 'lucide-react';
 import { fnrhService } from '../servicos/api';
 import { LogoHotel } from '../componentes/comuns/LogoHotel';
-import { aplicarMascaraCpf, aplicarMascaraTelefone, formatarCep } from '../utilitarios/formatadores';
+import { aplicarMascaraCpf, aplicarMascaraTelefone, formatarCep, formatarParaInputDate, formatarParaInputTime } from '../utilitarios/formatadores';
 
 type Acompanhante = {
   nomecompleto: string;
@@ -97,21 +97,81 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           return;
         }
 
-        if (cadastro.nomecompleto) cadastro.nomecompleto = String(cadastro.nomecompleto).toUpperCase();
-        if (cadastro.cpf) cadastro.cpf = aplicarMascaraCpf(String(cadastro.cpf));
-        if (cadastro.cpfresponsavelmenor) cadastro.cpfresponsavelmenor = aplicarMascaraCpf(String(cadastro.cpfresponsavelmenor));
-        if (cadastro.telefone) cadastro.telefone = aplicarMascaraTelefone(String(cadastro.telefone));
-        if (cadastro.cep) cadastro.cep = formatarCep(String(cadastro.cep));
-        if (!cadastro.horarioprevistochegada) cadastro.horarioprevistochegada = cadastro.horarioPrevistoChegada || '07:00';
-        if (!cadastro.horarioprevistasaida) cadastro.horarioprevistasaida = cadastro.horarioPrevistoSaida || '15:00';
+        const normalizarSexo = (val?: any): string => {
+          if (!val) return '';
+          const s = String(val).trim().toUpperCase();
+          if (s.startsWith('M')) return 'M';
+          if (s.startsWith('F')) return 'F';
+          return '';
+        };
 
-        setDados((atual) => ({ ...atual, ...cadastro }));
+        const dadosCarregados: DadosFnrh = {
+          nomecompleto: cadastro.nomecompleto
+            ? String(cadastro.nomecompleto).toUpperCase()
+            : cadastro.nomeCompleto
+            ? String(cadastro.nomeCompleto).toUpperCase()
+            : '',
+          cpf: aplicarMascaraCpf(String(cadastro.cpf || '')),
+          rg: String(cadastro.rg || ''),
+          passaporte: String(cadastro.passaporte || ''),
+          datanascimento: formatarParaInputDate(cadastro.datanascimento || cadastro.dataNascimento),
+          nacionalidade: String(cadastro.nacionalidade || 'Brasileira'),
+          sexo: normalizarSexo(cadastro.sexo),
+          telefone: aplicarMascaraTelefone(String(cadastro.telefone || '')),
+          email: String(cadastro.email || ''),
+          endereco: String(cadastro.endereco || ''),
+          numero: String(cadastro.numero || ''),
+          cidade: String(cadastro.cidade || ''),
+          estado: String(cadastro.estado || ''),
+          cep: formatarCep(String(cadastro.cep || '')),
+          profissao: String(cadastro.profissao || ''),
+          proximodestino: String(cadastro.proximodestino || cadastro.proximoDestino || ''),
+          ultimaprocedencia: String(cadastro.ultimaprocedencia || cadastro.ultimaProcedencia || ''),
+          cpfresponsavelmenor: aplicarMascaraCpf(
+            String(cadastro.cpfresponsavelmenor || cadastro.cpfResponsavelMenor || '')
+          ),
+          dataentrada: formatarParaInputDate(cadastro.dataentrada || cadastro.dataEntrada),
+          horarioprevistochegada: formatarParaInputTime(
+            cadastro.horarioprevistochegada || cadastro.horarioPrevistoChegada,
+            '07:00'
+          ),
+          datasaida: formatarParaInputDate(cadastro.datasaida || cadastro.dataSaida),
+          horarioprevistasaida: formatarParaInputTime(
+            cadastro.horarioprevistasaida || cadastro.horarioPrevistoSaida,
+            '15:00'
+          ),
+          motivoviagem: String(cadastro.motivoviagem || cadastro.motivoViagem || ''),
+          transporte: String(cadastro.transporte || ''),
+          placa: String(cadastro.placa || ''),
+          modelocor: String(cadastro.modelocor || cadastro.modeloCor || ''),
+          numerohospedes: Number(cadastro.numerohospedes || cadastro.numeroHospedes || 1),
+          adultos: Number(cadastro.adultos ?? 1),
+          criancas: Number(cadastro.criancas ?? 0),
+          forma_pagamento: String(cadastro.forma_pagamento || cadastro.formaPagamento || ''),
+          alergias_restricoes: String(cadastro.alergias_restricoes || cadastro.alergiasRestricoes || ''),
+          solicitacoes_especiais: String(cadastro.solicitacoes_especiais || cadastro.solicitacoesEspeciais || ''),
+          declaracao_aceita: Boolean(cadastro.declaracao_aceita ?? cadastro.declaracaoAceita ?? false),
+        };
+
+        setDados((atual) => ({ ...atual, ...dadosCarregados }));
         setAcompanhantes(
           (cadastro.acompanhantes || []).map((item: any) => ({
             ...acompanhanteInicial(),
             ...item,
-            nomecompleto: item.nomecompleto ? String(item.nomecompleto).toUpperCase() : (item.nomeCompleto ? String(item.nomeCompleto).toUpperCase() : ''),
-            cpfresponsavel: item.cpfresponsavel ? aplicarMascaraCpf(String(item.cpfresponsavel)) : (item.cpfResponsavel ? aplicarMascaraCpf(String(item.cpfResponsavel)) : ''),
+            nomecompleto: item.nomecompleto
+              ? String(item.nomecompleto).toUpperCase()
+              : item.nomeCompleto
+              ? String(item.nomeCompleto).toUpperCase()
+              : '',
+            documento: String(item.documento || ''),
+            datanascimento: formatarParaInputDate(item.datanascimento || item.dataNascimento),
+            menoridade: Boolean(item.menoridade),
+            cpfresponsavel: item.cpfresponsavel
+              ? aplicarMascaraCpf(String(item.cpfresponsavel))
+              : item.cpfResponsavel
+              ? aplicarMascaraCpf(String(item.cpfResponsavel))
+              : '',
+            observacoes: String(item.observacoes || ''),
           }))
         );
       } catch (err: any) {
@@ -225,6 +285,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       ...item,
       nomecompleto: item.nomecompleto ? String(item.nomecompleto).trim().toUpperCase() : '',
       cpfresponsavel: item.cpfresponsavel ? aplicarMascaraCpf(String(item.cpfresponsavel)) : '',
+      datanascimento: item.datanascimento ? formatarParaInputDate(item.datanascimento) : null,
     }));
 
     setSalvando(true);

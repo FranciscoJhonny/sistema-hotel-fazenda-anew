@@ -14,10 +14,11 @@ import {
   LoaderCircle,
   AlertCircle
 } from 'lucide-react';
-import { FnrhService } from '../../servicos/api/FnrhService';
+import { FnrhService } from '../../servicos/api';
 import { CadastroFnrh } from '../../tipos';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { aplicarMascaraTelefone } from '../../utilitarios/formatadores';
+import { montarUrlPublicaFnrh, montarMensagemWhatsappFnrh } from '../../utilitarios/urls';
 
 interface ModalGerarLinkFnrhProps {
   aberto: boolean;
@@ -76,8 +77,10 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
     setCarregando(true);
     setErro(null);
 
+    const nomeFormatado = nome.trim().toUpperCase();
+
     const res = await FnrhService.gerarNovoLinkFnrh({
-      nomecompleto: nome,
+      nomecompleto: nomeFormatado,
       telefone,
       email,
       dataentrada: dataEntrada || undefined,
@@ -95,7 +98,8 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
       return;
     }
 
-    setLinkGerado(res.linkPublico);
+    const urlCompleta = montarUrlPublicaFnrh(res.linkPublico || res.cadastro.token_acesso);
+    setLinkGerado(urlCompleta);
     setTokenGerado(res.cadastro.token_acesso || null);
     onLinkCriado(res.cadastro);
   };
@@ -122,16 +126,7 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
   const handleEnviarWhatsApp = () => {
     if (!linkGerado) return;
     const numLimpo = telefone.replace(/\D/g, '');
-    const saudacao = nome.trim() ? `Olá ${nome.trim()}!` : 'Olá!';
-    const texto = `${saudacao} Tudo bem?
-
-Para agilizarmos seu atendimento e a confirmação da sua reserva no *Hotel Fazenda Anew*, por favor preencha sua *Ficha Nacional de Registro de Hóspedes (FNRH)* através do link seguro abaixo:
-
-${linkPublicoWhatsapp(linkGerado)}
-
-*Atenção:* Este link tem validade de *7 dias*.
-
-Qualquer dúvida, estamos à disposição!`;
+    const texto = montarMensagemWhatsappFnrh(linkGerado, nome);
 
     const urlWa = numLimpo
       ? `https://wa.me/55${numLimpo}?text=${encodeURIComponent(texto)}`
@@ -139,8 +134,6 @@ Qualquer dúvida, estamos à disposição!`;
 
     window.open(urlWa, '_blank');
   };
-
-  const linkPublicoWhatsapp = (link: string) => link;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs overflow-y-auto">
@@ -249,7 +242,7 @@ Qualquer dúvida, estamos à disposição!`;
                   <Clock className="w-3.5 h-3.5 text-slate-500" />
                   <span>Validade do Link: 7 dias a partir de agora</span>
                 </div>
-                {nome && <p>• <span className="font-semibold">Hóspede previsto:</span> {nome}</p>}
+                {nome && <p>• <span className="font-semibold">Hóspede previsto:</span> {nome.toUpperCase()}</p>}
                 {telefone && <p>• <span className="font-semibold">WhatsApp:</span> {telefone}</p>}
                 {(dataEntrada || dataSaida) && (
                   <p>
@@ -293,10 +286,11 @@ Qualquer dúvida, estamos à disposição!`;
                     <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input
                       type="text"
-                      placeholder="Ex: João da Silva"
+                      placeholder="Ex: JOÃO DA SILVA"
                       value={nome}
                       onChange={(e) => setNome(e.target.value.toUpperCase())}
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e]"
+                      onBlur={() => setNome((prev) => prev.trim().toUpperCase())}
+                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-xs uppercase outline-none focus:border-[#053d1e]"
                     />
                   </div>
                 </div>

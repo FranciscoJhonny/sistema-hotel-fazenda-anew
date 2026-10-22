@@ -102,6 +102,48 @@ export function formatarDataHora(dataString: string): string {
   }).format(data);
 }
 
+/**
+ * Converte qualquer formato de data (ISO 8601 com 'T', YYYY-MM-DD ou DD/MM/YYYY) para o formato YYYY-MM-DD,
+ * estritamente exigido pelo atributo value do elemento HTML <input type="date">.
+ */
+export function formatarParaInputDate(data?: string | Date | null): string {
+  if (!data) return '';
+  if (data instanceof Date) {
+    if (isNaN(data.getTime())) return '';
+    return data.toISOString().split('T')[0];
+  }
+  const str = String(data).trim();
+  if (!str) return '';
+  if (str.includes('T')) {
+    return str.split('T')[0];
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  const partes = str.split('/');
+  if (partes.length === 3) {
+    const [dia, mes, ano] = partes;
+    if (ano.length === 4) {
+      return `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
+    }
+  }
+  return '';
+}
+
+/**
+ * Converte qualquer formato de horário para o padrão HH:mm (5 caracteres)
+ * exigido pelo elemento HTML <input type="time">.
+ */
+export function formatarParaInputTime(horario?: string | null, padrao = '07:00'): string {
+  if (!horario) return padrao;
+  const str = String(horario).trim();
+  if (!str) return padrao;
+  if (str.length >= 5) {
+    return str.slice(0, 5);
+  }
+  return padrao;
+}
+
 export function aplicarMascaraTelefone(valor: string): string {
   if (!valor) return '';
   const apenasDigitos = valor.replace(/\D/g, '').slice(0, 11);

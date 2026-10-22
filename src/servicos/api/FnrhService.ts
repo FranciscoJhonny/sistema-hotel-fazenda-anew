@@ -2,6 +2,7 @@ import { apiCliente } from './apiCliente';
 import { CadastroFnrh, CadastroFnrhAcompanhante } from '../../tipos';
 import { calcularIdadeNumerica } from '../../utilitarios/formatadores';
 import { ResultadoSupabase } from './types';
+import { montarUrlPublicaFnrh, obterOrigemAplicacao } from '../../utilitarios/urls';
 
 export interface IFnrhService {
   listarCadastrosFnrh(): Promise<ResultadoSupabase<CadastroFnrh[]>>;
@@ -22,23 +23,17 @@ export interface IFnrhService {
 
 /**
  * Retorna a origem atual da URL de forma segura (tanto no browser quanto em SSR).
- * Nunca fixa localhost em produção.
+ * Compatível com execução local (localhost), homologação e produção (Vercel).
  */
-export const obterOrigemUrl = (): string => {
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return window.location.origin;
-  }
-  return '';
-};
+export const obterOrigemUrl = obterOrigemAplicacao;
 
 /**
- * Monta o link público para o cliente preencher a FNRH.
+ * Monta o link público absoluto para o cliente preencher a FNRH.
  * Exemplo local: http://localhost:3000/fnrh/<token>
  * Exemplo produção: https://hotelfazendaanew.com.br/fnrh/<token>
  */
-export const gerarLinkPublicoFnrh = (token: string): string => {
-  const origem = obterOrigemUrl();
-  return origem ? `${origem}/fnrh/${token}` : `/fnrh/${token}`;
+export const gerarLinkPublicoFnrh = (tokenOuLink?: string | null): string => {
+  return montarUrlPublicaFnrh(tokenOuLink);
 };
 
 /**
@@ -329,7 +324,7 @@ export class FnrhService {
   }): Promise<{ sucesso: boolean; cadastro?: CadastroFnrh; linkPublico?: string; erro?: string }> {
     try {
       const payloadApi = {
-        nomeCompleto: parametros?.nomecompleto?.trim() || null,
+        nomeCompleto: parametros?.nomecompleto?.trim() ? String(parametros.nomecompleto).trim().toUpperCase() : null,
         telefone: parametros?.telefone?.trim() || null,
         email: parametros?.email?.trim() || null,
         dataEntrada: parametros?.dataentrada || null,
@@ -345,7 +340,8 @@ export class FnrhService {
         const payload = resApi.dados;
         const c = payload.cadastro || payload;
         const token = c.token_acesso || c.tokenAcesso;
-        const linkPublico = payload.linkPublico || payload.link_publico || gerarLinkPublicoFnrh(token);
+        const linkBruto = payload.linkPublico || payload.link_publico || `/fnrh/${token}`;
+        const linkPublico = montarUrlPublicaFnrh(linkBruto);
         const cadastroCriado: CadastroFnrh = {
           ...c,
           cadastroid: Number(c.cadastroid || c.cadastroId),
