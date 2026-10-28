@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CreditCard, X, Users, Bed, LoaderCircle, Sun, Calendar } from 'lucide-react';
+import { CreditCard, X, Users, Bed, LoaderCircle, Sun, Calendar, Coffee } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { Quarto, Pacote, FormaPagamento } from '../../tipos';
 import {
@@ -36,7 +36,8 @@ const calcularValorReserva = (
   pacote: Pacote | undefined,
   adultos: number,
   criancas: number,
-  idadesCriancas: number[]
+  idadesCriancas: number[],
+  incluirCafeManha: boolean = false
 ) => {
   if (!pacote) {
     return {
@@ -96,7 +97,12 @@ const calcularValorReserva = (
     }
   }
 
-  const valorTotal = valorAdultosTotal + valorCriancasTotal;
+  const valorCafeManha = incluirCafeManha ? 50 : 0;
+  if (valorCafeManha > 0) {
+    detalhes.push(`Café da manhã: ${formatarMoeda(valorCafeManha)}`);
+  }
+
+  const valorTotal = valorAdultosTotal + valorCriancasTotal + valorCafeManha;
   const entrada = valorTotal * 0.5;
 
   return {
@@ -105,6 +111,7 @@ const calcularValorReserva = (
     valorBase: valorPorPessoa,
     valorAdultos: valorAdultosTotal,
     valorCriancas: valorCriancasTotal,
+    valorCafeManha,
     qtdCriancasMeia,
     qtdCriancasGratis,
     detalhesCriancas,
@@ -148,6 +155,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [valorPago, setValorPago] = useState<number>(0);
   const [valorPagoTexto, setValorPagoTexto] = useState<string>('');
   const [autorizarExcecaoSinal, setAutorizarExcecaoSinal] = useState<boolean>(false);
+  const [incluirCafeManha, setIncluirCafeManha] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -155,6 +163,22 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     () => pacotes.find((p) => String(p.pacoteid) === pacoteId),
     [pacoteId, pacotes]
   );
+
+  const eDayUse = useMemo(() => {
+    return (
+      Boolean(modoDayUse) ||
+      tipoAtendimento === 'DAY_USE' ||
+      String(pacoteSelecionado?.tipopacote || '').toUpperCase() === 'DAY_USE' ||
+      (pacoteSelecionado?.nome || '').toLowerCase().includes('day use')
+    );
+  }, [modoDayUse, tipoAtendimento, pacoteSelecionado]);
+
+  // Se o tipo deixar de ser Day Use, desmarca o café da manhã automaticamente
+  useEffect(() => {
+    if (!eDayUse && incluirCafeManha) {
+      setIncluirCafeManha(false);
+    }
+  }, [eDayUse, incluirCafeManha]);
 
   const hospedesOrdenados = useMemo(() => {
     return [...hospedes].sort((a, b) => (a.nomecompleto || '').localeCompare(b.nomecompleto || ''));
@@ -236,6 +260,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setValorPago(valorPagoPre);
       setValorPagoTexto(valorPagoTextoPre);
       setAutorizarExcecaoSinal(autorizarExcecaoPre);
+      setIncluirCafeManha(false);
       setErro(null);
       setFormaPagamento(configuracoes?.formapagamentopadrao || 'PIX');
 
@@ -424,9 +449,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       pacoteSelecionado,
       adultos,
       criancas,
-      idadesCriancas
+      idadesCriancas,
+      eDayUse && incluirCafeManha
     ),
-    [pacoteSelecionado, adultos, criancas, idadesCriancas]
+    [pacoteSelecionado, adultos, criancas, idadesCriancas, eDayUse, incluirCafeManha]
   );
 
   const valorMinimoEntrada = valorCalculado.entrada;
@@ -555,7 +581,16 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         saldo: saldoHotel,
         statuspagamento: statusPagamento,
         formapagamento: formaPagamento as FormaPagamento,
-        observacoes,
+        observacoes: (() => {
+          let obs = observacoes.trim();
+          if (eDayUse && incluirCafeManha) {
+            const tagCafe = '[Day Use com Café da Manhã (+R$ 50,00)]';
+            if (!obs.includes(tagCafe)) {
+              obs = obs ? `${obs} • ${tagCafe}` : tagCafe;
+            }
+          }
+          return obs;
+        })(),
         statusreserva: preReserva ? 'PRE_RESERVA' : 'RESERVADO',
       });
 
@@ -587,6 +622,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setValorPagoTexto('');
       setPreReserva(false);
       setAutorizarExcecaoSinal(false);
+      setIncluirCafeManha(false);
       onSucesso?.(resultado.mensagem || 'Reserva gravada com sucesso!');
       onFechar();
     } catch (error: any) {
@@ -795,6 +831,30 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               </div>
             </div>
 
+            {/* Opção Adicional: Café da Manhã (Exclusivo para Day Use) */}
+            {eDayUse && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 text-xs text-amber-950 animate-in fade-in">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={incluirCafeManha}
+                    onChange={(e) => setIncluirCafeManha(e.target.checked)}
+                    disabled={enviando}
+                    className="mt-0.5 h-4 w-4 rounded accent-[#053d1e] cursor-pointer"
+                  />
+                  <div>
+                    <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                      <Coffee className="w-4 h-4 text-amber-700 shrink-0" />
+                      Incluir Café da Manhã (+ R$ 50,00)
+                    </span>
+                    <span className="text-[11px] text-amber-800 block mt-0.5 leading-tight">
+                      Opção disponível exclusivamente para Day Use. Acrescenta R$ 50,00 ao valor total da reserva.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            )}
+
             {/* Idades das Crianças (0 a 11 anos) */}
             {criancas > 0 && !modoDayUse && (
               <div className="space-y-2 rounded-xl border border-[#c1c9bf] bg-white p-3">
@@ -986,6 +1046,15 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                         ? `${valorCalculado.qtdCriancasMeia} x ${formatarMoeda(valorCalculado.valorBase * 0.5)} = ${formatarMoeda(valorCalculado.valorCriancas)}`
                         : `${formatarMoeda(0)} (Isento)`}
                     </strong>
+                  </div>
+                )}
+                {eDayUse && incluirCafeManha && (
+                  <div className="flex justify-between gap-2 border-b border-[#e5e7eb] pb-1 text-xs text-amber-900 bg-amber-50/80 px-2 py-1 rounded">
+                    <span className="font-semibold flex items-center gap-1">
+                      <Coffee className="w-3.5 h-3.5 text-amber-700" />
+                      Café da manhã (Day Use):
+                    </span>
+                    <strong>+ {formatarMoeda(50)}</strong>
                   </div>
                 )}
                 <div className="flex justify-between gap-2 text-base font-bold pt-1">

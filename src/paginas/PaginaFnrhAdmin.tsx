@@ -428,9 +428,9 @@ Qualquer dúvida, estamos à disposição!`;
 
   const handleConfirmarCancelamento = async () => {
     if (!cadastroCancelar) return;
-    const res = await FnrhService.cancelarCadastroFnrh(cadastroCancelar.cadastroid, usuarioAtual?.usuarioid);
+    const res = await FnrhService.excluirCadastroFnrh(cadastroCancelar.cadastroid);
     if (res.sucesso) {
-      exibirFeedback('Link/Cadastro cancelado com sucesso.');
+      exibirFeedback('Link/Cadastro excluído com sucesso.');
       setCadastroCancelar(null);
       carregarDados();
     } else {
@@ -1165,12 +1165,12 @@ Qualquer dúvida, estamos à disposição!`;
       {/* Modal de Confirmação de Cancelamento */}
       <ModalConfirmacao
         aberto={Boolean(cadastroCancelar)}
-        titulo="Cancelar Link FNRH"
-        mensagem={`Tem certeza que deseja cancelar o link do cadastro #${cadastroCancelar?.cadastroid}${
+        titulo="Excluir Link FNRH"
+        mensagem={`Tem certeza que deseja excluir o link do cadastro #${cadastroCancelar?.cadastroid}${
           cadastroCancelar?.nomecompleto ? ` (${cadastroCancelar.nomecompleto})` : ''
         }? O cliente não poderá mais enviar dados através deste link.`}
         tipo="perigo"
-        textoConfirmar="Sim, Cancelar Link"
+        textoConfirmar="Sim, Excluir Link"
         textoCancelar="Voltar"
         onConfirmar={handleConfirmarCancelamento}
         onCancelar={() => setCadastroCancelar(null)}
