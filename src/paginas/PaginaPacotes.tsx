@@ -19,12 +19,29 @@ import {
   Package,
   Sun,
   ShieldAlert,
-  Info
+  Info,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { Pacote } from '../tipos';
 import { pacoteService } from '../servicos/api/PacoteService';
+
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
+
+// Converte string vazia para null e datas válidas para ISO com horário
+const formatarDataParaApi = (dataStr: string): string | null => {
+  if (!dataStr || !dataStr.trim()) return null;
+  return `${dataStr.slice(0, 10)}T00:00:00Z`;
+};
 
 interface FormularioPacoteState {
   nome: string;
@@ -89,12 +106,12 @@ export const PaginaPacotes: React.FC = () => {
 
   // Estados do Modal de Cadastro / Edição
   const [modalAberta, setModalAberta] = useState<boolean>(false);
-  const [pacoteEditando, setPacoteEditando] = useState<Pacote | null>(null);
+  const [pacoteEditando, setPacoteEditando] = useState<any | null>(null);
   const [formulario, setFormulario] = useState<FormularioPacoteState>(estadoInicialFormulario);
 
   // Estados de Exclusão / Desativação
   const [modalExclusaoAberta, setModalExclusaoAberta] = useState<boolean>(false);
-  const [pacoteParaExcluir, setPacoteParaExcluir] = useState<Pacote | null>(null);
+  const [pacoteParaExcluir, setPacoteParaExcluir] = useState<any | null>(null);
   const [qtdReservasVinculadas, setQtdReservasVinculadas] = useState<number>(0);
 
   // Status de Processamento e Banners
@@ -123,7 +140,6 @@ export const PaginaPacotes: React.FC = () => {
     carregarPacotes();
   }, []);
 
-  // Exibir avisos temporários
   const exibirSucesso = (msg: string) => {
     setMensagemSucesso(msg);
     setMensagemErro(null);
@@ -135,25 +151,22 @@ export const PaginaPacotes: React.FC = () => {
     setTimeout(() => setMensagemErro(null), 5000);
   };
 
-  // Filtragem dos pacotes
+  // Filtragem dos pacotes normalizados
   const pacotesFiltrados = useMemo(() => {
-    return pacotes.filter((pacote) => {
-      // Filtro de Busca Por Nome ou Descrição
+    return (pacotes || []).filter((pacote: any) => {
       const termo = busca.trim().toLowerCase();
-      const correspondeBusca =
-        !termo ||
-        (pacote.nome || '').toLowerCase().includes(termo) ||
-        (pacote.descricao || '').toLowerCase().includes(termo);
+      const nome = String(getVal(pacote, 'nome', 'nome') || '').toLowerCase();
+      const desc = String(getVal(pacote, 'descricao', 'descricao') || '').toLowerCase();
+      const correspondeBusca = !termo || nome.includes(termo) || desc.includes(termo);
 
-      // Filtro por Tipo de Pacote
-      const tipo = String(pacote.tipopacote || 'HOSPEDAGEM').toUpperCase();
+      const tipo = String(getVal(pacote, 'tipopacote', 'tipoPacote') || 'HOSPEDAGEM').toUpperCase();
       const correspondeTipo = filtroTipo === 'TODOS' || tipo === filtroTipo;
 
-      // Filtro por Status (Ativo / Inativo)
+      const ativo = getVal(pacote, 'ativo', 'ativo') !== false;
       const correspondeStatus =
         filtroStatus === 'TODOS' ||
-        (filtroStatus === 'ATIVOS' && pacote.ativo !== false) ||
-        (filtroStatus === 'INATIVOS' && pacote.ativo === false);
+        (filtroStatus === 'ATIVOS' && ativo) ||
+        (filtroStatus === 'INATIVOS' && !ativo);
 
       return correspondeBusca && correspondeTipo && correspondeStatus;
     });
@@ -167,30 +180,29 @@ export const PaginaPacotes: React.FC = () => {
     setModalAberta(true);
   };
 
-  // Abertura do Modal de Edição
-  const handleAbrirEdicao = (pacote: Pacote) => {
+  // Abertura do Modal de Edição com leitura segura
+  const handleAbrirEdicao = (pacote: any) => {
     setPacoteEditando(pacote);
     setFormulario({
-      nome: pacote.nome || '',
-      descricao: pacote.descricao || '',
-      tipopacote: (pacote.tipopacote as any) || 'HOSPEDAGEM',
-      valor: pacote.valor || 0,
-      quantidadedias: pacote.quantidadedias || 1,
-      adultosinclusos: pacote.adultosinclusos || 1,
-      criancasinclusas: pacote.criancasinclusas || 0,
-      datainicio: pacote.datainicio ? String(pacote.datainicio).slice(0, 10) : '',
-      datafim: pacote.datafim ? String(pacote.datafim).slice(0, 10) : '',
-      incluicafemanha: pacote.incluicafemanha !== false,
-      incluialmoco: pacote.incluialmoco !== false,
-      incluijantar: pacote.incluijantar !== false,
-      incluipasseios: Boolean(pacote.incluipasseios),
-      ativo: pacote.ativo !== false,
+      nome: getVal(pacote, 'nome', 'nome') || '',
+      descricao: getVal(pacote, 'descricao', 'descricao') || '',
+      tipopacote: (getVal(pacote, 'tipopacote', 'tipoPacote') as any) || 'HOSPEDAGEM',
+      valor: getVal(pacote, 'valor', 'valor') || 0,
+      quantidadedias: Number(getVal(pacote, 'quantidadedias', 'quantidadeDias')) || 1,
+      adultosinclusos: Number(getVal(pacote, 'adultosinclusos', 'adultosInclusos')) || 1,
+      criancasinclusas: Number(getVal(pacote, 'criancasinclusas', 'criancasInclusas')) || 0,
+      datainicio: extrairDataIso(getVal(pacote, 'datainicio', 'dataInicio')),
+      datafim: extrairDataIso(getVal(pacote, 'datafim', 'dataFim')),
+      incluicafemanha: getVal(pacote, 'incluicafemanha', 'incluiCafeManha') !== false,
+      incluialmoco: getVal(pacote, 'incluialmoco', 'incluiAlmoco') !== false,
+      incluijantar: getVal(pacote, 'incluijantar', 'incluiJantar') !== false,
+      incluipasseios: Boolean(getVal(pacote, 'incluipasseios', 'incluiPasseios')),
+      ativo: getVal(pacote, 'ativo', 'ativo') !== false,
     });
     setMensagemErro(null);
     setModalAberta(true);
   };
 
-  // Alteração dinâmica do tipo de pacote no formulário
   const handleMudarTipoPacote = (novoTipo: 'HOSPEDAGEM' | 'FERIADO' | 'DAY_USE' | 'EVENTO') => {
     setFormulario((prev) => {
       const eDayUse = novoTipo === 'DAY_USE';
@@ -205,12 +217,10 @@ export const PaginaPacotes: React.FC = () => {
     });
   };
 
-  // Salvar (Inserir / Atualizar) Pacote no Supabase
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
     setMensagemErro(null);
 
-    // Validações
     if (!formulario.nome.trim() || formulario.nome.trim().length < 3) {
       exibirErro('O nome do pacote deve conter pelo menos 3 caracteres.');
       return;
@@ -240,7 +250,7 @@ export const PaginaPacotes: React.FC = () => {
     setCarregandoAcao(true);
     try {
       const eDayUse = formulario.tipopacote === 'DAY_USE';
-      const payload: Partial<Pacote> = {
+      const payload: any = {
         nome: formulario.nome.trim(),
         descricao: formulario.descricao.trim(),
         tipopacote: formulario.tipopacote,
@@ -248,8 +258,8 @@ export const PaginaPacotes: React.FC = () => {
         quantidadedias: eDayUse ? 1 : Number(formulario.quantidadedias),
         adultosinclusos: Number(formulario.adultosinclusos),
         criancasinclusas: Number(formulario.criancasinclusas),
-        datainicio: formulario.datainicio || null,
-        datafim: formulario.datafim || null,
+        datainicio: formatarDataParaApi(formulario.datainicio),
+        datafim: formatarDataParaApi(formulario.datafim),
         incluicafemanha: Boolean(formulario.incluicafemanha),
         incluialmoco: Boolean(formulario.incluialmoco),
         incluijantar: eDayUse ? false : Boolean(formulario.incluijantar),
@@ -258,8 +268,8 @@ export const PaginaPacotes: React.FC = () => {
       };
 
       if (pacoteEditando) {
-        // Atualização via API REST C# .NET 8
-        const res = await pacoteService.atualizar(pacoteEditando.pacoteid, payload);
+        const pacoteId = getVal(pacoteEditando, 'pacoteid', 'pacoteId');
+        const res = await pacoteService.atualizar(pacoteId, payload);
         if (!res.sucesso) {
           exibirErro(`Erro ao atualizar pacote: ${res.erro}`);
         } else {
@@ -269,7 +279,6 @@ export const PaginaPacotes: React.FC = () => {
           await recarregarDados();
         }
       } else {
-        // Criação via API REST C# .NET 8
         const res = await pacoteService.criar(payload);
         if (!res.sucesso) {
           exibirErro(`Erro ao cadastrar pacote: ${res.erro}`);
@@ -287,52 +296,52 @@ export const PaginaPacotes: React.FC = () => {
     }
   };
 
-  // Abrir confirmação de exclusão/desativação segura
-  const handleAbrirConfirmacaoExclusao = (pacote: Pacote) => {
+  const handleAbrirConfirmacaoExclusao = (pacote: any) => {
     setPacoteParaExcluir(pacote);
 
-    // Contar quantas reservas estão vinculadas a este pacote
-    const vinculadas = (reservas || []).filter((r) => String(r.pacoteid) === String(pacote.pacoteid)).length;
+    const pacoteId = String(getVal(pacote, 'pacoteid', 'pacoteId'));
+    const vinculadas = (reservas || []).filter(
+      (r: any) => String(getVal(r, 'pacoteid', 'pacoteId')) === pacoteId
+    ).length;
     setQtdReservasVinculadas(vinculadas);
 
     setModalExclusaoAberta(true);
   };
 
-  // Confirmar exclusão ou soft delete
   const handleConfirmarExclusao = async () => {
     if (!pacoteParaExcluir) return;
+
+    const pacoteId = getVal(pacoteParaExcluir, 'pacoteid', 'pacoteId');
+    const nomePacote = getVal(pacoteParaExcluir, 'nome', 'nome');
 
     setCarregandoAcao(true);
     try {
       if (qtdReservasVinculadas > 0) {
-        // Soft delete: Desativar pacote via API REST C# .NET 8
-        const res = await pacoteService.desativar(pacoteParaExcluir.pacoteid);
+        const res = await pacoteService.desativar(pacoteId);
         if (!res.sucesso) {
           exibirErro(`Erro ao desativar pacote: ${res.erro}`);
         } else {
-          exibirSucesso(`Pacote "${pacoteParaExcluir.nome}" foi desativado com sucesso (possuía reservas vinculadas).`);
+          exibirSucesso(`Pacote "${nomePacote}" foi desativado com sucesso (possuía reservas vinculadas).`);
           setModalExclusaoAberta(false);
           setPacoteParaExcluir(null);
           await carregarPacotes();
           await recarregarDados();
         }
       } else {
-        // Tentativa de Hard delete (Exclusão física) via API REST C# .NET 8
-        const res = await pacoteService.excluir(pacoteParaExcluir.pacoteid);
+        const res = await pacoteService.excluir(pacoteId);
         if (!res.sucesso) {
-          // Se falhar devido à restrição FK, tenta desativação lógica
-          const resSoft = await pacoteService.desativar(pacoteParaExcluir.pacoteid);
+          const resSoft = await pacoteService.desativar(pacoteId);
           if (!resSoft.sucesso) {
             exibirErro(`Erro ao excluir pacote: ${res.erro || resSoft.erro}`);
           } else {
-            exibirSucesso(`Pacote "${pacoteParaExcluir.nome}" foi desativado com sucesso.`);
+            exibirSucesso(`Pacote "${nomePacote}" foi desativado com sucesso.`);
             setModalExclusaoAberta(false);
             setPacoteParaExcluir(null);
             await carregarPacotes();
             await recarregarDados();
           }
         } else {
-          exibirSucesso(`Pacote "${pacoteParaExcluir.nome}" excluído com sucesso!`);
+          exibirSucesso(`Pacote "${nomePacote}" excluído com sucesso!`);
           setModalExclusaoAberta(false);
           setPacoteParaExcluir(null);
           await carregarPacotes();
@@ -350,7 +359,10 @@ export const PaginaPacotes: React.FC = () => {
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Banner de Mensagem de Sucesso */}
       {mensagemSucesso && (
-        <div role="status" className="flex items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-3.5 text-sm font-semibold text-[#053d1e] shadow-sm animate-in fade-in">
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 px-5 py-3.5 text-sm font-semibold text-[#053d1e] shadow-sm animate-in fade-in"
+        >
           <CheckCircle2 className="h-5 w-5 text-emerald-700 shrink-0" />
           <span>{mensagemSucesso}</span>
         </div>
@@ -358,7 +370,10 @@ export const PaginaPacotes: React.FC = () => {
 
       {/* Banner de Mensagem de Erro */}
       {mensagemErro && (
-        <div role="alert" className="flex items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-5 py-3.5 text-sm font-semibold text-rose-900 shadow-sm animate-in fade-in">
+        <div
+          role="alert"
+          className="flex items-center gap-3 rounded-2xl border border-rose-300 bg-rose-50 px-5 py-3.5 text-sm font-semibold text-rose-900 shadow-sm animate-in fade-in"
+        >
           <AlertTriangle className="h-5 w-5 text-rose-700 shrink-0" />
           <span>{mensagemErro}</span>
         </div>
@@ -457,13 +472,26 @@ export const PaginaPacotes: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {pacotesFiltrados.map((pacote) => {
-            const badge = obterBadgeTipoPacote(pacote.tipopacote);
-            const eAtivo = pacote.ativo !== false;
+          {pacotesFiltrados.map((pacote: any) => {
+            const badge = obterBadgeTipoPacote(getVal(pacote, 'tipopacote', 'tipoPacote'));
+            const eAtivo = getVal(pacote, 'ativo', 'ativo') !== false;
+            const pId = getVal(pacote, 'pacoteid', 'pacoteId');
+            const nome = getVal(pacote, 'nome', 'nome');
+            const desc = getVal(pacote, 'descricao', 'descricao');
+            const valor = Number(getVal(pacote, 'valor', 'valor') || 0);
+            const qtdDias = Number(getVal(pacote, 'quantidadedias', 'quantidadeDias') || 1);
+            const adultos = Number(getVal(pacote, 'adultosinclusos', 'adultosInclusos') || 1);
+            const criancas = Number(getVal(pacote, 'criancasinclusas', 'criancasInclusas') || 0);
+            const dInicio = extrairDataIso(getVal(pacote, 'datainicio', 'dataInicio'));
+            const dFim = extrairDataIso(getVal(pacote, 'datafim', 'dataFim'));
+            const cafe = getVal(pacote, 'incluicafemanha', 'incluiCafeManha') !== false;
+            const almoco = getVal(pacote, 'incluialmoco', 'incluiAlmoco') !== false;
+            const jantar = getVal(pacote, 'incluijantar', 'incluiJantar') !== false;
+            const passeios = Boolean(getVal(pacote, 'incluipasseios', 'incluiPasseios'));
 
             return (
               <div
-                key={String(pacote.pacoteid)}
+                key={String(pId)}
                 className={`flex flex-col justify-between rounded-2xl border bg-white p-5 shadow-xs transition-all hover:shadow-md ${
                   eAtivo ? 'border-[#c1c9bf]' : 'border-slate-300 bg-slate-50/70 opacity-80'
                 }`}
@@ -473,7 +501,9 @@ export const PaginaPacotes: React.FC = () => {
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${badge.classe}`}>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${badge.classe}`}
+                        >
                           {badge.label}
                         </span>
                         {!eAtivo && (
@@ -482,25 +512,25 @@ export const PaginaPacotes: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <h3 className="font-['Manrope'] text-lg font-bold text-[#191c1d] truncate" title={pacote.nome}>
-                        {pacote.nome}
+                      <h3 className="font-['Manrope'] text-lg font-bold text-[#191c1d] truncate" title={nome}>
+                        {nome}
                       </h3>
                     </div>
 
                     <div className="text-right shrink-0">
                       <div className="font-['Manrope'] text-xl font-extrabold text-[#053d1e]">
-                        {formatarMoeda(pacote.valor || 0)}
+                        {formatarMoeda(valor)}
                       </div>
                       <div className="text-[10px] font-semibold text-[#717971]">
-                        {pacote.quantidadedias === 1 ? '1 dia' : `${pacote.quantidadedias} diárias`}
+                        {qtdDias === 1 ? '1 dia' : `${qtdDias} diárias`}
                       </div>
                     </div>
                   </div>
 
                   {/* Descrição */}
-                  {pacote.descricao && (
-                    <p className="text-xs text-[#414941] mb-4 line-clamp-2" title={pacote.descricao}>
-                      {pacote.descricao}
+                  {desc && (
+                    <p className="text-xs text-[#414941] mb-4 line-clamp-2" title={desc}>
+                      {desc}
                     </p>
                   )}
 
@@ -511,19 +541,19 @@ export const PaginaPacotes: React.FC = () => {
                         <Users className="h-3.5 w-3.5 text-[#053d1e]" /> Hóspedes Inclusos:
                       </span>
                       <span className="font-bold text-[#191c1d]">
-                        {pacote.adultosinclusos} Adulto(s){pacote.criancasinclusas > 0 ? ` + ${pacote.criancasinclusas} Criança(s)` : ''}
+                        {adultos} Adulto(s){criancas > 0 ? ` + ${criancas} Criança(s)` : ''}
                       </span>
                     </div>
 
-                    {(pacote.datainicio || pacote.datafim) ? (
+                    {dInicio || dFim ? (
                       <div className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 font-medium text-[#717971]">
                           <Calendar className="h-3.5 w-3.5 text-[#053d1e]" /> Validade:
                         </span>
                         <span className="font-semibold text-[#191c1d]">
-                          {pacote.datainicio ? formatarData(pacote.datainicio) : 'Início livre'}
+                          {dInicio ? formatarData(dInicio) : 'Início livre'}
                           {' até '}
-                          {pacote.datafim ? formatarData(pacote.datafim) : 'Sem fim'}
+                          {dFim ? formatarData(dFim) : 'Sem fim'}
                         </span>
                       </div>
                     ) : (
@@ -536,37 +566,43 @@ export const PaginaPacotes: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Inclusões (Café, Almoço, Jantar, Passeios) */}
+                  {/* Inclusões */}
                   <div className="mb-4">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#717971] block mb-2">
                       Inclusões do Pacote:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                        pacote.incluicafemanha !== false
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                          : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                          cafe
+                            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                            : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
+                        }`}
+                      >
                         <Coffee className="h-3.5 w-3.5" /> Café da Manhã
                       </span>
 
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                        pacote.incluialmoco !== false
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                          : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                          almoco
+                            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                            : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
+                        }`}
+                      >
                         <Utensils className="h-3.5 w-3.5" /> Almoço
                       </span>
 
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                        pacote.incluijantar !== false
-                          ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-                          : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
-                      }`}>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                          jantar
+                            ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                            : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
+                        }`}
+                      >
                         <Moon className="h-3.5 w-3.5" /> Jantar
                       </span>
 
-                      {pacote.incluipasseios && (
+                      {passeios && (
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border bg-purple-50 text-purple-900 border-purple-200">
                           <Compass className="h-3.5 w-3.5" /> Passeios
                         </span>
@@ -604,13 +640,17 @@ export const PaginaPacotes: React.FC = () => {
 
       {/* MODAL DE FORMULÁRIO (CRIAÇÃO E EDIÇÃO) */}
       {modalAberta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in" role="dialog" aria-modal="true">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl space-y-5 border border-[#c1c9bf]">
             {/* Cabecalho da Modal */}
             <div className="flex items-center justify-between border-b border-[#f3f4f6] pb-4">
               <div>
                 <h2 className="font-['Manrope'] text-xl font-bold text-[#191c1d]">
-                  {pacoteEditando ? `Editar Pacote: ${pacoteEditando.nome}` : 'Cadastrar Novo Pacote'}
+                  {pacoteEditando ? `Editar Pacote: ${getVal(pacoteEditando, 'nome', 'nome')}` : 'Cadastrar Novo Pacote'}
                 </h2>
                 <p className="text-xs text-[#717971] mt-0.5">
                   Preencha os detalhes e inclusões do pacote promocional.
@@ -688,7 +728,9 @@ export const PaginaPacotes: React.FC = () => {
                     required
                     disabled={formulario.tipopacote === 'DAY_USE'}
                     value={formulario.quantidadedias}
-                    onChange={(e) => setFormulario({ ...formulario, quantidadedias: Number(e.target.value) || 1 })}
+                    onChange={(e) =>
+                      setFormulario({ ...formulario, quantidadedias: Number(e.target.value) || 1 })
+                    }
                     className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none disabled:bg-slate-200 disabled:cursor-not-allowed"
                   />
                 </div>
@@ -702,7 +744,9 @@ export const PaginaPacotes: React.FC = () => {
                     min="1"
                     required
                     value={formulario.adultosinclusos}
-                    onChange={(e) => setFormulario({ ...formulario, adultosinclusos: Number(e.target.value) || 1 })}
+                    onChange={(e) =>
+                      setFormulario({ ...formulario, adultosinclusos: Number(e.target.value) || 1 })
+                    }
                     className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none"
                   />
                 </div>
@@ -715,7 +759,9 @@ export const PaginaPacotes: React.FC = () => {
                     type="number"
                     min="0"
                     value={formulario.criancasinclusas}
-                    onChange={(e) => setFormulario({ ...formulario, criancasinclusas: Number(e.target.value) || 0 })}
+                    onChange={(e) =>
+                      setFormulario({ ...formulario, criancasinclusas: Number(e.target.value) || 0 })
+                    }
                     className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none"
                   />
                 </div>
@@ -768,9 +814,13 @@ export const PaginaPacotes: React.FC = () => {
                   Inclusões e Benefícios do Pacote:
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
-                    formulario.incluicafemanha ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold' : 'border-gray-200 bg-gray-50 text-gray-600'
-                  }`}>
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      formulario.incluicafemanha
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={formulario.incluicafemanha}
@@ -781,9 +831,13 @@ export const PaginaPacotes: React.FC = () => {
                     <span className="text-xs">Café da Manhã</span>
                   </label>
 
-                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
-                    formulario.incluialmoco ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold' : 'border-gray-200 bg-gray-50 text-gray-600'
-                  }`}>
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      formulario.incluialmoco
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={formulario.incluialmoco}
@@ -794,13 +848,15 @@ export const PaginaPacotes: React.FC = () => {
                     <span className="text-xs">Almoço</span>
                   </label>
 
-                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border transition-colors ${
-                    formulario.tipopacote === 'DAY_USE'
-                      ? 'border-gray-200 bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
-                      : formulario.incluijantar
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold cursor-pointer'
-                      : 'border-gray-200 bg-gray-50 text-gray-600 cursor-pointer'
-                  }`}>
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border transition-colors ${
+                      formulario.tipopacote === 'DAY_USE'
+                        ? 'border-gray-200 bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                        : formulario.incluijantar
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-950 font-bold cursor-pointer'
+                        : 'border-gray-200 bg-gray-50 text-gray-600 cursor-pointer'
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       disabled={formulario.tipopacote === 'DAY_USE'}
@@ -812,9 +868,13 @@ export const PaginaPacotes: React.FC = () => {
                     <span className="text-xs">Jantar</span>
                   </label>
 
-                  <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
-                    formulario.incluipasseios ? 'border-purple-500 bg-purple-50 text-purple-950 font-bold' : 'border-gray-200 bg-gray-50 text-gray-600'
-                  }`}>
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      formulario.incluipasseios
+                        ? 'border-purple-500 bg-purple-50 text-purple-950 font-bold'
+                        : 'border-gray-200 bg-gray-50 text-gray-600'
+                    }`}
+                  >
                     <input
                       type="checkbox"
                       checked={formulario.incluipasseios}
@@ -830,9 +890,7 @@ export const PaginaPacotes: React.FC = () => {
               {/* Status Ativo / Inativo */}
               <div className="flex items-center justify-between rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] p-3.5">
                 <div>
-                  <span className="text-xs font-bold text-[#191c1d] block">
-                    Status do Pacote
-                  </span>
+                  <span className="text-xs font-bold text-[#191c1d] block">Status do Pacote</span>
                   <span className="text-[11px] text-[#717971]">
                     Pacotes inativos ficam indisponíveis para novas reservas.
                   </span>
@@ -863,7 +921,11 @@ export const PaginaPacotes: React.FC = () => {
                   disabled={carregandoAcao}
                   className="flex items-center gap-2 rounded-xl bg-[#053d1e] px-5 py-2 text-xs font-bold text-white hover:bg-[#043017] transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                 >
-                  {carregandoAcao ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {carregandoAcao ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
                   <span>{pacoteEditando ? 'Salvar Alterações' : 'Cadastrar Pacote'}</span>
                 </button>
               </div>
@@ -874,13 +936,15 @@ export const PaginaPacotes: React.FC = () => {
 
       {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO / DESATIVAÇÃO */}
       {modalExclusaoAberta && pacoteParaExcluir && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in" role="dialog" aria-modal="true">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4 border border-[#c1c9bf]">
             <div className="flex items-center gap-3 text-rose-700">
               <ShieldAlert className="h-7 w-7 shrink-0" />
-              <h3 className="font-['Manrope'] text-lg font-bold text-[#191c1d]">
-                Confirmar Ação
-              </h3>
+              <h3 className="font-['Manrope'] text-lg font-bold text-[#191c1d]">Confirmar Ação</h3>
             </div>
 
             {qtdReservasVinculadas > 0 ? (
@@ -890,12 +954,16 @@ export const PaginaPacotes: React.FC = () => {
                   Este pacote possui <strong>{qtdReservasVinculadas} reserva(s)</strong> vinculada(s) no sistema.
                 </div>
                 <p className="text-xs text-[#414941]">
-                  Para preservar o histórico operacional e financeiro, o pacote <strong>"{pacoteParaExcluir.nome}"</strong> será <strong>desativado</strong> em vez de excluído permanentemente.
+                  Para preservar o histórico operacional e financeiro, o pacote{' '}
+                  <strong>"{getVal(pacoteParaExcluir, 'nome', 'nome')}"</strong> será{' '}
+                  <strong>desativado</strong> em vez de excluído permanentemente.
                 </p>
               </div>
             ) : (
               <p className="text-xs text-[#414941]">
-                Tem certeza que deseja excluir permanentemente o pacote <strong>"{pacoteParaExcluir.nome}"</strong>? Esta ação não poderá ser desfeita.
+                Tem certeza que deseja excluir permanentemente o pacote{' '}
+                <strong>"{getVal(pacoteParaExcluir, 'nome', 'nome')}"</strong>? Esta ação não poderá ser
+                desfeita.
               </p>
             )}
 
@@ -917,7 +985,11 @@ export const PaginaPacotes: React.FC = () => {
                 disabled={carregandoAcao}
                 className="flex items-center gap-2 rounded-xl bg-rose-700 px-5 py-2 text-xs font-bold text-white hover:bg-rose-800 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
               >
-                {carregandoAcao ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {carregandoAcao ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 <span>{qtdReservasVinculadas > 0 ? 'Desativar Pacote' : 'Excluir Pacote'}</span>
               </button>
             </div>

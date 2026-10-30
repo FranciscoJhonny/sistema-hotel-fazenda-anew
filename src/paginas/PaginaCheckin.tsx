@@ -11,39 +11,121 @@ import {
   Calendar,
   AlertCircle,
   FileCheck,
-  LoaderCircle, // Adicionado para o ícone de loading
+  LoaderCircle,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva } from '../tipos';
 import { formatarMoeda, formatarData, formatarTelefone } from '../utilitarios/formatadores';
 
+// Helper universal para ler tanto camelCase quanto lowercase
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
+
 export const PaginaCheckin: React.FC = () => {
-  const { reservas, quartos, dataSistema, realizarCheckin, usuarioAtual } = useHotel();
+  const { reservas, quartos, hospedes, dataSistema, realizarCheckin, usuarioAtual } = useHotel();
 
   const [busca, setBusca] = useState<string>('');
-  const [reservaSelecionada, setReservaSelecionada] = useState<Reserva | null>(null);
+  const [reservaSelecionada, setReservaSelecionada] = useState<any | null>(null);
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
-  const [comprovanteCheckin, setComprovanteCheckin] = useState<Reserva | null>(null);
-  const [carregandoCheckin, setCarregandoCheckin] = useState<boolean>(false); // Novo estado de loading
-console.log(dataSistema)
-  // Reservas aguardando check-in
-  const reservasAguardando = reservas.filter(
-    (r) => (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema
-  );  
-  const reservasFiltradas = reservasAguardando.filter((r) => {
-    if (!busca.trim()) return true;
-    const termo = busca.toLowerCase();
-    return (
-      (r.hospedenome || '').toLowerCase().includes(termo) ||
-      (r.codigo || '').toLowerCase().includes(termo) ||
-      (r.quartonumero || '').includes(termo)
-    );
-  });
+  const [comprovanteCheckin, setComprovanteCheckin] = useState<any | null>(null);
+  const [carregandoCheckin, setCarregandoCheckin] = useState<boolean>(false);
 
-  const handleEfetivarCheckin = async (reserva: Reserva) => {
-    setCarregandoCheckin(true); // Ativa o loading
+  // Normalizar data do sistema (AAAA-MM-DD)
+  const dataHojeStr = dataSistema ? extrairDataIso(dataSistema) : new Date().toISOString().slice(0, 10);
+
+  // Normalizar a lista de reservas com acesso unificado aos campos
+  const reservasNormalizadas = React.useMemo(() => {
+    return reservas.map((r: any) => {
+      const hospedeId = Number(getVal(r, 'hospedeid', 'hospedeId'));
+      const quartoId = Number(getVal(r, 'quartoid', 'quartoId'));
+      const hospedeObj = hospedes?.find((h: any) => Number(getVal(h, 'hospedeid', 'hospedeId')) === hospedeId);
+      const quartoObj = quartos?.find((q: any) => Number(getVal(q, 'quartoid', 'quartoId')) === quartoId);
+
+      const nomeHospede =
+        getVal(r, 'hospedenome', 'hospedeNome') ||
+        hospedeObj?.nomecompleto ||        
+        `Hóspede #${hospedeId}`;
+
+      const telHospede =
+        getVal(r, 'hospedetelefone', 'hospedeTelefone') ||
+        hospedeObj?.telefone ||
+        hospedeObj?.whatsapp ||
+        'Não informado';
+
+      const numQuarto =
+        getVal(r, 'quartonumero', 'quartoNumero') ||
+        quartoObj?.numero ||
+        quartoObj?.codigoidentificador ||        
+        '';
+
+      const codQuarto =
+        getVal(r, 'quartocodigo', 'quartoCodigo') ||
+        quartoObj?.codigoidentificador ||        
+        quartoObj?.numero ||
+        '';
+
+      const catQuarto =
+        getVal(r, 'quartocategoria', 'quartoCategoria') ||
+        quartoObj?.categoria ||
+        '';
+
+      return {
+        ...r,
+        reservaid: Number(getVal(r, 'reservaid', 'reservaId')),
+        codigo: getVal(r, 'codigo', 'codigo') || '',
+        dataentrada: extrairDataIso(getVal(r, 'dataentrada', 'dataEntrada')),
+        datasaida: extrairDataIso(getVal(r, 'datasaida', 'dataSaida')),
+        statusreserva: getVal(r, 'statusreserva', 'statusReserva') || '',
+        horarioprevistochegada: getVal(r, 'horarioprevistochegada', 'horarioPrevistoChegada') || '09:00',
+        valortotal: Number(getVal(r, 'valortotal', 'valorTotal') || 0),
+        valorpago: Number(getVal(r, 'valorpago', 'valorPago') || 0),
+        saldo: Number(getVal(r, 'saldo', 'saldo') || 0),
+        adultos: Number(getVal(r, 'adultos', 'adultos') || 1),
+        criancas: Number(getVal(r, 'criancas', 'criancas') || 0),
+        hospedenome: nomeHospede,
+        hospedetelefone: telHospede,
+        quartonumero: numQuarto,
+        quartocodigo: codQuarto,
+        quartocategoria: catQuarto,
+      };
+    });
+  }, [reservas, hospedes, quartos]);
+
+  // Reservas aguardando check-in (status PRE_RESERVA ou RESERVADO e data de entrada <= data de hoje)
+  const reservasAguardando = React.useMemo(() => {
+    return reservasNormalizadas.filter((r: any) => {
+      const status = r.statusreserva;
+      const statusValido = status === 'PRE_RESERVA' || status === 'RESERVADO';
+      const dataValida = r.dataentrada <= dataHojeStr;
+      return statusValido && dataValida;
+    });
+  }, [reservasNormalizadas, dataHojeStr]);
+
+  const reservasFiltradas = React.useMemo(() => {
+    if (!busca.trim()) return reservasAguardando;
+    const termo = busca.toLowerCase();
+    return reservasAguardando.filter((r: any) => {
+      return (
+        (r.hospedenome || '').toLowerCase().includes(termo) ||
+        (r.codigo || '').toLowerCase().includes(termo) ||
+        String(r.quartonumero || '').toLowerCase().includes(termo) ||
+        String(r.quartocodigo || '').toLowerCase().includes(termo)
+      );
+    });
+  }, [reservasAguardando, busca]);
+
+  const handleEfetivarCheckin = async (reserva: any) => {
+    setCarregandoCheckin(true);
     try {
-      const res = await realizarCheckin(reserva.reservaid);
+      const idParaCheckin = reserva.reservaid;
+      const res = await realizarCheckin(idParaCheckin);
       if (res.sucesso) {
         setFeedbackSucesso(res.mensagem);
         setComprovanteCheckin(reserva);
@@ -51,7 +133,7 @@ console.log(dataSistema)
         setTimeout(() => setFeedbackSucesso(null), 4000);
       }
     } finally {
-      setCarregandoCheckin(false); // Desativa o loading ao final (sucesso ou erro)
+      setCarregandoCheckin(false);
     }
   };
 
@@ -115,7 +197,7 @@ console.log(dataSistema)
                 </p>
               </div>
             ) : (
-              reservasFiltradas.map((res) => {
+              reservasFiltradas.map((res: any) => {
                 const selecionado = reservaSelecionada?.reservaid === res.reservaid;
                 return (
                   <div
@@ -145,7 +227,7 @@ console.log(dataSistema)
                       <div>
                         <span className="text-[#717971] text-[10px] block">Acomodação:</span>
                         <span className="font-bold text-[#053d1e]">
-                          Quarto {res.quartocodigo}
+                          Quarto {res.quartocodigo || res.quartonumero}
                         </span>
                       </div>
                       <div>
@@ -216,10 +298,10 @@ console.log(dataSistema)
               <div className="space-y-2 pt-2">
                 <button
                   onClick={() => handleEfetivarCheckin(reservaSelecionada)}
-                  disabled={carregandoCheckin} // Desabilita o botão durante o carregamento
+                  disabled={carregandoCheckin}
                   className={`w-full py-3 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${
-                    carregandoCheckin 
-                      ? 'bg-[#053d1e]/60 cursor-not-allowed text-white/80' 
+                    carregandoCheckin
+                      ? 'bg-[#053d1e]/60 cursor-not-allowed text-white/80'
                       : 'bg-[#053d1e] hover:bg-[#225533] text-white'
                   }`}
                 >
@@ -231,7 +313,7 @@ console.log(dataSistema)
           ) : (
             <div className="bg-[#f8f9fa] border border-dashed border-[#c1c9bf] rounded-2xl p-6 text-center text-xs text-[#717971]">
               <KeyRound className="w-8 h-8 mx-auto text-[#c1c9bf] mb-2" />
-              <p className="font-semibold text-[#191c1d]">Selecione uma reserva ao lado</p>
+              <p className="font-semibold text-sm text-[#191c1d]">Selecione uma reserva ao lado</p>
               <p className="mt-1">
                 Clique em um hóspede da lista para conferir os dados e liberar o acesso ao chalé.
               </p>
@@ -298,7 +380,11 @@ console.log(dataSistema)
 
       {/* Overlay de Carregamento (Loading) */}
       {carregandoCheckin && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs" role="status" aria-live="polite">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs"
+          role="status"
+          aria-live="polite"
+        >
           <div className="bg-white rounded-xl px-5 py-4 shadow-xl flex items-center gap-3 text-sm font-semibold text-[#053d1e]">
             <LoaderCircle className="w-5 h-5 animate-spin" /> Processando check-in...
           </div>

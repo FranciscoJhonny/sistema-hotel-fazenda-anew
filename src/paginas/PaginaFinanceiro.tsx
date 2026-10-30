@@ -7,13 +7,24 @@ import {
   LoaderCircle,
   RefreshCw,
   Users,
-  Search
+  Search,
 } from 'lucide-react';
 import React, { useState, useMemo } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
 import { Pagamento, Reserva, ConsumoExtra } from '../tipos';
 import * as XLSX from 'xlsx-js-style';
+
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
 
 export const PaginaFinanceiro: React.FC = () => {
   const { reservas, consumosExtras, pagamentos, quartos, usuarioAtual, recarregarDados } = useHotel();
@@ -30,14 +41,19 @@ export const PaginaFinanceiro: React.FC = () => {
 
   // 1. FILTRAR RESERVAS
   const reservasDoPeriodo = useMemo(() => {
-    return (reservas || []).filter((r: Reserva) => {
-      if (!statusPermitidos.includes(r.statusreserva)) return false;
+    return (reservas || []).filter((r: any) => {
+      const status = getVal(r, 'statusreserva', 'statusReserva');
+      if (!statusPermitidos.includes(status)) return false;
 
       if (usarFiltroData && dataInicioFiltro && dataFimFiltro) {
         const inicio = new Date(dataInicioFiltro + 'T00:00:00');
         const fim = new Date(dataFimFiltro + 'T23:59:59');
 
-        const dataReferencia = r.dataentrada || r.datareserva || r.datainclusao;
+        const dataReferencia =
+          getVal(r, 'dataentrada', 'dataEntrada') ||
+          getVal(r, 'datareserva', 'dataReserva') ||
+          getVal(r, 'datainclusao', 'dataInclusao');
+
         if (!dataReferencia) return false;
 
         const dataLimpa = String(dataReferencia).split('T')[0].split(' ')[0];
@@ -54,111 +70,182 @@ export const PaginaFinanceiro: React.FC = () => {
   const pagamentosDoPeriodo = useMemo(() => {
     if (!pagamentos || pagamentos.length === 0) return [];
     if (!usarFiltroData || !dataInicioFiltro || !dataFimFiltro) {
-      return pagamentos.filter((p: Pagamento) => p.status === 'CONFIRMADO' || p.status === 'PAGO');
+      return pagamentos.filter((p: any) => {
+        const st = getVal(p, 'status', 'status');
+        return st === 'CONFIRMADO' || st === 'PAGO';
+      });
     }
-    const idsReservasPeriodo = new Set(reservasDoPeriodo.map((r) => String(r.reservaid)));
-    return pagamentos.filter((p: Pagamento) => {
-      if (p.status !== 'CONFIRMADO' && p.status !== 'PAGO') return false;
-      return idsReservasPeriodo.has(String(p.reservaid));
+    const idsReservasPeriodo = new Set(
+      reservasDoPeriodo.map((r: any) => String(getVal(r, 'reservaid', 'reservaId')))
+    );
+    return pagamentos.filter((p: any) => {
+      const st = getVal(p, 'status', 'status');
+      if (st !== 'CONFIRMADO' && st !== 'PAGO') return false;
+      const resId = String(getVal(p, 'reservaid', 'reservaId'));
+      return idsReservasPeriodo.has(resId);
     });
   }, [pagamentos, reservasDoPeriodo, usarFiltroData, dataInicioFiltro, dataFimFiltro]);
 
   const consumosDessasReservas = useMemo(() => {
     if (!consumosExtras || consumosExtras.length === 0) return [];
     if (!usarFiltroData || !dataInicioFiltro || !dataFimFiltro) {
-      return consumosExtras.filter((c: ConsumoExtra) => c.ativo);
+      return consumosExtras.filter((c: any) => getVal(c, 'ativo', 'ativo') !== false);
     }
-    const idsReservasPeriodo = new Set(reservasDoPeriodo.map((r) => String(r.reservaid)));
-    return consumosExtras.filter((c: ConsumoExtra) => {
-      return idsReservasPeriodo.has(String(c.reservaid)) && c.ativo;
+    const idsReservasPeriodo = new Set(
+      reservasDoPeriodo.map((r: any) => String(getVal(r, 'reservaid', 'reservaId')))
+    );
+    return consumosExtras.filter((c: any) => {
+      const resId = String(getVal(c, 'reservaid', 'reservaId'));
+      const ativo = getVal(c, 'ativo', 'ativo') !== false;
+      return idsReservasPeriodo.has(resId) && ativo;
     });
   }, [consumosExtras, reservasDoPeriodo, usarFiltroData, dataInicioFiltro, dataFimFiltro]);
 
   // 3. RESUMO CONSOLIDADO DISCRIMINADO POR RESERVA
   const resumoReservas = useMemo(() => {
-    return reservasDoPeriodo.map((reserva) => {
-      const quarto = quartos?.find((q) => String(q.quartoid) === String(reserva.quartoid));
+    return reservasDoPeriodo
+      .map((reserva: any) => {
+        const resId = String(getVal(reserva, 'reservaid', 'reservaId'));
+        const quartoId = String(getVal(reserva, 'quartoid', 'quartoId'));
 
-      // Consumos da Lojinha
-      const consumosLojinha = consumosDessasReservas.filter(
-        (c) => String(c.reservaid) === String(reserva.reservaid) && c.categoria?.toUpperCase() === 'LOJINHA'
+        const quarto = quartos?.find(
+          (q: any) => String(getVal(q, 'quartoid', 'quartoId')) === quartoId
+        );
+
+        // Consumos da Lojinha
+        const consumosLojinha = consumosDessasReservas.filter((c: any) => {
+          const cResId = String(getVal(c, 'reservaid', 'reservaId'));
+          const cat = String(getVal(c, 'categoria', 'categoria') || '').toUpperCase();
+          return cResId === resId && cat === 'LOJINHA';
+        });
+        const valorLojinha = consumosLojinha.reduce(
+          (acc, c: any) => acc + Number(getVal(c, 'valortotal', 'valorTotal') || 0),
+          0
+        );
+        const produtosLojinhaConcat =
+          consumosLojinha.length > 0
+            ? consumosLojinha
+                .map(
+                  (c: any) =>
+                    `${getVal(c, 'quantidade', 'quantidade')}x ${
+                      getVal(c, 'descricao', 'descricao') || getVal(c, 'categoria', 'categoria')
+                    }`
+                )
+                .join(', ')
+            : '';
+
+        // Consumos do Bar
+        const consumosBar = consumosDessasReservas.filter((c: any) => {
+          const cResId = String(getVal(c, 'reservaid', 'reservaId'));
+          const cat = String(getVal(c, 'categoria', 'categoria') || '').toUpperCase();
+          return cResId === resId && cat === 'BAR';
+        });
+        const valorBar = consumosBar.reduce(
+          (acc, c: any) => acc + Number(getVal(c, 'valortotal', 'valorTotal') || 0),
+          0
+        );
+        const produtosBarConcat =
+          consumosBar.length > 0
+            ? consumosBar
+                .map(
+                  (c: any) =>
+                    `${getVal(c, 'quantidade', 'quantidade')}x ${
+                      getVal(c, 'descricao', 'descricao') || getVal(c, 'categoria', 'categoria')
+                    }`
+                )
+                .join(', ')
+            : '';
+
+        // Pagamentos desta reserva
+        const pagamentosDaReserva = pagamentosDoPeriodo.filter((p: any) => {
+          return String(getVal(p, 'reservaid', 'reservaId')) === resId;
+        });
+
+        const pagamentosSinal = pagamentosDaReserva.filter((p: any) => {
+          const tipo = getVal(p, 'tipolancamento', 'tipoLancamento');
+          return tipo === 'SINAL_RESERVA' || !tipo;
+        });
+        const somaPagosSinal = pagamentosSinal.reduce(
+          (acc, p: any) => acc + Number(getVal(p, 'valor', 'valor') || 0),
+          0
+        );
+        const valorReservaPago =
+          somaPagosSinal > 0 ? somaPagosSinal : Number(getVal(reserva, 'valorpago', 'valorPago') || 0);
+
+        const pagamentosCheckout = pagamentosDaReserva.filter((p: any) => {
+          const tipo = getVal(p, 'tipolancamento', 'tipoLancamento');
+          return tipo === 'SALDO_RESERVA' || tipo === 'CONSUMO_EXTRA';
+        });
+        const valorCheckoutPago = pagamentosCheckout.reduce(
+          (acc, p: any) => acc + Number(getVal(p, 'valor', 'valor') || 0),
+          0
+        );
+
+        const totalHospedagem = Number(getVal(reserva, 'valortotal', 'valorTotal') || 0);
+
+        // FÓRMULA CORRIGIDA: Check-out + Bar + Loja + Reserva (Sinal)
+        const totalGeralCalculado = valorCheckoutPago + valorBar + valorLojinha + valorReservaPago;
+
+        const saldoDb = getVal(reserva, 'saldo', 'saldo');
+        const saldoPendente = Number(
+          saldoDb !== undefined && saldoDb !== null
+            ? saldoDb
+            : Math.max(0, totalHospedagem - valorReservaPago)
+        );
+
+        const stReserva = getVal(reserva, 'statusreserva', 'statusReserva');
+        let status = 'PENDENTE';
+        if (stReserva === 'CONCLUIDA' && saldoPendente <= 0.01) {
+          status = 'PAGO';
+        } else if (Number(getVal(reserva, 'valorpago', 'valorPago') || 0) > 0 || valorCheckoutPago > 0) {
+          status = 'PARCIAL';
+        }
+
+        const adultosReserva = Number(getVal(reserva, 'adultos', 'adultos') || 0);
+        const criancasReserva = Number(getVal(reserva, 'criancas', 'criancas') || 0);
+        const totalHospedesReserva = Math.max(adultosReserva + criancasReserva, 1);
+
+        const quartoNum =
+          (quarto as any)?.codigoidentificador ||
+          (quarto as any)?.codigoIdentificador ||
+          getVal(reserva, 'quartocodigo', 'quartoCodigo') ||
+          getVal(reserva, 'quartonumero', 'quartoNumero') ||
+          '';
+
+        return {
+          quarto: quartoNum,
+          codigo: getVal(reserva, 'codigo', 'codigo'),
+          hospede: getVal(reserva, 'hospedenome', 'hospedeNome') || 'Hóspede',
+          adultos: adultosReserva,
+          criancas: criancasReserva,
+          dataEntrada: extrairDataIso(getVal(reserva, 'dataentrada', 'dataEntrada')),
+          dataSaida: extrairDataIso(getVal(reserva, 'datasaida', 'dataSaida')),
+          totalHospedagem: totalHospedagem,
+          dataReserva: extrairDataIso(
+            getVal(reserva, 'datareserva', 'dataReserva') ||
+              getVal(reserva, 'datainclusao', 'dataInclusao') ||
+              getVal(reserva, 'dataentrada', 'dataEntrada')
+          ),
+          valorReserva: valorReservaPago,
+          produtosLojinha: produtosLojinhaConcat,
+          valorLojinha: valorLojinha,
+          produtosBar: produtosBarConcat,
+          valorBar: valorBar,
+          valorCheckout: valorCheckoutPago,
+          total: totalGeralCalculado,
+          saldoPendente: saldoPendente,
+          totalHospedes: totalHospedesReserva,
+          status: status,
+          observacoes: getVal(reserva, 'observacoes', 'observacoes') || '',
+          observacoes_checkout: getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '',
+        };
+      })
+      .sort((a, b) =>
+        String(a.quarto || '').localeCompare(String(b.quarto || ''), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        })
       );
-      const valorLojinha = consumosLojinha.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
-      const produtosLojinhaConcat = consumosLojinha.length > 0
-        ? consumosLojinha.map((c) => `${c.quantidade}x ${c.descricao || c.categoria}`).join(', ')
-        : '';
-
-      // Consumos do Bar
-      const consumosBar = consumosDessasReservas.filter(
-        (c) => String(c.reservaid) === String(reserva.reservaid) && c.categoria?.toUpperCase() === 'BAR'
-      );
-      const valorBar = consumosBar.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
-      const produtosBarConcat = consumosBar.length > 0
-        ? consumosBar.map((c) => `${c.quantidade}x ${c.descricao || c.categoria}`).join(', ')
-        : '';
-
-      // Pagamentos desta reserva
-      const pagamentosDaReserva = pagamentosDoPeriodo.filter(
-        (p) => String(p.reservaid) === String(reserva.reservaid)
-      );
-
-      const pagamentosSinal = pagamentosDaReserva.filter(
-        (p) => p.tipolancamento === 'SINAL_RESERVA' || !p.tipolancamento
-      );
-      const somaPagosSinal = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-      const valorReservaPago = somaPagosSinal > 0 ? somaPagosSinal : Number(reserva.valorpago || 0);
-
-      const pagamentosCheckout = pagamentosDaReserva.filter(
-        (p) => p.tipolancamento === 'SALDO_RESERVA' || p.tipolancamento === 'CONSUMO_EXTRA'
-      );
-      const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-
-      const totalHospedagem = Number(reserva.valortotal || 0);
-
-      // FÓRMULA CORRIGIDA: Check-out + Bar + Loja + Reserva (Sinal)
-      const totalGeralCalculado = valorCheckoutPago + valorBar + valorLojinha + valorReservaPago;
-
-      const saldoPendente = Number(
-        reserva.saldo !== undefined && reserva.saldo !== null
-          ? reserva.saldo
-          : Math.max(0, totalHospedagem - valorReservaPago)
-      );
-
-      let status = 'PENDENTE';
-      if (reserva.statusreserva === 'CONCLUIDA' && saldoPendente <= 0.01) {
-        status = 'PAGO';
-      } else if (Number(reserva.valorpago || 0) > 0 || valorCheckoutPago > 0) {
-        status = 'PARCIAL';
-      }
-
-      const adultosReserva = Number(reserva.adultos || 0);
-      const criancasReserva = Number(reserva.criancas || 0);
-      const totalHospedesReserva = Math.max(adultosReserva + criancasReserva, 1);
-
-      return {
-        quarto: quarto?.codigoidentificador || reserva.quartocodigo || reserva.quartonumero || '',
-        codigo: reserva.codigo,
-        hospede: reserva.hospedenome || 'Hóspede',
-        adultos: adultosReserva,
-        criancas: criancasReserva,
-        dataEntrada: reserva.dataentrada,
-        dataSaida: reserva.datasaida,
-        totalHospedagem: totalHospedagem,
-        dataReserva: reserva.datareserva || reserva.datainclusao || reserva.dataentrada,
-        valorReserva: valorReservaPago,
-        produtosLojinha: produtosLojinhaConcat,
-        valorLojinha: valorLojinha,
-        produtosBar: produtosBarConcat,
-        valorBar: valorBar,
-        valorCheckout: valorCheckoutPago,
-        total: totalGeralCalculado,
-        saldoPendente: saldoPendente,
-        totalHospedes: totalHospedesReserva,
-        status: status,
-        observacoes: reserva.observacoes || '',
-        observacoes_checkout: reserva.observacoes_checkout || '',
-      };
-    }).sort((a, b) => String(a.quarto || '').localeCompare(String(b.quarto || ''), undefined, { numeric: true, sensitivity: 'base' }));
   }, [reservasDoPeriodo, consumosDessasReservas, pagamentosDoPeriodo, quartos]);
 
   // 4. CÁLCULOS GERAIS
@@ -191,7 +278,7 @@ export const PaginaFinanceiro: React.FC = () => {
     };
   }, [resumoReservas]);
 
-  // 5. EXPORTAÇÃO EXCEL (100% ORIGINAL - COM NOME DO USUÁRIO LOGADO)
+  // 5. EXPORTAÇÃO EXCEL (100% PRESERVADA)
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
@@ -207,28 +294,27 @@ export const PaginaFinanceiro: React.FC = () => {
     const periodo = `Período: ${formatarData(dataInicioFiltro || '')} a ${formatarData(dataFimFiltro || '')}`;
 
     const colunas = [
-      'Nº Quarto',                     // A (0)
-      'Nome do Hóspede',               // B (1)
-      'Adultos',                       // C (2)
-      'Crianças pag. 06 á 11',         // D (3)
-      'Data Entrada',                  // E (4)
-      'Data Saída',                    // F (5)
-      'Valor da Hospedagem',           // G (6)
-      'Data Reserva',                  // H (7)
-      'Valor Reserva (R$)',            // I (8)
-      'Produtos (Loja)',               // J (9)
-      'Valor Loja (R$)',               // K (10)
-      'Produtos (Bar)',                // L (11)
-      'Valor Bar (R$)',                // M (12)
-      'Valor Check-out (R$)',          // N (13)
-      'Total Geral (R$)'               // O (14)
+      'Nº Quarto',
+      'Nome do Hóspede',
+      'Adultos',
+      'Crianças pag. 06 á 11',
+      'Data Entrada',
+      'Data Saída',
+      'Valor da Hospedagem',
+      'Data Reserva',
+      'Valor Reserva (R$)',
+      'Produtos (Loja)',
+      'Valor Loja (R$)',
+      'Produtos (Bar)',
+      'Valor Bar (R$)',
+      'Valor Check-out (R$)',
+      'Total Geral (R$)',
     ];
 
     wsData.push([titulo]);
     wsData.push([periodo]);
     wsData.push(colunas);
 
-    // Linhas de dados (iniciam na linha 4 do Excel -> índice r = 3)
     resumoReservas.forEach((r) => {
       wsData.push([
         r.quarto,
@@ -245,50 +331,71 @@ export const PaginaFinanceiro: React.FC = () => {
         r.produtosBar || '',
         Number(r.valorBar || 0),
         Number(r.valorCheckout || 0),
-        Number(r.total || 0)
+        Number(r.total || 0),
       ]);
     });
 
-    // Linha de Totais (placeholder)
-    wsData.push([
-      'Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-    ]);
+    wsData.push(['Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    const totalRowIndex = wsData.length - 1; // 0-based
-    const totalRowExcel = totalRowIndex + 1; // 1-based (Excel)
-    const firstDataRow = 4;                 // Linha 4
-    const lastDataRow = totalRowIndex;      // Última linha com hóspede
+    const totalRowIndex = wsData.length - 1;
+    const totalRowExcel = totalRowIndex + 1;
+    const firstDataRow = 4;
+    const lastDataRow = totalRowIndex;
 
-    // 1. FÓRMULA EM CADA LINHA NA COLUNA "TOTAL GERAL (R$)" (COLUNA O)
     resumoReservas.forEach((r, idx) => {
       const rowExcel = firstDataRow + idx;
       const cellRef = XLSX.utils.encode_cell({ r: 3 + idx, c: 14 });
       ws[cellRef] = {
         t: 'n',
         f: `N${rowExcel}+M${rowExcel}+K${rowExcel}+I${rowExcel}`,
-        v: Number(r.total || 0)
+        v: Number(r.total || 0),
       };
     });
 
-    // 2. FÓRMULAS DE SOMA AUTOMÁTICA NAS COLUNAS DE TOTAIS (LINHA FINAL)
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 2 })] = { t: 'n', f: `SUM(C${firstDataRow}:C${lastDataRow})`, v: analytics.totalAdultos };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 3 })] = { t: 'n', f: `SUM(D${firstDataRow}:D${lastDataRow})`, v: analytics.totalCriancas };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 6 })] = { t: 'n', f: `SUM(G${firstDataRow}:G${lastDataRow})`, v: analytics.totalHospedagem };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 8 })] = { t: 'n', f: `SUM(I${firstDataRow}:I${lastDataRow})`, v: analytics.totalSinalReserva };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 10 })] = { t: 'n', f: `SUM(K${firstDataRow}:K${lastDataRow})`, v: analytics.totalVendasLoja };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 12 })] = { t: 'n', f: `SUM(M${firstDataRow}:M${lastDataRow})`, v: analytics.totalVendasBar };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 13 })] = { t: 'n', f: `SUM(N${firstDataRow}:N${lastDataRow})`, v: analytics.totalSaldoReserva };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 2 })] = {
+      t: 'n',
+      f: `SUM(C${firstDataRow}:C${lastDataRow})`,
+      v: analytics.totalAdultos,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 3 })] = {
+      t: 'n',
+      f: `SUM(D${firstDataRow}:D${lastDataRow})`,
+      v: analytics.totalCriancas,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 6 })] = {
+      t: 'n',
+      f: `SUM(G${firstDataRow}:G${lastDataRow})`,
+      v: analytics.totalHospedagem,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 8 })] = {
+      t: 'n',
+      f: `SUM(I${firstDataRow}:I${lastDataRow})`,
+      v: analytics.totalSinalReserva,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 10 })] = {
+      t: 'n',
+      f: `SUM(K${firstDataRow}:K${lastDataRow})`,
+      v: analytics.totalVendasLoja,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 12 })] = {
+      t: 'n',
+      f: `SUM(M${firstDataRow}:M${lastDataRow})`,
+      v: analytics.totalVendasBar,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 13 })] = {
+      t: 'n',
+      f: `SUM(N${firstDataRow}:N${lastDataRow})`,
+      v: analytics.totalSaldoReserva,
+    };
 
-    // Total Geral final = Total Check-out + Total Bar + Total Loja + Total Reserva
     ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 14 })] = {
       t: 'n',
       f: `N${totalRowExcel}+M${totalRowExcel}+K${totalRowExcel}+I${totalRowExcel}`,
-      v: analytics.totalGeralFinal
+      v: analytics.totalGeralFinal,
     };
 
-    // Mesclagens do Cabeçalho
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: colunas.length - 1 } },
@@ -311,15 +418,22 @@ export const PaginaFinanceiro: React.FC = () => {
 
     const formatoMoeda = '[$R$-pt-BR] #,##0.00;[$R$-pt-BR] #,##0.00;[$R$-pt-BR] -';
 
-    // Cabeçalhos (Título e Período)
     for (let c = 0; c < colunas.length; c++) {
       const a0 = XLSX.utils.encode_cell({ r: 0, c });
       if (!ws[a0]) ws[a0] = { t: 's', v: '' };
-      ws[a0].s = { fill: { fgColor: { rgb: COR_TITULO } }, font: { name: 'Arial', sz: 12, bold: true, color: { rgb: BRANCO } }, alignment: { horizontal: 'center', vertical: 'center' } };
+      ws[a0].s = {
+        fill: { fgColor: { rgb: COR_TITULO } },
+        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+      };
 
       const a1 = XLSX.utils.encode_cell({ r: 1, c });
       if (!ws[a1]) ws[a1] = { t: 's', v: '' };
-      ws[a1].s = { fill: { fgColor: { rgb: COR_PERIODO } }, font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } }, alignment: { horizontal: 'center', vertical: 'center' } };
+      ws[a1].s = {
+        fill: { fgColor: { rgb: COR_PERIODO } },
+        font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+      };
 
       const a2 = XLSX.utils.encode_cell({ r: 2, c });
       if (ws[a2]) {
@@ -327,7 +441,12 @@ export const PaginaFinanceiro: React.FC = () => {
           fill: { fgColor: { rgb: COR_CABECALHO } },
           font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
           alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          border: { top: { style: 'thin', color: { rgb: BRANCO } }, bottom: { style: 'thin', color: { rgb: BRANCO } }, left: { style: 'thin', color: { rgb: BRANCO } }, right: { style: 'thin', color: { rgb: BRANCO } } },
+          border: {
+            top: { style: 'thin', color: { rgb: BRANCO } },
+            bottom: { style: 'thin', color: { rgb: BRANCO } },
+            left: { style: 'thin', color: { rgb: BRANCO } },
+            right: { style: 'thin', color: { rgb: BRANCO } },
+          },
         };
       }
     }
@@ -335,7 +454,6 @@ export const PaginaFinanceiro: React.FC = () => {
     const colunasMoeda = new Set([6, 8, 10, 12, 13, 14]);
     const colunasCentro = new Set([0, 2, 3, 4, 5, 7]);
 
-    // Formatação de Linhas e Comentários Ocultos
     resumoReservas.forEach((r, idx) => {
       const rowIdx = 3 + idx;
       const corFundo = idx % 2 === 1 ? COR_ZEBRA : BRANCO;
@@ -361,7 +479,6 @@ export const PaginaFinanceiro: React.FC = () => {
         }
       }
 
-      // Comentário da Reserva com o Usuário Logado
       if (r.observacoes) {
         const refReserva = XLSX.utils.encode_cell({ r: rowIdx, c: 8 });
         const celula = ws[refReserva];
@@ -378,7 +495,6 @@ export const PaginaFinanceiro: React.FC = () => {
         }
       }
 
-      // Comentário do Check-out com o Usuário Logado
       if (r.observacoes_checkout) {
         const refCheckout = XLSX.utils.encode_cell({ r: rowIdx, c: 13 });
         const celula = ws[refCheckout];
@@ -396,7 +512,6 @@ export const PaginaFinanceiro: React.FC = () => {
       }
     });
 
-    // Formatação da Linha de Totais
     for (let c = 0; c < colunas.length; c++) {
       const addr = XLSX.utils.encode_cell({ r: totalRowIndex, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
@@ -408,7 +523,12 @@ export const PaginaFinanceiro: React.FC = () => {
         fill: { fgColor: { rgb: COR_TOTAL } },
         font: { name: 'Arial', sz: 10, bold: true, color: { rgb: '86EFAC' } },
         alignment: { horizontal, vertical: 'center' },
-        border: { top: { style: 'thin', color: { rgb: '2E5D31' } }, bottom: { style: 'thin', color: { rgb: '2E5D31' } }, left: { style: 'thin', color: { rgb: '2E5D31' } }, right: { style: 'thin', color: { rgb: '2E5D31' } } },
+        border: {
+          top: { style: 'thin', color: { rgb: '2E5D31' } },
+          bottom: { style: 'thin', color: { rgb: '2E5D31' } },
+          left: { style: 'thin', color: { rgb: '2E5D31' } },
+          right: { style: 'thin', color: { rgb: '2E5D31' } },
+        },
       };
 
       if (colunasMoeda.has(c)) {
@@ -453,9 +573,10 @@ export const PaginaFinanceiro: React.FC = () => {
     const dInicio = formatarDataNomeArquivo(dataInicioFiltro);
     const dFim = formatarDataNomeArquivo(dataFimFiltro);
 
-    const nomeArquivo = dInicio && dFim  
-      ? `Relatorio_Financeiro_${dInicio}_a_${dFim}.xlsx` 
-      : `Relatorio_Financeiro_Geral.xlsx`;
+    const nomeArquivo =
+      dInicio && dFim
+        ? `Relatorio_Financeiro_${dInicio}_a_${dFim}.xlsx`
+        : `Relatorio_Financeiro_Geral.xlsx`;
     XLSX.writeFile(wb, nomeArquivo);
   };
 
@@ -528,7 +649,6 @@ export const PaginaFinanceiro: React.FC = () => {
       {/* Filtro de Data */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Título inline com ícone */}
           <div className="flex items-center gap-2 text-xs font-bold text-[#053d1e] whitespace-nowrap">
             <span className="text-xs font-bold text-[#191c1d] flex items-center gap-1.5 whitespace-nowrap">
               <Calendar className="w-4 h-4 text-[#053d1e]" /> Período Vigente:
@@ -551,7 +671,6 @@ export const PaginaFinanceiro: React.FC = () => {
             />
           </div>
 
-          {/* Botões Pesquisar e Limpar agrupados */}
           <div className="flex items-center gap-2">
             <button
               onClick={aplicarFiltroData}
@@ -568,7 +687,7 @@ export const PaginaFinanceiro: React.FC = () => {
 
             <button
               onClick={limparFiltroData}
-              disabled={carregando}              
+              disabled={carregando}
               className="px-4 py-2 text-xs font-semibold border border-[#c1c9bf] hover:bg-[#f3f4f5] text-[#191c1d] rounded-xl shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               Limpar
@@ -576,12 +695,12 @@ export const PaginaFinanceiro: React.FC = () => {
           </div>
         </div>
 
-        {/* Mensagem de Período Filtrado */}
         {usarFiltroData && dataInicioFiltro && dataFimFiltro && (
           <div className="px-3.5 py-2 bg-[#e6f4ea] border border-[#b8f0c2] rounded-xl text-xs text-[#053d1e] flex items-center gap-2 animate-in fade-in">
             <Calendar className="w-4 h-4 text-[#053d1e] shrink-0" />
             <span>
-              Período filtrado: <strong>{formatarData(dataInicioFiltro)}</strong> até <strong>{formatarData(dataFimFiltro)}</strong>
+              Período filtrado: <strong>{formatarData(dataInicioFiltro)}</strong> até{' '}
+              <strong>{formatarData(dataFimFiltro)}</strong>
             </span>
           </div>
         )}
@@ -593,7 +712,7 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Total Geral Final</p>
           <div className="my-1.5">
-            <h3 
+            <h3
               title={formatarMoeda(analytics.totalGeralFinal)}
               className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#053d1e] tracking-tight tabular-nums truncate"
             >
@@ -609,7 +728,7 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Sinal de Reserva</p>
           <div className="my-1.5">
-            <h3 
+            <h3
               title={formatarMoeda(analytics.totalSinalReserva)}
               className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#053d1e] tracking-tight tabular-nums truncate"
             >
@@ -625,7 +744,7 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Pago Check-out</p>
           <div className="my-1.5">
-            <h3 
+            <h3
               title={formatarMoeda(analytics.totalSaldoReserva)}
               className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#191c1d] tracking-tight tabular-nums truncate"
             >
@@ -641,7 +760,7 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Consumos Lojinha</p>
           <div className="my-1.5">
-            <h3 
+            <h3
               title={formatarMoeda(analytics.totalVendasLoja)}
               className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#191c1d] tracking-tight tabular-nums truncate"
             >
@@ -657,7 +776,7 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <p className="text-[10px] font-bold text-[#717971] uppercase tracking-wider truncate">Consumos Bar</p>
           <div className="my-1.5">
-            <h3 
+            <h3
               title={formatarMoeda(analytics.totalVendasBar)}
               className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-[#191c1d] tracking-tight tabular-nums truncate"
             >
@@ -673,7 +792,7 @@ export const PaginaFinanceiro: React.FC = () => {
         <div className="bg-amber-50/70 border border-amber-300 rounded-2xl p-3.5 shadow-xs flex flex-col justify-between">
           <p className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider truncate">Sal. Pendente</p>
           <div className="my-1.5">
-            <h3 
+            <h3
               title={formatarMoeda(analytics.totalSaldosPendentes)}
               className="font-['Manrope'] text-lg sm:text-xl font-extrabold text-amber-700 tracking-tight tabular-nums truncate"
             >
@@ -786,7 +905,6 @@ export const PaginaFinanceiro: React.FC = () => {
                         formatarMoeda(r.valorCheckout)
                       )}
                     </td>
-                    {/* Coluna Sal. Pend. (R$): Verde quando zero, Vermelho quando dívida */}
                     <td className={`py-2 px-2 text-right font-bold text-[11px] whitespace-nowrap ${
                       r.saldoPendente > 0 ? 'text-[#b91c1c]' : 'text-[#053d1e]'
                     }`}>

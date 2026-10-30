@@ -10,78 +10,136 @@ import {
   Percent,
   Phone,
   RotateCcw,
+  Save,
   ShieldCheck,
-  Users
+  Users,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
-import { SCRIPT_SQL_SCHEMA_SUPABASE } from '../lib/supabaseCliente';
+import { FormaPagamento } from '../tipos';
+import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
+
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
 
 export const PaginaConfiguracoes: React.FC = () => {
   const { configuracoes, salvarConfiguracoes, restaurarDadosPadrao } = useHotel();
 
   // Estados locais do formulário - Identificação do Hotel
-  const [nomeHotel, setNomeHotel] = useState<string>(configuracoes?.hotelnome || 'Hotel Fazenda Anew');
-  const [localizacao, setLocalizacao] = useState<string>(
-    configuracoes?.hotellocalizacao || 'Corguinho - Mato Grosso do Sul - Brasil'
-  );
-  const [telefoneHotel, setTelefoneHotel] = useState<string>(
-    configuracoes?.telefonehotel || '(67) 3251-1234'
-  );
-  const [emailHotel, setEmailHotel] = useState<string>(
-    configuracoes?.emailhotel || 'contato@fazendaanew.com.br'
-  );
+  const [nomeHotel, setNomeHotel] = useState<string>('Hotel Fazenda Anew');
+  const [localizacao, setLocalizacao] = useState<string>('Corguinho - Mato Grosso do Sul - Brasil');
+  const [telefoneHotel, setTelefoneHotel] = useState<string>('(67) 3251-1234');
+  const [emailHotel, setEmailHotel] = useState<string>('contato@fazendaanew.com.br');
 
   // Estados locais - Horários Padrão
-  const [checkinHora, setCheckinHora] = useState<string>(configuracoes?.checkintime || '09:00');
-  const [checkoutHora, setCheckoutHora] = useState<string>(configuracoes?.checkouttime || '15:00');
+  const [checkinHora, setCheckinHora] = useState<string>('09:00');
+  const [checkoutHora, setCheckoutHora] = useState<string>('15:00');
 
   // Estados locais - Regras de Desconto para Crianças
-  const [criancaLimiteGratis, setCriancaLimiteGratis] = useState<number>(
-    Number(configuracoes?.criancaidadelimitegratis) || 5
-  );
-  const [criancaLimiteMeia, setCriancaLimiteMeia] = useState<number>(
-    Number(configuracoes?.criancaidadelimitemeia) || 11
-  );
-  const [criancaLimiteIntegral, setCriancaLimiteIntegral] = useState<number>(
-    Number(configuracoes?.criancaidadeintegral) || 12
-  );
-  const [criancaPorcentagemMeia, setCriancaPorcentagemMeia] = useState<number>(
-    Number(configuracoes?.criancaporcentagemmeiadiaria) || 50
-  );
-  const [criancaDescontoGratis, setCriancaDescontoGratis] = useState<number>(
-    Number(configuracoes?.criancaDescontogratuis) || 100
-  );
+  const [criancaLimiteGratis, setCriancaLimiteGratis] = useState<number>(5);
+  const [criancaLimiteMeia, setCriancaLimiteMeia] = useState<number>(11);
+  const [criancaLimiteIntegral, setCriancaLimiteIntegral] = useState<number>(12);
+  const [criancaPorcentagemMeia, setCriancaPorcentagemMeia] = useState<number>(50);
+  const [criancaDescontoGratis, setCriancaDescontoGratis] = useState<number>(100);
 
   // Estados locais - Capacidade dos Quartos
-  const [capacidadeMaxAdultos, setCapacidadeMaxAdultos] = useState<number>(
-    Number(configuracoes?.capacidademaximaadultosporquarto) || 4
-  );
-  const [capacidadeMaxCriancas, setCapacidadeMaxCriancas] = useState<number>(
-    Number(configuracoes?.capacidademaximacriancasporquarto) || 3
-  );
+  const [capacidadeMaxAdultos, setCapacidadeMaxAdultos] = useState<number>(4);
+  const [capacidadeMaxCriancas, setCapacidadeMaxCriancas] = useState<number>(3);
 
-  // Estados locais - Configurações de Pagamento
-  const [formaPagamentoPadrao, setFormaPagamentoPadrao] = useState<string>(
-    configuracoes?.formapagamentopadrao || 'PIX'
-  );
-  const [porcentagemEntradaMinima, setPorcentagemEntradaMinima] = useState<number>(
-    Number(configuracoes?.porcentagementradaminima) || 30
-  );
-
-  // Supabase
-  const [supabaseUrl, setSupabaseUrl] = useState<string>(
-    localStorage.getItem('anew_supabase_url') || ''
-  );
-  const [supabaseKey, setSupabaseKey] = useState<string>(
-    localStorage.getItem('anew_supabase_key') || ''
-  );
+  // Estados locais - Configurações de Pagamento (Tipado com FormaPagamento)
+  const [formaPagamentoPadrao, setFormaPagamentoPadrao] = useState<FormaPagamento>('PIX');
+  const [porcentagemEntradaMinima, setPorcentagemEntradaMinima] = useState<number>(30);
 
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [copiado, setCopiado] = useState<boolean>(false);
+  const [salvando, setSalvando] = useState<boolean>(false);
   const [modalResetAberto, setModalResetAberto] = useState<boolean>(false);
 
-  
+  // Sincroniza com as configurações vindas da API .NET assim que estiverem carregadas
+  useEffect(() => {
+    if (configuracoes) {
+      setNomeHotel(getVal(configuracoes, 'hotelnome', 'hotelNome') || 'Hotel Fazenda Anew');
+      setLocalizacao(
+        getVal(configuracoes, 'hotellocalizacao', 'hotelLocalizacao') || 'Corguinho - Mato Grosso do Sul - Brasil'
+      );
+      setTelefoneHotel(getVal(configuracoes, 'telefonehotel', 'telefoneHotel') || '(67) 3251-1234');
+      setEmailHotel(getVal(configuracoes, 'emailhotel', 'emailHotel') || 'contato@fazendaanew.com.br');
+
+      setCheckinHora(getVal(configuracoes, 'checkintime', 'checkinTime') || '09:00');
+      setCheckoutHora(getVal(configuracoes, 'checkouttime', 'checkoutTime') || '15:00');
+
+      setCriancaLimiteGratis(Number(getVal(configuracoes, 'criancaidadelimitegratis', 'criancaIdadeLimiteGratis')) || 5);
+      setCriancaLimiteMeia(Number(getVal(configuracoes, 'criancaidadelimitemeia', 'criancaIdadeLimiteMeia')) || 11);
+      setCriancaLimiteIntegral(Number(getVal(configuracoes, 'criancaidadeintegral', 'criancaIdadeIntegral')) || 12);
+      setCriancaPorcentagemMeia(
+        Number(getVal(configuracoes, 'criancaporcentagemmeiadiaria', 'criancaPorcentagemMeiaDiaria')) || 50
+      );
+      setCriancaDescontoGratis(
+        Number(getVal(configuracoes, 'criancadescontogratuis', 'criancaDescontoGratuis')) || 100
+      );
+
+      setCapacidadeMaxAdultos(
+        Number(getVal(configuracoes, 'capacidademaximaadultosporquarto', 'capacidadeMaximaAdultosPorQuarto')) || 4
+      );
+      setCapacidadeMaxCriancas(
+        Number(getVal(configuracoes, 'capacidademaximacriancasporquarto', 'capacidadeMaximaCriancasPorQuarto')) || 3
+      );
+
+      const formaPag = getVal(configuracoes, 'formapagamentopadrao', 'formaPagamentoPadrao');
+      if (formaPag) {
+        setFormaPagamentoPadrao(formaPag as FormaPagamento);
+      }
+
+      setPorcentagemEntradaMinima(
+        Number(getVal(configuracoes, 'porcentagementradaminima', 'porcentagemEntradaMinima')) || 30
+      );
+    }
+  }, [configuracoes]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSalvando(true);
+    setFeedback(null);
+
+    try {
+      const payload = {
+        hotelnome: nomeHotel,
+        hotellocalizacao: localizacao,
+        telefonehotel: telefoneHotel,
+        emailhotel: emailHotel,
+        checkintime: checkinHora,
+        checkouttime: checkoutHora,
+        criancaidadelimitegratis: criancaLimiteGratis,
+        criancaidadelimitemeia: criancaLimiteMeia,
+        criancaidadeintegral: criancaLimiteIntegral,
+        criancaporcentagemmeiadiaria: criancaPorcentagemMeia,
+        criancadescontogratuis: criancaDescontoGratis,
+        capacidademaximaadultosporquarto: capacidadeMaxAdultos,
+        capacidademaximacriancasporquarto: capacidadeMaxCriancas,
+        formapagamentopadrao: formaPagamentoPadrao,
+        porcentagementradaminima: porcentagemEntradaMinima,
+      };
+
+      await salvarConfiguracoes(payload);
+      setFeedback('Configurações atualizadas com sucesso!');
+      setTimeout(() => setFeedback(null), 4000);
+    } catch (err: any) {
+      setFeedback('Erro ao salvar as configurações.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const handleConfirmarRestauracao = async () => {
+    setModalResetAberto(false);
+    if (restaurarDadosPadrao) {
+      await restaurarDadosPadrao();
+      setFeedback('Parâmetros restaurados para o padrão.');
+      setTimeout(() => setFeedback(null), 4000);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -97,11 +155,12 @@ export const PaginaConfiguracoes: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[#717971] mt-1">
-            Parâmetros de horários, regras para crianças, capacidade dos quartos e integração com banco de dados.
+            Parâmetros de horários, regras para crianças, capacidade dos quartos e políticas da propriedade.
           </p>
         </div>
 
         <button
+          type="button"
           onClick={() => setModalResetAberto(true)}
           className="px-3.5 py-2 text-xs font-semibold text-[#ba1a1a] hover:bg-[#ffdad6] border border-[#ffdad6] rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
         >
@@ -118,8 +177,8 @@ export const PaginaConfiguracoes: React.FC = () => {
       )}
 
       {/* Formulário Principal de Configurações */}
-      <form  className="space-y-6">
-        {/* 2. IDENTIFICAÇÃO & LOCALIZAÇÃO OFICIAL (com Telefone e Email) */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* 2. IDENTIFICAÇÃO & LOCALIZAÇÃO OFICIAL */}
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center gap-2 pb-2 border-b border-[#e1e3e4]">
             <Building2 className="w-5 h-5 text-[#053d1e]" />
@@ -351,11 +410,13 @@ export const PaginaConfiguracoes: React.FC = () => {
                   <span className="text-[#717971] ml-1">(desconto de {criancaDescontoGratis}%)</span>
                 </li>
                 <li>
-                  <span className="text-[#eaa300] font-bold">Meia-diária:</span> {criancaLimiteGratis + 1} a {criancaLimiteMeia} anos{' '}
+                  <span className="text-[#eaa300] font-bold">Meia-diária:</span> {criancaLimiteGratis + 1} a{' '}
+                  {criancaLimiteMeia} anos{' '}
                   <span className="text-[#717971] ml-1">({criancaPorcentagemMeia}% do valor)</span>
                 </li>
                 <li>
-                  <span className="text-[#ba1a1a] font-bold">Integral:</span> A partir de {criancaLimiteIntegral} anos{' '}
+                  <span className="text-[#ba1a1a] font-bold">Integral:</span> A partir de{' '}
+                  {criancaLimiteIntegral} anos{' '}
                   <span className="text-[#717971] ml-1">(100% do valor da diária)</span>
                 </li>
               </ul>
@@ -424,7 +485,7 @@ export const PaginaConfiguracoes: React.FC = () => {
               </label>
               <select
                 value={formaPagamentoPadrao}
-                onChange={(e) => setFormaPagamentoPadrao(e.target.value)}
+                onChange={(e) => setFormaPagamentoPadrao(e.target.value as FormaPagamento)}
                 className="w-full p-2.5 border border-[#c1c9bf] rounded-lg bg-white font-bold"
               >
                 <option value="PIX">PIX</option>
@@ -455,9 +516,34 @@ export const PaginaConfiguracoes: React.FC = () => {
               </p>
             </div>
           </div>
-        </div>       
+        </div>
+
+        {/* Botão de Salvar Alterações */}
+        <div className="flex justify-end pt-2">
+          <button
+            type="submit"
+            disabled={salvando}
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#053d1e] px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#043017] transition-all disabled:opacity-60 cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            {salvando ? 'Salvando Alterações...' : 'Salvar Alterações'}
+          </button>
+        </div>
       </form>
-     
+
+      {/* Modal de Confirmação para Restaurar Dados */}
+      {modalResetAberto && (
+        <ModalConfirmacao
+          aberto={modalResetAberto}
+          titulo="Restaurar Configurações Padrão"
+          mensagem="Deseja realmente redefinir todos os horários, capacidades e políticas de crianças para os valores originais de fábrica?"
+          tipo="perigo"
+          textoConfirmar="Sim, Restaurar Padrão"
+          textoCancelar="Cancelar"
+          onConfirmar={handleConfirmarRestauracao}
+          onCancelar={() => setModalResetAberto(false)}
+        />
+      )}
     </div>
   );
 };

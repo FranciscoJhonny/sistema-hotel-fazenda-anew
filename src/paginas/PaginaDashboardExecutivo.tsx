@@ -14,7 +14,7 @@ import {
   CreditCard,
   Building2,
   Bed,
-  CheckCircle2
+  CheckCircle2,
 } from 'lucide-react';
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useHotel } from '../contextos/ContextoHotel';
@@ -25,6 +25,17 @@ import { obterClienteSupabase } from '../lib/supabaseCliente';
 import * as XLSX from 'xlsx-js-style';
 
 type TipoPeriodo = 'HOJE' | 'ESTE_MES' | 'MES_ANTERIOR' | 'ULTIMOS_30_DIAS' | 'PERSONALIZADO';
+
+// Helper universal para compatibilidade .NET (camelCase) e Supabase (lowercase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
 
 const calcularIdade = (dataNascStr?: string): number | null => {
   if (!dataNascStr) return null;
@@ -46,7 +57,8 @@ const calcularIdade = (dataNascStr?: string): number | null => {
 };
 
 export const PaginaDashboardExecutivo: React.FC = () => {
-  const { reservas, consumosExtras, pagamentos, quartos, pacotes, hospedes, usuarioAtual, recarregarDados } = useHotel();
+  const { reservas, consumosExtras, pagamentos, quartos, pacotes, hospedes, usuarioAtual, recarregarDados } =
+    useHotel();
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState<boolean>(false);
 
   // Estados de dados de acompanhantes e hóspedes para cálculo dinâmico de idades
@@ -107,11 +119,15 @@ export const PaginaDashboardExecutivo: React.FC = () => {
 
       const mapAcomp = new Map<string, any>();
       (resAcomp.data || []).forEach((item: any) => {
-        const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
+        const chave = `${(getVal(item, 'nomecompleto', 'nomeCompleto') || '').trim().toLowerCase()}_${
+          getVal(item, 'reservaid', 'reservaId') || getVal(item, 'cadastroid', 'cadastroId')
+        }`;
         mapAcomp.set(chave, item);
       });
       (resFnrhAcomp.data || []).forEach((item: any) => {
-        const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
+        const chave = `${(getVal(item, 'nomecompleto', 'nomeCompleto') || '').trim().toLowerCase()}_${
+          getVal(item, 'reservaid', 'reservaId') || getVal(item, 'cadastroid', 'cadastroId')
+        }`;
         if (!mapAcomp.has(chave)) {
           mapAcomp.set(chave, item);
         }
@@ -148,16 +164,21 @@ export const PaginaDashboardExecutivo: React.FC = () => {
 
   const statusPermitidos = ['RESERVADO', 'HOSPEDADO', 'CONCLUIDA'];
 
-  // 1. FILTRAR RESERVAS NO PERÍODO
+  // 1. FILTRAR RESERVAS NO PERÍODO (COMPATÍVEL CAMELCASE & LOWERCASE)
   const reservasFiltradas = useMemo(() => {
-    return (reservas || []).filter((r: Reserva) => {
-      if (!statusPermitidos.includes(r.statusreserva)) return false;
+    return (reservas || []).filter((r: any) => {
+      const status = getVal(r, 'statusreserva', 'statusReserva');
+      if (!statusPermitidos.includes(status)) return false;
 
       if (dataInicioFiltro && dataFimFiltro) {
         const inicio = new Date(dataInicioFiltro + 'T00:00:00');
         const fim = new Date(dataFimFiltro + 'T23:59:59');
 
-        const dataRef = r.dataentrada || r.datareserva || r.datainclusao;
+        const dataRef =
+          getVal(r, 'dataentrada', 'dataEntrada') ||
+          getVal(r, 'datareserva', 'dataReserva') ||
+          getVal(r, 'datainclusao', 'dataInclusao');
+
         if (!dataRef) return false;
 
         const dataLimpa = String(dataRef).split('T')[0].split(' ')[0];
@@ -170,135 +191,207 @@ export const PaginaDashboardExecutivo: React.FC = () => {
   }, [reservas, dataInicioFiltro, dataFimFiltro]);
 
   // 2. FILTRAR CONSUMOS E PAGAMENTOS
-  const idsReservasPeriodo = useMemo(() => new Set(reservasFiltradas.map(r => String(r.reservaid))), [reservasFiltradas]);
+  const idsReservasPeriodo = useMemo(() => {
+    return new Set(reservasFiltradas.map((r: any) => String(getVal(r, 'reservaid', 'reservaId'))));
+  }, [reservasFiltradas]);
 
   const consumosFiltrados = useMemo(() => {
-    return (consumosExtras || []).filter((c: ConsumoExtra) => c.ativo && idsReservasPeriodo.has(String(c.reservaid)));
+    return (consumosExtras || []).filter((c: any) => {
+      const ativo = getVal(c, 'ativo', 'ativo') !== false;
+      const resId = String(getVal(c, 'reservaid', 'reservaId'));
+      return ativo && idsReservasPeriodo.has(resId);
+    });
   }, [consumosExtras, idsReservasPeriodo]);
 
   const pagamentosFiltrados = useMemo(() => {
-    return (pagamentos || []).filter((p: Pagamento) =>
-      (p.status === 'CONFIRMADO' || p.status === 'PAGO') && idsReservasPeriodo.has(String(p.reservaid))
-    );
+    return (pagamentos || []).filter((p: any) => {
+      const status = getVal(p, 'status', 'status');
+      const resId = String(getVal(p, 'reservaid', 'reservaId'));
+      const statusValido = status === 'CONFIRMADO' || status === 'PAGO';
+      return statusValido && idsReservasPeriodo.has(resId);
+    });
   }, [pagamentos, idsReservasPeriodo]);
 
   // 3. DETALHAMENTO ANALÍTICO POR RESERVA
   const resumoAnaliticoReservas = useMemo(() => {
     const hospedeMap = new Map<number, Hospede>();
-    (hospedes || []).forEach(h => hospedeMap.set(Number(h.hospedeid), h));
-    (hospedesLive || []).forEach(h => hospedeMap.set(Number(h.hospedeid), { ...hospedeMap.get(Number(h.hospedeid)), ...h }));
+    (hospedes || []).forEach((h: any) => hospedeMap.set(Number(getVal(h, 'hospedeid', 'hospedeId')), h));
+    (hospedesLive || []).forEach((h: any) => {
+      const id = Number(getVal(h, 'hospedeid', 'hospedeId'));
+      hospedeMap.set(id, { ...hospedeMap.get(id), ...h });
+    });
 
-    return reservasFiltradas.map(reserva => {
-      const quarto = quartos?.find(q => String(q.quartoid) === String(reserva.quartoid));
+    return reservasFiltradas
+      .map((reserva: any) => {
+        const resId = String(getVal(reserva, 'reservaid', 'reservaId'));
+        const quartoId = String(getVal(reserva, 'quartoid', 'quartoId'));
+        const hospedeId = Number(getVal(reserva, 'hospedeid', 'hospedeId'));
+        const pacoteId = String(getVal(reserva, 'pacoteid', 'pacoteId'));
+        const cadastroid = getVal(reserva, 'cadastroid', 'cadastroId');
 
-      const consumosLojinha = consumosFiltrados.filter(
-        c => String(c.reservaid) === String(reserva.reservaid) && c.categoria?.toUpperCase() === 'LOJINHA'
-      );
-      const valorLojinha = consumosLojinha.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
+        const quarto = quartos?.find((q: any) => String(getVal(q, 'quartoid', 'quartoId')) === quartoId);
 
-      const consumosBar = consumosFiltrados.filter(
-        c => String(c.reservaid) === String(reserva.reservaid) && c.categoria?.toUpperCase() === 'BAR'
-      );
-      const valorBar = consumosBar.reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
-
-      const pagamentosDaReserva = pagamentosFiltrados.filter(p => String(p.reservaid) === String(reserva.reservaid));
-
-      const pagamentosSinal = pagamentosDaReserva.filter(p => p.tipolancamento === 'SINAL_RESERVA' || !p.tipolancamento);
-      const somaPagosSinal = pagamentosSinal.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-      const valorReservaPago = somaPagosSinal > 0 ? somaPagosSinal : Number(reserva.valorpago || 0);
-
-      const pagamentosCheckout = pagamentosDaReserva.filter(
-        p => p.tipolancamento === 'SALDO_RESERVA' || p.tipolancamento === 'CONSUMO_EXTRA'
-      );
-      const valorCheckoutPago = pagamentosCheckout.reduce((acc, p) => acc + Number(p.valor || 0), 0);
-
-      const titular = hospedeMap.get(Number(reserva.hospedeid));
-      const idadeTitular = calcularIdade(titular?.datanascimento);
-
-      const acompsDaReserva = acompanhantesDb.filter(
-        a =>
-          (a.reservaid && Number(a.reservaid) === Number(reserva.reservaid)) ||
-          (a.cadastroid && reserva.cadastroid && Number(a.cadastroid) === Number(reserva.cadastroid))
-      );
-
-      let adultosCalculados = 0;
-      let criancasMeiaCalculadas = 0;
-
-      if (acompsDaReserva.length > 0 || titular) {
-        if (idadeTitular !== null) {
-          if (idadeTitular >= 12) adultosCalculados++;
-          else if (idadeTitular >= 6) criancasMeiaCalculadas++;
-        } else {
-          adultosCalculados++;
-        }
-
-        acompsDaReserva.forEach(a => {
-          const idade = calcularIdade(a.datanascimento);
-          if (idade !== null) {
-            if (idade >= 12) adultosCalculados++;
-            else if (idade >= 6) criancasMeiaCalculadas++;
-          } else {
-            if (a.menoridade === false) adultosCalculados++;
-            else if (a.menoridade === true) criancasMeiaCalculadas++;
-            else adultosCalculados++;
-          }
+        const consumosLojinha = consumosFiltrados.filter((c: any) => {
+          const cResId = String(getVal(c, 'reservaid', 'reservaId'));
+          const cat = String(getVal(c, 'categoria', 'categoria') || '').toUpperCase();
+          return cResId === resId && cat === 'LOJINHA';
         });
-      }
+        const valorLojinha = consumosLojinha.reduce(
+          (acc, c: any) => acc + Number(getVal(c, 'valortotal', 'valorTotal') || 0),
+          0
+        );
 
-      const qtdAdultos = (acompsDaReserva.length > 0 || titular)
-        ? Math.max(adultosCalculados, Number(reserva.adultos || 0))
-        : Number(reserva.adultos || 1);
+        const consumosBar = consumosFiltrados.filter((c: any) => {
+          const cResId = String(getVal(c, 'reservaid', 'reservaId'));
+          const cat = String(getVal(c, 'categoria', 'categoria') || '').toUpperCase();
+          return cResId === resId && cat === 'BAR';
+        });
+        const valorBar = consumosBar.reduce(
+          (acc, c: any) => acc + Number(getVal(c, 'valortotal', 'valorTotal') || 0),
+          0
+        );
 
-      const qtdCriancasMeia = (acompsDaReserva.length > 0)
-        ? criancasMeiaCalculadas
-        : Number(reserva.criancas || 0);
+        const pagamentosDaReserva = pagamentosFiltrados.filter((p: any) => {
+          return String(getVal(p, 'reservaid', 'reservaId')) === resId;
+        });
 
-      let totalHospedagem = Number(reserva.valortotal || 0);
+        const pagamentosSinal = pagamentosDaReserva.filter((p: any) => {
+          const tipo = getVal(p, 'tipolancamento', 'tipoLancamento');
+          return tipo === 'SINAL_RESERVA' || !tipo;
+        });
+        const somaPagosSinal = pagamentosSinal.reduce(
+          (acc, p: any) => acc + Number(getVal(p, 'valor', 'valor') || 0),
+          0
+        );
+        const valorReservaPago =
+          somaPagosSinal > 0 ? somaPagosSinal : Number(getVal(reserva, 'valorpago', 'valorPago') || 0);
 
-      if (!totalHospedagem || totalHospedagem <= 0) {
-        const pacote = pacotes?.find(p => String(p.pacoteid) === String(reserva.pacoteid));
-        let valorBasePessoa = pacote ? Number(pacote.valor || 0) : 0;
+        const pagamentosCheckout = pagamentosDaReserva.filter((p: any) => {
+          const tipo = getVal(p, 'tipolancamento', 'tipoLancamento');
+          return tipo === 'SALDO_RESERVA' || tipo === 'CONSUMO_EXTRA';
+        });
+        const valorCheckoutPago = pagamentosCheckout.reduce(
+          (acc, p: any) => acc + Number(getVal(p, 'valor', 'valor') || 0),
+          0
+        );
 
-        if (!valorBasePessoa) {
-          const dEntrada = String(reserva.dataentrada).split('T')[0];
-          const dSaida = String(reserva.datasaida).split('T')[0];
-          if (dEntrada === dSaida) {
-            valorBasePessoa = 200;
+        const titular = hospedeMap.get(hospedeId);
+        const dataNascTitular = getVal(titular, 'datanascimento', 'dataNascimento');
+        const idadeTitular = calcularIdade(dataNascTitular);
+
+        const acompsDaReserva = acompanhantesDb.filter((a: any) => {
+          const aResId = getVal(a, 'reservaid', 'reservaId');
+          const aCadId = getVal(a, 'cadastroid', 'cadastroId');
+          return (
+            (aResId && Number(aResId) === Number(resId)) ||
+            (aCadId && cadastroid && Number(aCadId) === Number(cadastroid))
+          );
+        });
+
+        let adultosCalculados = 0;
+        let criancasMeiaCalculadas = 0;
+
+        if (acompsDaReserva.length > 0 || titular) {
+          if (idadeTitular !== null) {
+            if (idadeTitular >= 12) adultosCalculados++;
+            else if (idadeTitular >= 6) criancasMeiaCalculadas++;
           } else {
-            const noites = Math.max(1, Math.round((new Date(dSaida).getTime() - new Date(dEntrada).getTime()) / (1000 * 60 * 60 * 24)));
-            const diasLazer = noites + 1;
-            if (diasLazer === 2) valorBasePessoa = 550;
-            else if (diasLazer === 3) valorBasePessoa = 750;
-            else if (diasLazer >= 4) valorBasePessoa = 950;
+            adultosCalculados++;
           }
+
+          acompsDaReserva.forEach((a: any) => {
+            const dataNascAcomp = getVal(a, 'datanascimento', 'dataNascimento');
+            const idade = calcularIdade(dataNascAcomp);
+            const menoridade = getVal(a, 'menoridade', 'menoridade');
+
+            if (idade !== null) {
+              if (idade >= 12) adultosCalculados++;
+              else if (idade >= 6) criancasMeiaCalculadas++;
+            } else {
+              if (menoridade === false) adultosCalculados++;
+              else if (menoridade === true) criancasMeiaCalculadas++;
+              else adultosCalculados++;
+            }
+          });
         }
-        totalHospedagem = (qtdAdultos * valorBasePessoa) + (qtdCriancasMeia * (valorBasePessoa * 0.5));
-      }
 
-      // FÓRMULA PADRÃO: Check-out + Bar + Lojinha + Reserva
-      const totalGeral = Number((valorCheckoutPago + valorBar + valorLojinha + valorReservaPago).toFixed(2));
+        const resAdultos = Number(getVal(reserva, 'adultos', 'adultos') || 0);
+        const resCriancas = Number(getVal(reserva, 'criancas', 'criancas') || 0);
 
-      return {
-        quarto: quarto?.codigoidentificador || reserva.quartocodigo || reserva.quartonumero || '',
-        codigo: reserva.codigo,
-        hospede: reserva.hospedenome || titular?.nomecompleto || 'Hóspede',
-        adultos: qtdAdultos,
-        criancas: qtdCriancasMeia,
-        dataEntrada: reserva.dataentrada,
-        dataSaida: reserva.datasaida,
-        totalHospedagem,
-        dataReserva: reserva.datareserva || reserva.datainclusao || reserva.dataentrada,
-        valorReserva: valorReservaPago,
-        valorLojinha,
-        valorBar,
-        valorCheckout: valorCheckoutPago,
-        total: totalGeral,
-        saldoPendente: Number(reserva.saldo !== undefined && reserva.saldo !== null ? reserva.saldo : Math.max(0, totalHospedagem - valorReservaPago)),
-        status: reserva.statusreserva,
-        observacoes: reserva.observacoes || '',
-        observacoes_checkout: reserva.observacoes_checkout || '',
-      };
-    }).sort((a, b) => String(a.quarto || '').localeCompare(String(b.quarto || ''), undefined, { numeric: true, sensitivity: 'base' }));
+        const qtdAdultos =
+          acompsDaReserva.length > 0 || titular ? Math.max(adultosCalculados, resAdultos) : resAdultos || 1;
+
+        const qtdCriancasMeia = acompsDaReserva.length > 0 ? criancasMeiaCalculadas : resCriancas;
+
+        let totalHospedagem = Number(getVal(reserva, 'valortotal', 'valorTotal') || 0);
+
+        if (!totalHospedagem || totalHospedagem <= 0) {
+          const pacote = pacotes?.find((p: any) => String(getVal(p, 'pacoteid', 'pacoteId')) === pacoteId);
+          let valorBasePessoa = pacote ? Number(getVal(pacote, 'valor', 'valor') || 0) : 0;
+
+          if (!valorBasePessoa) {
+            const dEntrada = extrairDataIso(getVal(reserva, 'dataentrada', 'dataEntrada'));
+            const dSaida = extrairDataIso(getVal(reserva, 'datasaida', 'dataSaida'));
+            if (dEntrada === dSaida) {
+              valorBasePessoa = 200;
+            } else {
+              const noites = Math.max(
+                1,
+                Math.round((new Date(dSaida).getTime() - new Date(dEntrada).getTime()) / (1000 * 60 * 60 * 24))
+              );
+              const diasLazer = noites + 1;
+              if (diasLazer === 2) valorBasePessoa = 550;
+              else if (diasLazer === 3) valorBasePessoa = 750;
+              else if (diasLazer >= 4) valorBasePessoa = 950;
+            }
+          }
+          totalHospedagem = qtdAdultos * valorBasePessoa + qtdCriancasMeia * (valorBasePessoa * 0.5);
+        }
+
+        const totalGeral = Number((valorCheckoutPago + valorBar + valorLojinha + valorReservaPago).toFixed(2));
+        const saldoDb = getVal(reserva, 'saldo', 'saldo');
+
+        const quartoNum =
+          (quarto as any)?.codigoidentificador ||
+          (quarto as any)?.codigoIdentificador ||
+          getVal(reserva, 'quartocodigo', 'quartoCodigo') ||
+          getVal(reserva, 'quartonumero', 'quartoNumero') ||
+          '';
+
+        const hospedeNome =
+          getVal(reserva, 'hospedenome', 'hospedeNome') ||
+          titular?.nomecompleto ||
+          (titular as any)?.nomeCompleto ||
+          'Hóspede';
+
+        return {
+          quarto: quartoNum,
+          codigo: getVal(reserva, 'codigo', 'codigo'),
+          hospede: hospedeNome,
+          adultos: qtdAdultos,
+          criancas: qtdCriancasMeia,
+          dataEntrada: extrairDataIso(getVal(reserva, 'dataentrada', 'dataEntrada')),
+          dataSaida: extrairDataIso(getVal(reserva, 'datasaida', 'dataSaida')),
+          totalHospedagem,
+          dataReserva: extrairDataIso(
+            getVal(reserva, 'datareserva', 'dataReserva') ||
+              getVal(reserva, 'datainclusao', 'dataInclusao') ||
+              getVal(reserva, 'dataentrada', 'dataEntrada')
+          ),
+          valorReserva: valorReservaPago,
+          valorLojinha,
+          valorBar,
+          valorCheckout: valorCheckoutPago,
+          total: totalGeral,
+          saldoPendente: Number(saldoDb !== undefined && saldoDb !== null ? saldoDb : Math.max(0, totalHospedagem - valorReservaPago)),
+          status: getVal(reserva, 'statusreserva', 'statusReserva'),
+          observacoes: getVal(reserva, 'observacoes', 'observacoes') || '',
+          observacoes_checkout: getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '',
+        };
+      })
+      .sort((a, b) =>
+        String(a.quarto || '').localeCompare(String(b.quarto || ''), undefined, { numeric: true, sensitivity: 'base' })
+      );
   }, [reservasFiltradas, consumosFiltrados, pagamentosFiltrados, quartos, pacotes, hospedes, hospedesLive, acompanhantesDb]);
 
   // 4. INDICADORES MACRO EXECUTIVOS
@@ -311,38 +404,53 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     const totalBar = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.valorBar || 0), 0);
 
     const totalFrigobarServicos = consumosFiltrados
-      .filter(c => c.categoria?.toUpperCase() === 'FRIGOBAR' || c.categoria?.toUpperCase() === 'SERVICOS')
-      .reduce((acc, c) => acc + Number(c.valortotal || 0), 0);
+      .filter((c: any) => {
+        const cat = String(getVal(c, 'categoria', 'categoria') || '').toUpperCase();
+        return cat === 'FRIGOBAR' || cat === 'SERVICOS';
+      })
+      .reduce((acc, c: any) => acc + Number(getVal(c, 'valortotal', 'valorTotal') || 0), 0);
 
     const faturamentoBrutoRealizado = totalReceitaHospedagem + totalLojinha + totalBar + totalFrigobarServicos;
 
-    const receitaPIX = pagamentosFiltrados.filter(p => p.formapagamento === 'PIX').reduce((acc, p) => acc + Number(p.valor || 0), 0);
-    const receitaCredito = pagamentosFiltrados.filter(p => p.formapagamento === 'CARTAO_CREDITO').reduce((acc, p) => acc + Number(p.valor || 0), 0);
-    const receitaDebito = pagamentosFiltrados.filter(p => p.formapagamento === 'CARTAO_DEBITO').reduce((acc, p) => acc + Number(p.valor || 0), 0);
-    const receitaDinheiro = pagamentosFiltrados.filter(p => p.formapagamento === 'DINHEIRO').reduce((acc, p) => acc + Number(p.valor || 0), 0);
-    const receitaOutros = pagamentosFiltrados.filter(p => !['PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO'].includes(p.formapagamento)).reduce((acc, p) => acc + Number(p.valor || 0), 0);
+    const somarPorForma = (forma: string) => {
+      return pagamentosFiltrados
+        .filter((p: any) => getVal(p, 'formapagamento', 'formaPagamento') === forma)
+        .reduce((acc, p: any) => acc + Number(getVal(p, 'valor', 'valor') || 0), 0);
+    };
+
+    const receitaPIX = somarPorForma('PIX');
+    const receitaCredito = somarPorForma('CARTAO_CREDITO');
+    const receitaDebito = somarPorForma('CARTAO_DEBITO');
+    const receitaDinheiro = somarPorForma('DINHEIRO');
+    const receitaOutros = pagamentosFiltrados
+      .filter((p: any) => {
+        const f = getVal(p, 'formapagamento', 'formaPagamento');
+        return !['PIX', 'CARTAO_CREDITO', 'CARTAO_DEBITO', 'DINHEIRO'].includes(f);
+      })
+      .reduce((acc, p: any) => acc + Number(getVal(p, 'valor', 'valor') || 0), 0);
 
     const totalFormasPagamento = receitaPIX + receitaCredito + receitaDebito + receitaDinheiro + receitaOutros || 1;
-
     const totalSaldosPendentes = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.saldoPendente || 0), 0);
-
     const totalAdultos = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoAnaliticoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
     const totalHospedesAtendidos = totalAdultos + totalCriancas;
 
-    const totalQuartosFisicos = (quartos || []).filter(q => {
-      const cod = String(q.codigoidentificador || '').toUpperCase();
-      const num = String(q.numero || '').toUpperCase();
-      return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE';
-    }).length || 1;
+    const totalQuartosFisicos =
+      (quartos || []).filter((q: any) => {
+        const cod = String(q.codigoidentificador || q.codigoIdentificador || '').toUpperCase();
+        const num = String(q.numero || '').toUpperCase();
+        return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE';
+      }).length || 1;
 
     const diariasOcupadas = resumoAnaliticoReservas.length;
     const taxaOcupacaoEstimada = Math.min(100, Math.round((diariasOcupadas / totalQuartosFisicos) * 100));
 
-    const pctHospedagem = faturamentoBrutoRealizado > 0 ? Math.round((totalReceitaHospedagem / faturamentoBrutoRealizado) * 100) : 0;
+    const pctHospedagem =
+      faturamentoBrutoRealizado > 0 ? Math.round((totalReceitaHospedagem / faturamentoBrutoRealizado) * 100) : 0;
     const pctBar = faturamentoBrutoRealizado > 0 ? Math.round((totalBar / faturamentoBrutoRealizado) * 100) : 0;
     const pctLojinha = faturamentoBrutoRealizado > 0 ? Math.round((totalLojinha / faturamentoBrutoRealizado) * 100) : 0;
-    const pctOutros = faturamentoBrutoRealizado > 0 ? Math.max(0, 100 - (pctHospedagem + pctBar + pctLojinha)) : 0;
+    const pctOutros =
+      faturamentoBrutoRealizado > 0 ? Math.max(0, 100 - (pctHospedagem + pctBar + pctLojinha)) : 0;
 
     return {
       faturamentoBrutoRealizado,
@@ -377,38 +485,42 @@ export const PaginaDashboardExecutivo: React.FC = () => {
   const tabelaFiltrada = useMemo(() => {
     if (!buscaTabela.trim()) return resumoAnaliticoReservas;
     const termo = buscaTabela.toLowerCase();
-    return resumoAnaliticoReservas.filter(r =>
-      (r.hospede || '').toLowerCase().includes(termo) ||
-      (r.quarto || '').toLowerCase().includes(termo) ||
-      (r.codigo || '').toLowerCase().includes(termo)
+    return resumoAnaliticoReservas.filter(
+      (r) =>
+        (r.hospede || '').toLowerCase().includes(termo) ||
+        (r.quarto || '').toLowerCase().includes(termo) ||
+        (r.codigo || '').toLowerCase().includes(termo)
     );
   }, [resumoAnaliticoReservas, buscaTabela]);
 
   const totaisGrid = useMemo(() => {
-    return tabelaFiltrada.reduce((acc, item) => ({
-      adultos: acc.adultos + Number(item.adultos || 0),
-      criancas: acc.criancas + Number(item.criancas || 0),
-      totalHospedagem: acc.totalHospedagem + Number(item.totalHospedagem || 0),
-      valorReserva: acc.valorReserva + Number(item.valorReserva || 0),
-      valorBar: acc.valorBar + Number(item.valorBar || 0),
-      valorLojinha: acc.valorLojinha + Number(item.valorLojinha || 0),
-      valorCheckout: acc.valorCheckout + Number(item.valorCheckout || 0),
-      total: acc.total + Number(item.total || 0),
-      saldoPendente: acc.saldoPendente + Number(item.saldoPendente || 0)
-    }), {
-      adultos: 0,
-      criancas: 0,
-      totalHospedagem: 0,
-      valorReserva: 0,
-      valorBar: 0,
-      valorLojinha: 0,
-      valorCheckout: 0,
-      total: 0,
-      saldoPendente: 0
-    });
+    return tabelaFiltrada.reduce(
+      (acc, item) => ({
+        adultos: acc.adultos + Number(item.adultos || 0),
+        criancas: acc.criancas + Number(item.criancas || 0),
+        totalHospedagem: acc.totalHospedagem + Number(item.totalHospedagem || 0),
+        valorReserva: acc.valorReserva + Number(item.valorReserva || 0),
+        valorBar: acc.valorBar + Number(item.valorBar || 0),
+        valorLojinha: acc.valorLojinha + Number(item.valorLojinha || 0),
+        valorCheckout: acc.valorCheckout + Number(item.valorCheckout || 0),
+        total: acc.total + Number(item.total || 0),
+        saldoPendente: acc.saldoPendente + Number(item.saldoPendente || 0),
+      }),
+      {
+        adultos: 0,
+        criancas: 0,
+        totalHospedagem: 0,
+        valorReserva: 0,
+        valorBar: 0,
+        valorLojinha: 0,
+        valorCheckout: 0,
+        total: 0,
+        saldoPendente: 0,
+      }
+    );
   }, [tabelaFiltrada]);
 
-  // 5. EXPORTAÇÃO EXCEL (100% NUMÉRICA - SEM COLUNAS DE TEXTO DE PRODUTOS)
+  // 5. EXPORTAÇÃO EXCEL (100% PRESERVADA)
   const exportarRelatorioExecutivo = () => {
     if (resumoAnaliticoReservas.length === 0) {
       alert('Não há dados para exportar no período selecionado.');
@@ -421,32 +533,32 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     const wsData: any[][] = [];
 
     const titulo = 'HOTEL FAZENDA ANEW - GESTÃO DE HOSPEDAGEM E CONSUMO';
-    const periodo = (dataInicioFiltro && dataFimFiltro)
-      ? `Período: ${formatarData(dataInicioFiltro)} a ${formatarData(dataFimFiltro)}`
-      : 'Período: Geral';
+    const periodo =
+      dataInicioFiltro && dataFimFiltro
+        ? `Período: ${formatarData(dataInicioFiltro)} a ${formatarData(dataFimFiltro)}`
+        : 'Período: Geral';
 
     const colunas = [
-      'Nº Quarto',                     // A (0)
-      'Nome do Hóspede',               // B (1)
-      'Adultos',                       // C (2)
-      'Crianças',                      // D (3)
-      'Data Entrada',                  // E (4)
-      'Data Saída',                    // F (5)
-      'Total da Hospedagem (R$)',      // G (6)
-      'Data Reserva',                  // H (7)
-      'Valor Reserva (R$)',            // I (8)
-      'Valor Bar (R$)',                // J (9)
-      'Valor Loja (R$)',               // K (10)
-      'Valor Check-out (R$)',          // L (11)
-      'Total Geral (R$)',              // M (12)
-      'Saldo Pendente (R$)'            // N (13)
+      'Nº Quarto',
+      'Nome do Hóspede',
+      'Adultos',
+      'Crianças',
+      'Data Entrada',
+      'Data Saída',
+      'Total da Hospedagem (R$)',
+      'Data Reserva',
+      'Valor Reserva (R$)',
+      'Valor Bar (R$)',
+      'Valor Loja (R$)',
+      'Valor Check-out (R$)',
+      'Total Geral (R$)',
+      'Saldo Pendente (R$)',
     ];
 
     wsData.push([titulo]);
     wsData.push([periodo]);
     wsData.push(colunas);
 
-    // Linhas de dados (iniciam na linha 4 do Excel -> índice r = 3)
     resumoAnaliticoReservas.forEach((r) => {
       wsData.push([
         r.quarto,
@@ -462,59 +574,83 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         Number(r.valorLojinha || 0),
         Number(r.valorCheckout || 0),
         Number(r.total || 0),
-        Number(r.saldoPendente || 0)
+        Number(r.saldoPendente || 0),
       ]);
     });
 
-    // Linha de Totais (placeholder)
-    wsData.push([
-      'Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', ''
-    ]);
+    wsData.push(['Total Geral', '', '', '', '', '', '', '', '', '', '', '', '', '']);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-    const totalRowIndex = wsData.length - 1; // 0-based
-    const totalRowExcel = totalRowIndex + 1; // 1-based (Excel)
-    const firstDataRow = 4;                 // Linha 4
-    const lastDataRow = totalRowIndex;      // Última linha com hóspede
+    const totalRowIndex = wsData.length - 1;
+    const totalRowExcel = totalRowIndex + 1;
+    const firstDataRow = 4;
+    const lastDataRow = totalRowIndex;
 
-    // 1. FÓRMULA EM CADA LINHA NA COLUNA "TOTAL GERAL (R$)" (COLUNA M - índice 12)
-    // Total Geral = Check-out (L) + Loja (K) + Bar (J) + Reserva (I)
     resumoAnaliticoReservas.forEach((r, idx) => {
       const rowExcel = firstDataRow + idx;
       const cellRef = XLSX.utils.encode_cell({ r: 3 + idx, c: 12 });
       ws[cellRef] = {
         t: 'n',
         f: `L${rowExcel}+K${rowExcel}+J${rowExcel}+I${rowExcel}`,
-        v: Number(r.total || 0)
+        v: Number(r.total || 0),
       };
     });
 
-    // 2. FÓRMULAS DE SOMA AUTOMÁTICA NAS COLUNAS DE TOTAIS (LINHA FINAL)
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 2 })] = { t: 'n', f: `SUM(C${firstDataRow}:C${lastDataRow})`, v: analyticsExecutivo.totalAdultos };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 3 })] = { t: 'n', f: `SUM(D${firstDataRow}:D${lastDataRow})`, v: analyticsExecutivo.totalCriancas };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 6 })] = { t: 'n', f: `SUM(G${firstDataRow}:G${lastDataRow})`, v: totaisGrid.totalHospedagem };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 8 })] = { t: 'n', f: `SUM(I${firstDataRow}:I${lastDataRow})`, v: analyticsExecutivo.totalSinalReserva };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 9 })] = { t: 'n', f: `SUM(J${firstDataRow}:J${lastDataRow})`, v: analyticsExecutivo.totalBar };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 10 })] = { t: 'n', f: `SUM(K${firstDataRow}:K${lastDataRow})`, v: analyticsExecutivo.totalLojinha };
-    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 11 })] = { t: 'n', f: `SUM(L${firstDataRow}:L${lastDataRow})`, v: analyticsExecutivo.totalSaldoCheckout };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 2 })] = {
+      t: 'n',
+      f: `SUM(C${firstDataRow}:C${lastDataRow})`,
+      v: analyticsExecutivo.totalAdultos,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 3 })] = {
+      t: 'n',
+      f: `SUM(D${firstDataRow}:D${lastDataRow})`,
+      v: analyticsExecutivo.totalCriancas,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 6 })] = {
+      t: 'n',
+      f: `SUM(G${firstDataRow}:G${lastDataRow})`,
+      v: totaisGrid.totalHospedagem,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 8 })] = {
+      t: 'n',
+      f: `SUM(I${firstDataRow}:I${lastDataRow})`,
+      v: analyticsExecutivo.totalSinalReserva,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 9 })] = {
+      t: 'n',
+      f: `SUM(J${firstDataRow}:J${lastDataRow})`,
+      v: analyticsExecutivo.totalBar,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 10 })] = {
+      t: 'n',
+      f: `SUM(K${firstDataRow}:K${lastDataRow})`,
+      v: analyticsExecutivo.totalLojinha,
+    };
+    ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 11 })] = {
+      t: 'n',
+      f: `SUM(L${firstDataRow}:L${lastDataRow})`,
+      v: analyticsExecutivo.totalSaldoCheckout,
+    };
 
-    // Total Geral final = Check-out + Loja + Bar + Reserva
-    const totalGeralFinal = analyticsExecutivo.totalSaldoCheckout + analyticsExecutivo.totalBar + analyticsExecutivo.totalLojinha + analyticsExecutivo.totalSinalReserva;
+    const totalGeralFinal =
+      analyticsExecutivo.totalSaldoCheckout +
+      analyticsExecutivo.totalBar +
+      analyticsExecutivo.totalLojinha +
+      analyticsExecutivo.totalSinalReserva;
+
     ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 12 })] = {
       t: 'n',
       f: `L${totalRowExcel}+K${totalRowExcel}+J${totalRowExcel}+I${totalRowExcel}`,
-      v: totalGeralFinal
+      v: totalGeralFinal,
     };
 
-    // Saldo Pendente Total (Coluna N - índice 13)
     ws[XLSX.utils.encode_cell({ r: totalRowIndex, c: 13 })] = {
       t: 'n',
       f: `SUM(N${firstDataRow}:N${lastDataRow})`,
-      v: analyticsExecutivo.totalSaldosPendentes
+      v: analyticsExecutivo.totalSaldosPendentes,
     };
 
-    // Mesclagens do Cabeçalho
     ws['!merges'] = [
       { s: { r: 0, c: 0 }, e: { r: 0, c: colunas.length - 1 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: colunas.length - 1 } },
@@ -537,15 +673,22 @@ export const PaginaDashboardExecutivo: React.FC = () => {
 
     const formatoMoeda = '[$R$-pt-BR] #,##0.00;[$R$-pt-BR] #,##0.00;[$R$-pt-BR] -';
 
-    // Cabeçalhos (Título e Período)
     for (let c = 0; c < colunas.length; c++) {
       const a0 = XLSX.utils.encode_cell({ r: 0, c });
       if (!ws[a0]) ws[a0] = { t: 's', v: '' };
-      ws[a0].s = { fill: { fgColor: { rgb: COR_TITULO } }, font: { name: 'Arial', sz: 12, bold: true, color: { rgb: BRANCO } }, alignment: { horizontal: 'center', vertical: 'center' } };
+      ws[a0].s = {
+        fill: { fgColor: { rgb: COR_TITULO } },
+        font: { name: 'Arial', sz: 12, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+      };
 
       const a1 = XLSX.utils.encode_cell({ r: 1, c });
       if (!ws[a1]) ws[a1] = { t: 's', v: '' };
-      ws[a1].s = { fill: { fgColor: { rgb: COR_PERIODO } }, font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } }, alignment: { horizontal: 'center', vertical: 'center' } };
+      ws[a1].s = {
+        fill: { fgColor: { rgb: COR_PERIODO } },
+        font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
+        alignment: { horizontal: 'center', vertical: 'center' },
+      };
 
       const a2 = XLSX.utils.encode_cell({ r: 2, c });
       if (ws[a2]) {
@@ -553,7 +696,12 @@ export const PaginaDashboardExecutivo: React.FC = () => {
           fill: { fgColor: { rgb: COR_CABECALHO } },
           font: { name: 'Arial', sz: 10, bold: true, color: { rgb: BRANCO } },
           alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-          border: { top: { style: 'thin', color: { rgb: BRANCO } }, bottom: { style: 'thin', color: { rgb: BRANCO } }, left: { style: 'thin', color: { rgb: BRANCO } }, right: { style: 'thin', color: { rgb: BRANCO } } },
+          border: {
+            top: { style: 'thin', color: { rgb: BRANCO } },
+            bottom: { style: 'thin', color: { rgb: BRANCO } },
+            left: { style: 'thin', color: { rgb: BRANCO } },
+            right: { style: 'thin', color: { rgb: BRANCO } },
+          },
         };
       }
     }
@@ -561,7 +709,6 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     const colunasMoeda = new Set([6, 8, 9, 10, 11, 12, 13]);
     const colunasCentro = new Set([0, 2, 3, 4, 5, 7]);
 
-    // Formatação de Linhas e Comentários Ocultos
     resumoAnaliticoReservas.forEach((r, idx) => {
       const rowIdx = 3 + idx;
       const corFundo = idx % 2 === 1 ? COR_ZEBRA : BRANCO;
@@ -587,7 +734,6 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         }
       }
 
-      // Comentário da Reserva com o Usuário Logado (Coluna I - índice 8)
       if (r.observacoes) {
         const refReserva = XLSX.utils.encode_cell({ r: rowIdx, c: 8 });
         const celula = ws[refReserva];
@@ -604,7 +750,6 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         }
       }
 
-      // Comentário do Check-out com o Usuário Logado (Coluna L - índice 11)
       if (r.observacoes_checkout) {
         const refCheckout = XLSX.utils.encode_cell({ r: rowIdx, c: 11 });
         const celula = ws[refCheckout];
@@ -622,7 +767,6 @@ export const PaginaDashboardExecutivo: React.FC = () => {
       }
     });
 
-    // Formatação da Linha de Totais
     for (let c = 0; c < colunas.length; c++) {
       const addr = XLSX.utils.encode_cell({ r: totalRowIndex, c });
       if (!ws[addr]) ws[addr] = { t: 's', v: '' };
@@ -634,7 +778,12 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         fill: { fgColor: { rgb: COR_TOTAL } },
         font: { name: 'Arial', sz: 10, bold: true, color: { rgb: '86EFAC' } },
         alignment: { horizontal, vertical: 'center' },
-        border: { top: { style: 'thin', color: { rgb: '2E5D31' } }, bottom: { style: 'thin', color: { rgb: '2E5D31' } }, left: { style: 'thin', color: { rgb: '2E5D31' } }, right: { style: 'thin', color: { rgb: '2E5D31' } } },
+        border: {
+          top: { style: 'thin', color: { rgb: '2E5D31' } },
+          bottom: { style: 'thin', color: { rgb: '2E5D31' } },
+          left: { style: 'thin', color: { rgb: '2E5D31' } },
+          right: { style: 'thin', color: { rgb: '2E5D31' } },
+        },
       };
 
       if (colunasMoeda.has(c)) {
@@ -679,9 +828,10 @@ export const PaginaDashboardExecutivo: React.FC = () => {
     const dInicio = formatarDataNomeArquivo(dataInicioFiltro);
     const dFim = formatarDataNomeArquivo(dataFimFiltro);
 
-    const nomeArquivo = dInicio && dFim  
-      ? `Relatorio_Executivo_${dInicio}_a_${dFim}.xlsx` 
-      : `Relatorio_Executivo_Geral.xlsx`;
+    const nomeArquivo =
+      dInicio && dFim
+        ? `Relatorio_Executivo_${dInicio}_a_${dFim}.xlsx`
+        : `Relatorio_Executivo_Geral.xlsx`;
 
     XLSX.writeFile(wb, nomeArquivo);
   };
@@ -707,10 +857,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
             onClick={async () => {
               setCarregandoAtualizacao(true);
               try {
-                await Promise.all([
-                  recarregarDados(),
-                  carregarAcompanhantesEIdades()
-                ]);
+                await Promise.all([recarregarDados(), carregarAcompanhantesEIdades()]);
               } finally {
                 setCarregandoAtualizacao(false);
               }
@@ -733,7 +880,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         </div>
       </div>
 
-      {/* SELETOR DE PERÍODO COM BUSCA POR DATA INÍCIO E FIM INLINE + BOTÃO PESQUISAR */}
+      {/* SELETOR DE PERÍODO */}
       <div className="bg-white border border-[#c1c9bf] rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -804,7 +951,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         </div>
       </div>
 
-      {/* BLOCO 1 - VISÃO MACRO (INDICADORES PRINCIPAIS) */}
+      {/* BLOCO 1 - VISÃO MACRO */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs flex flex-col justify-between">
           <div>
@@ -843,7 +990,10 @@ export const PaginaDashboardExecutivo: React.FC = () => {
             </div>
           </div>
           <div className="text-[11px] text-[#717971] font-semibold mt-3 pt-2 border-t border-[#f3f4f6]">
-            Total Consumos Extras: <strong className="text-[#191c1d]">{formatarMoeda(analyticsExecutivo.totalBar + analyticsExecutivo.totalLojinha)}</strong>
+            Total Consumos Extras:{' '}
+            <strong className="text-[#191c1d]">
+              {formatarMoeda(analyticsExecutivo.totalBar + analyticsExecutivo.totalLojinha)}
+            </strong>
           </div>
         </div>
 
@@ -889,7 +1039,7 @@ export const PaginaDashboardExecutivo: React.FC = () => {
         </div>
       </div>
 
-      {/* BLOCO 2 - DISTRIBUIÇÃO GRÁFICA / BARRAS VISUAIS DE COMPOSIÇÃO */}
+      {/* BLOCO 2 - DISTRIBUIÇÃO GRÁFICA */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border border-[#c1c9bf] rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-[#f3f4f6] pb-3">
@@ -904,31 +1054,52 @@ export const PaginaDashboardExecutivo: React.FC = () => {
           <div className="space-y-3.5 text-xs">
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
-                <span className="flex items-center gap-1.5"><Bed className="w-4 h-4 text-[#053d1e]" /> Hospedagem (Diárias/Sinais):</span>
-                <span>{formatarMoeda(analyticsExecutivo.totalReceitaHospedagem)} ({analyticsExecutivo.pctHospedagem}%)</span>
+                <span className="flex items-center gap-1.5">
+                  <Bed className="w-4 h-4 text-[#053d1e]" /> Hospedagem (Diárias/Sinais):
+                </span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.totalReceitaHospedagem)} ({analyticsExecutivo.pctHospedagem}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-[#053d1e] transition-all duration-500" style={{ width: `${analyticsExecutivo.pctHospedagem}%` }} />
+                <div
+                  className="h-full bg-[#053d1e] transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctHospedagem}%` }}
+                />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
-                <span className="flex items-center gap-1.5"><Receipt className="w-4 h-4 text-amber-700" /> Vendas do Bar:</span>
-                <span>{formatarMoeda(analyticsExecutivo.totalBar)} ({analyticsExecutivo.pctBar}%)</span>
+                <span className="flex items-center gap-1.5">
+                  <Receipt className="w-4 h-4 text-amber-700" /> Vendas do Bar:
+                </span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.totalBar)} ({analyticsExecutivo.pctBar}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-600 transition-all duration-500" style={{ width: `${analyticsExecutivo.pctBar}%` }} />
+                <div
+                  className="h-full bg-amber-600 transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctBar}%` }}
+                />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
-                <span className="flex items-center gap-1.5"><Building2 className="w-4 h-4 text-emerald-600" /> Vendas da Lojinha:</span>
-                <span>{formatarMoeda(analyticsExecutivo.totalLojinha)} ({analyticsExecutivo.pctLojinha}%)</span>
+                <span className="flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-emerald-600" /> Vendas da Lojinha:
+                </span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.totalLojinha)} ({analyticsExecutivo.pctLojinha}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${analyticsExecutivo.pctLojinha}%` }} />
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctLojinha}%` }}
+                />
               </div>
             </div>
           </div>
@@ -948,40 +1119,60 @@ export const PaginaDashboardExecutivo: React.FC = () => {
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
                 <span>PIX (Instantâneo):</span>
-                <span>{formatarMoeda(analyticsExecutivo.receitaPIX)} ({analyticsExecutivo.pctPIX}%)</span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.receitaPIX)} ({analyticsExecutivo.pctPIX}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-600 transition-all duration-500" style={{ width: `${analyticsExecutivo.pctPIX}%` }} />
+                <div
+                  className="h-full bg-emerald-600 transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctPIX}%` }}
+                />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
                 <span>Cartão de Crédito:</span>
-                <span>{formatarMoeda(analyticsExecutivo.receitaCredito)} ({analyticsExecutivo.pctCredito}%)</span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.receitaCredito)} ({analyticsExecutivo.pctCredito}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${analyticsExecutivo.pctCredito}%` }} />
+                <div
+                  className="h-full bg-blue-600 transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctCredito}%` }}
+                />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
                 <span>Cartão de Débito:</span>
-                <span>{formatarMoeda(analyticsExecutivo.receitaDebito)} ({analyticsExecutivo.pctDebito}%)</span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.receitaDebito)} ({analyticsExecutivo.pctDebito}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-500 transition-all duration-500" style={{ width: `${analyticsExecutivo.pctDebito}%` }} />
+                <div
+                  className="h-full bg-indigo-500 transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctDebito}%` }}
+                />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between font-bold text-[#191c1d] mb-1">
                 <span>Dinheiro em Espécie:</span>
-                <span>{formatarMoeda(analyticsExecutivo.receitaDinheiro)} ({analyticsExecutivo.pctDinheiro}%)</span>
+                <span>
+                  {formatarMoeda(analyticsExecutivo.receitaDinheiro)} ({analyticsExecutivo.pctDinheiro}%)
+                </span>
               </div>
               <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${analyticsExecutivo.pctDinheiro}%` }} />
+                <div
+                  className="h-full bg-amber-500 transition-all duration-500"
+                  style={{ width: `${analyticsExecutivo.pctDinheiro}%` }}
+                />
               </div>
             </div>
           </div>
@@ -1018,9 +1209,15 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                 <CheckCircle2 className="w-4 h-4 text-[#053d1e]" /> 📋 Resumo das Regras Etárias & Tarifação:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-[#414941] pt-1">
-                <div><strong>Grátis (0 a 5 anos):</strong> 100% isento (não entra na contagem nem no valor).</div>
-                <div><strong>Meia-diária (6 a 11 anos):</strong> Paga 50% da diária (contabilizado em Crianças).</div>
-                <div><strong>Integral (12 anos ou mais):</strong> Paga 100% da diária (contabilizado em Adultos).</div>
+                <div>
+                  <strong>Grátis (0 a 5 anos):</strong> 100% isento (não entra na contagem nem no valor).
+                </div>
+                <div>
+                  <strong>Meia-diária (6 a 11 anos):</strong> Paga 50% da diária (contabilizado em Crianças).
+                </div>
+                <div>
+                  <strong>Integral (12 anos ou mais):</strong> Paga 100% da diária (contabilizado em Adultos).
+                </div>
               </div>
             </div>
 
@@ -1072,14 +1269,24 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                       <td className="min-w-[180px] max-w-[220px] py-2 px-2 font-semibold truncate" title={item.hospede}>
                         {item.hospede}
                       </td>
-                      <td className="w-12 py-2 px-1.5 text-center font-bold text-[11px] whitespace-nowrap">{item.adultos}</td>
-                      <td className="w-12 py-2 px-1.5 text-center font-bold text-amber-900 text-[11px] whitespace-nowrap">{item.criancas}</td>
-                      <td className="w-24 py-2 px-1.5 text-center text-[11px] whitespace-nowrap">{formatarData(item.dataEntrada)}</td>
-                      <td className="w-24 py-2 px-1.5 text-center text-[11px] whitespace-nowrap">{formatarData(item.dataSaida)}</td>
+                      <td className="w-12 py-2 px-1.5 text-center font-bold text-[11px] whitespace-nowrap">
+                        {item.adultos}
+                      </td>
+                      <td className="w-12 py-2 px-1.5 text-center font-bold text-amber-900 text-[11px] whitespace-nowrap">
+                        {item.criancas}
+                      </td>
+                      <td className="w-24 py-2 px-1.5 text-center text-[11px] whitespace-nowrap">
+                        {formatarData(item.dataEntrada)}
+                      </td>
+                      <td className="w-24 py-2 px-1.5 text-center text-[11px] whitespace-nowrap">
+                        {formatarData(item.dataSaida)}
+                      </td>
                       <td className="min-w-[105px] py-2 px-2 text-right font-bold text-[#053d1e] bg-[#e6f4ea]/20 text-[11px] whitespace-nowrap">
                         {formatarMoeda(item.totalHospedagem)}
                       </td>
-                      <td className="w-24 py-2 px-1.5 text-center text-[#717971] text-[11px] whitespace-nowrap">{formatarData(item.dataReserva)}</td>
+                      <td className="w-24 py-2 px-1.5 text-center text-[#717971] text-[11px] whitespace-nowrap">
+                        {formatarData(item.dataReserva)}
+                      </td>
 
                       {/* Vlr. da Reserva com Tooltip Seguro */}
                       <td className="min-w-[100px] py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">
@@ -1101,8 +1308,12 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="min-w-[85px] py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">{formatarMoeda(item.valorBar)}</td>
-                      <td className="min-w-[85px] py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">{formatarMoeda(item.valorLojinha)}</td>
+                      <td className="min-w-[85px] py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">
+                        {formatarMoeda(item.valorBar)}
+                      </td>
+                      <td className="min-w-[85px] py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">
+                        {formatarMoeda(item.valorLojinha)}
+                      </td>
 
                       {/* Vlr. Checkout com Tooltip Seguro */}
                       <td className="min-w-[105px] py-2 px-2 text-right font-medium text-[11px] whitespace-nowrap">
@@ -1124,8 +1335,14 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                         )}
                       </td>
 
-                      <td className="min-w-[105px] py-2 px-2 text-right font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">{formatarMoeda(item.total)}</td>
-                      <td className={`min-w-[95px] py-2 px-2 text-right font-bold text-[11px] whitespace-nowrap ${item.saldoPendente > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}`}>
+                      <td className="min-w-[105px] py-2 px-2 text-right font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">
+                        {formatarMoeda(item.total)}
+                      </td>
+                      <td
+                        className={`min-w-[95px] py-2 px-2 text-right font-bold text-[11px] whitespace-nowrap ${
+                          item.saldoPendente > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                        }`}
+                      >
                         {formatarMoeda(item.saldoPendente)}
                       </td>
                     </tr>
@@ -1141,17 +1358,30 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                 {tabelaFiltrada.length > 0 && (
                   <tfoot className="bg-[#e6f4ea]/40 border-t-2 border-[#053d1e] text-[#191c1d] font-bold text-[11px]">
                     <tr>
-                      <td colSpan={2} className="py-2.5 px-2 font-extrabold uppercase text-[#053d1e] tracking-wider text-[11px] truncate">
+                      <td
+                        colSpan={2}
+                        className="py-2.5 px-2 font-extrabold uppercase text-[#053d1e] tracking-wider text-[11px] truncate"
+                      >
                         Total Geral ({tabelaFiltrada.length})
                       </td>
-                      <td className="w-12 py-2.5 px-1.5 text-center font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">{totaisGrid.adultos}</td>
-                      <td className="w-12 py-2.5 px-1.5 text-center font-extrabold text-amber-900 text-[11px] whitespace-nowrap">{totaisGrid.criancas}</td>
-                      <td className="w-24 py-2.5 px-1.5 text-center text-[#717971] font-semibold whitespace-nowrap">-</td>
-                      <td className="w-24 py-2.5 px-1.5 text-center text-[#717971] font-semibold whitespace-nowrap">-</td>
+                      <td className="w-12 py-2.5 px-1.5 text-center font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">
+                        {totaisGrid.adultos}
+                      </td>
+                      <td className="w-12 py-2.5 px-1.5 text-center font-extrabold text-amber-900 text-[11px] whitespace-nowrap">
+                        {totaisGrid.criancas}
+                      </td>
+                      <td className="w-24 py-2.5 px-1.5 text-center text-[#717971] font-semibold whitespace-nowrap">
+                        -
+                      </td>
+                      <td className="w-24 py-2.5 px-1.5 text-center text-[#717971] font-semibold whitespace-nowrap">
+                        -
+                      </td>
                       <td className="min-w-[105px] py-2.5 px-2 text-right font-extrabold text-[#053d1e] bg-[#e6f4ea]/30 text-[11px] whitespace-nowrap">
                         {formatarMoeda(totaisGrid.totalHospedagem)}
                       </td>
-                      <td className="w-24 py-2.5 px-1.5 text-center text-[#717971] font-semibold whitespace-nowrap">-</td>
+                      <td className="w-24 py-2.5 px-1.5 text-center text-[#717971] font-semibold whitespace-nowrap">
+                        -
+                      </td>
                       <td className="min-w-[100px] py-2.5 px-2 text-right font-bold text-[#191c1d] text-[11px] whitespace-nowrap">
                         {formatarMoeda(totaisGrid.valorReserva)}
                       </td>
@@ -1167,7 +1397,11 @@ export const PaginaDashboardExecutivo: React.FC = () => {
                       <td className="min-w-[105px] py-2.5 px-2 text-right font-extrabold text-[#053d1e] text-[11px] whitespace-nowrap">
                         {formatarMoeda(totaisGrid.total)}
                       </td>
-                      <td className={`min-w-[95px] py-2.5 px-2 text-right font-extrabold text-[11px] whitespace-nowrap ${totaisGrid.saldoPendente > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'}`}>
+                      <td
+                        className={`min-w-[95px] py-2.5 px-2 text-right font-extrabold text-[11px] whitespace-nowrap ${
+                          totaisGrid.saldoPendente > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                        }`}
+                      >
                         {formatarMoeda(totaisGrid.saldoPendente)}
                       </td>
                     </tr>

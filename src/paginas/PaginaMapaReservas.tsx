@@ -43,9 +43,25 @@ const formatarDiaSemana = (date: Date) =>
 const formatarMesCurto = (date: Date) =>
   new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(date).toUpperCase();
 
+// Helper para ler campos compatíveis entre camelCase (.NET) e lowercase (Supabase/PostgreSQL)
+const getReservaVal = (reserva: any, campoMin: string, campoCamel: string): any => {
+  if (!reserva) return undefined;
+  return reserva[campoMin] !== undefined ? reserva[campoMin] : reserva[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
+
 const datasSobrepostas = (reserva: any, inicioPeriodo: Date, fimPeriodo: Date) => {
-  const inicioReserva = new Date(`${reserva.dataentrada}T00:00:00`);
-  const fimReserva = addDias(new Date(`${reserva.datasaida}T00:00:00`), 1);
+  const dEntrada = extrairDataIso(getReservaVal(reserva, 'dataentrada', 'dataEntrada'));
+  const dSaida = extrairDataIso(getReservaVal(reserva, 'datasaida', 'dataSaida'));
+
+  if (!dEntrada || !dSaida) return false;
+
+  const inicioReserva = new Date(`${dEntrada}T00:00:00`);
+  const fimReserva = addDias(new Date(`${dSaida}T00:00:00`), 1);
   return inicioReserva < fimPeriodo && fimReserva > inicioPeriodo;
 };
 
@@ -71,8 +87,8 @@ export const PaginaMapaReservas: React.FC = () => {
   const { quartos, reservas, hospedes, recarregarDados } = useHotel();
 
   const quartosFisicos = useMemo(() => {
-    return quartos.filter((q) => {
-      const cod = String(q.codigoidentificador || '').toUpperCase();
+    return quartos.filter((q: any) => {
+      const cod = String(q.codigoidentificador || q.codigoIdentificador || '').toUpperCase();
       const num = String(q.numero || '').toUpperCase();
       const cat = String(q.categoria || '').toUpperCase();
       return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
@@ -80,7 +96,9 @@ export const PaginaMapaReservas: React.FC = () => {
   }, [quartos]);
 
   const [periodoInicio, setPeriodoInicio] = useState<Date>(periodoInicialPadrao);
-  const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE' | 'CREDITO'>('TODOS');
+  const [filtroStatus, setFiltroStatus] = useState<
+    'TODOS' | 'PRE_RESERVA' | 'RESERVADO' | 'HOSPEDADO' | 'CONCLUIDA' | 'CANCELADA' | 'DAY_USE' | 'CREDITO'
+  >('TODOS');
   const [busca, setBusca] = useState('');
   const [modalAberto, setModalAberto] = useState(false);
   const [quartoSelecionado, setQuartoSelecionado] = useState<Quarto | null>(null);
@@ -126,7 +144,7 @@ export const PaginaMapaReservas: React.FC = () => {
           if (parsed.nomecompleto) {
             setHospedeFnrhAviso({
               nome: parsed.nomecompleto,
-              dataentrada: parsed.dataentrada,
+              dataentrada: parsed.dataentrada || parsed.dataEntrada,
             });
           }
         } catch (e) {
@@ -142,11 +160,14 @@ export const PaginaMapaReservas: React.FC = () => {
     [periodoInicio]
   );
 
-  // Criar mapa de hóspedes: ID → nome
+  // Criar mapa de hóspedes: ID → Hospede
   const hospedeMap = useMemo(() => {
     const map = new Map<number, Hospede>();
-    hospedes.forEach((h) => {
-      map.set(Number(h.hospedeid), h);
+    hospedes.forEach((h: any) => {
+      const id = Number(h.hospedeid ?? h.hospedeId);
+      if (!isNaN(id)) {
+        map.set(id, h);
+      }
     });
     return map;
   }, [hospedes]);
@@ -154,25 +175,25 @@ export const PaginaMapaReservas: React.FC = () => {
   // AGRUPAR quartos por bloco usando o campo 'bloco' do banco de dados
   const quartosPorBloco = useMemo(() => {
     const blocosMap: Record<string, Quarto[]> = {
-      'B': [],
-      'C': [],
-      'D': [],
+      B: [],
+      C: [],
+      D: [],
     };
 
     quartosFisicos.forEach((quarto) => {
       if (quarto.ativo === false) return;
 
-      const bloco = quarto.bloco || 'B';
+      const bloco = (quarto.bloco || 'B').toUpperCase();
       if (blocosMap[bloco]) {
         blocosMap[bloco].push(quarto);
       }
     });
 
     Object.keys(blocosMap).forEach((bloco) => {
-      blocosMap[bloco].sort((a, b) => {
-        const codA = a.codigoidentificador || a.numero;
-        const codB = b.codigoidentificador || b.numero;
-        return codA.localeCompare(codB);
+      blocosMap[bloco].sort((a: any, b: any) => {
+        const codA = a.codigoidentificador || a.codigoIdentificador || a.numero || '';
+        const codB = b.codigoidentificador || b.codigoIdentificador || b.numero || '';
+        return String(codA).localeCompare(String(codB));
       });
     });
 
@@ -184,123 +205,162 @@ export const PaginaMapaReservas: React.FC = () => {
 
   // CALCULAR CHECK-INS DE HOJE
   const checkinsHoje = useMemo(() => {
-    return reservas.filter((reserva) => {
-      return reserva.dataentrada === dataAtual &&
-        reserva.statusreserva !== 'CANCELADA' &&
-        reserva.statusreserva !== 'CREDITO' &&
-        reserva.statusreserva !== 'CONCLUIDA';
-    }).map((reserva) => {
-      const hospede = hospedeMap.get(Number(reserva.hospedeid));
-      return {
-        ...reserva,
-        hospedenome: hospede?.nomecompleto || `Hóspede ${reserva.hospedeid}`,
-      };
-    });
+    return reservas
+      .filter((reserva: any) => {
+        const dEntrada = extrairDataIso(getReservaVal(reserva, 'dataentrada', 'dataEntrada'));
+        const status = getReservaVal(reserva, 'statusreserva', 'statusReserva');
+        return (
+          dEntrada === dataAtual &&
+          status !== 'CANCELADA' &&
+          status !== 'CREDITO' &&
+          status !== 'CONCLUIDA'
+        );
+      })
+      .map((reserva: any) => {
+        const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
+        const hospede = hospedeMap.get(hospedeId);
+        return {
+          ...reserva,
+          hospedenome: hospede?.nomecompleto || `Hóspede ${hospedeId}`,
+        };
+      });
   }, [reservas, dataAtual, hospedeMap]);
 
   // CALCULAR CHECK-OUTS DE HOJE
   const checkoutsHoje = useMemo(() => {
-    return reservas.filter((reserva) => {
-      return reserva.datasaida === dataAtual &&
-        reserva.statusreserva === 'HOSPEDADO';
-    }).map((reserva) => {
-      const hospede = hospedeMap.get(Number(reserva.hospedeid));
-      return {
-        ...reserva,
-        hospedenome: hospede?.nomecompleto || `Hóspede ${reserva.hospedeid}`,
-      };
-    });
+    return reservas
+      .filter((reserva: any) => {
+        const dSaida = extrairDataIso(getReservaVal(reserva, 'datasaida', 'dataSaida'));
+        const status = getReservaVal(reserva, 'statusreserva', 'statusReserva');
+        return dSaida === dataAtual && status === 'HOSPEDADO';
+      })
+      .map((reserva: any) => {
+        const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
+        const hospede = hospedeMap.get(hospedeId);
+        return {
+          ...reserva,
+          hospedenome: hospede?.nomecompleto || `Hóspede ${hospedeId}`,
+        };
+      });
   }, [reservas, dataAtual, hospedeMap]);
 
   // CALCULAR QUARTOS EM LIMPEZA
   const quartosEmLimpeza = useMemo(() => {
-    const checkoutsHojeIds = checkoutsHoje.map(r => r.quartoid);
-    return quartosFisicos.filter(q =>
-      checkoutsHojeIds.includes(q.quartoid) &&
-      q.status === 'OCUPADO'
+    const checkoutsHojeIds = checkoutsHoje.map((r: any) => Number(getReservaVal(r, 'quartoid', 'quartoId')));
+    return quartosFisicos.filter(
+      (q: any) => checkoutsHojeIds.includes(Number(q.quartoid ?? q.quartoId)) && q.status === 'OCUPADO'
     );
   }, [quartosFisicos, checkoutsHoje]);
 
   // CALCULAR QUARTOS PRONTOS
   const quartosProntos = useMemo(() => {
-    return quartosFisicos.filter(q =>
-      q.status === 'DISPONIVEL' || q.status === 'RESERVADO'
-    );
+    return quartosFisicos.filter((q) => q.status === 'DISPONIVEL' || q.status === 'RESERVADO');
   }, [quartosFisicos]);
 
   // Filtrar e enriquecer reservas (desconsidera reservas de Day Use, Canceladas e em Crédito no mapa físico)
   const reservasVisiveis = useMemo(() => {
-    return reservas.filter((reserva) => {
-      if (
-        String(reserva.tipoatendimento || '').toUpperCase() === 'DAY_USE' ||
-        reserva.statusreserva === 'CANCELADA' ||
-        reserva.statusreserva === 'CREDITO'
-      ) {
-        return false;
-      }
+    return reservas
+      .filter((reserva: any) => {
+        const tipoAtendimento = String(getReservaVal(reserva, 'tipoatendimento', 'tipoAtendimento') || '').toUpperCase();
+        const statusReserva = getReservaVal(reserva, 'statusreserva', 'statusReserva');
 
-      const dentroPeriodo = datasSobrepostas(reserva, periodoInicio, addDias(periodoInicio, numeroDias));
-      if (!dentroPeriodo) return false;
+        if (tipoAtendimento === 'DAY_USE' || statusReserva === 'CANCELADA' || statusReserva === 'CREDITO') {
+          return false;
+        }
 
-      if (filtroStatus !== 'TODOS' && filtroStatus !== 'DAY_USE' && reserva.statusreserva !== filtroStatus) return false;
-      if (filtroStatus === 'DAY_USE' && reserva.tipoatendimento !== 'DAY_USE') return false;
+        const dentroPeriodo = datasSobrepostas(reserva, periodoInicio, addDias(periodoInicio, numeroDias));
+        if (!dentroPeriodo) return false;
 
-      if (busca.trim()) {
-        const termo = busca.toLowerCase();
-        const hospede = hospedeMap.get(Number(reserva.hospedeid));
-        const quarto = quartos.find(q => Number(q.quartoid) === Number(reserva.quartoid));
-        const nomeHospede = hospede?.nomecompleto || '';
-        const numeroQuarto = quarto?.codigoidentificador || '';
+        if (filtroStatus !== 'TODOS' && filtroStatus !== 'DAY_USE' && statusReserva !== filtroStatus) return false;
+        if (filtroStatus === 'DAY_USE' && tipoAtendimento !== 'DAY_USE') return false;
 
-        return (
-          nomeHospede.toLowerCase().includes(termo) ||
-          numeroQuarto.toLowerCase().includes(termo) ||
-          (reserva.codigo || '').toLowerCase().includes(termo)
-        );
-      }
+        const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
+        const quartoId = Number(getReservaVal(reserva, 'quartoid', 'quartoId'));
 
-      return true;
-    }).map((reserva) => {
-      const hospede = hospedeMap.get(Number(reserva.hospedeid));
-      return {
-        ...reserva,
-        hospedenome: hospede?.nomecompleto || `Hóspede ${reserva.hospedeid}`,
-      };
-    });
+        if (busca.trim()) {
+          const termo = busca.toLowerCase();
+          const hospede = hospedeMap.get(hospedeId);
+          const quarto = quartos.find((q: any) => Number(q.quartoid ?? q.quartoId) === quartoId);
+          const nomeHospede = hospede?.nomecompleto || '';
+          const numeroQuarto = (quarto as any)?.codigoidentificador || (quarto as any)?.codigoIdentificador || quarto?.numero || '';
+
+          return (
+            nomeHospede.toLowerCase().includes(termo) ||
+            String(numeroQuarto).toLowerCase().includes(termo) ||
+            String(reserva.codigo || '').toLowerCase().includes(termo)
+          );
+        }
+
+        return true;
+      })
+      .map((reserva: any) => {
+        const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
+        const hospede = hospedeMap.get(hospedeId);
+        const quartoId = Number(getReservaVal(reserva, 'quartoid', 'quartoId'));
+        const reservaId = Number(getReservaVal(reserva, 'reservaid', 'reservaId'));
+        const statusReserva = getReservaVal(reserva, 'statusreserva', 'statusReserva');
+        const tipoAtendimento = getReservaVal(reserva, 'tipoatendimento', 'tipoAtendimento');
+        const dEntrada = extrairDataIso(getReservaVal(reserva, 'dataentrada', 'dataEntrada'));
+        const dSaida = extrairDataIso(getReservaVal(reserva, 'datasaida', 'dataSaida'));
+
+        return {
+          ...reserva,
+          reservaid: reservaId,
+          quartoid: quartoId,
+          hospedeid: hospedeId,
+          dataentrada: dEntrada,
+          datasaida: dSaida,
+          statusreserva: statusReserva,
+          tipoatendimento: tipoAtendimento,
+          hospedenome: hospede?.nomecompleto || `Hóspede ${hospedeId}`,
+        };
+      });
   }, [reservas, periodoInicio, numeroDias, filtroStatus, busca, hospedeMap, quartos]);
 
   // Reservas em Crédito (filtradas e enriquecidas para a visão de gestão de créditos)
   const reservasCredito = useMemo(() => {
-    return reservas.filter((reserva) => {
-      if (reserva.statusreserva !== 'CREDITO') return false;
+    return reservas
+      .filter((reserva: any) => {
+        const status = getReservaVal(reserva, 'statusreserva', 'statusReserva');
+        if (status !== 'CREDITO') return false;
 
-      if (busca.trim()) {
-        const termo = busca.toLowerCase();
-        const hospede = hospedeMap.get(Number(reserva.hospedeid));
-        const quarto = quartos.find(q => Number(q.quartoid) === Number(reserva.quartoid));
-        const nomeHospede = hospede?.nomecompleto || '';
-        const numeroQuarto = quarto?.codigoidentificador || '';
+        const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
+        const quartoId = Number(getReservaVal(reserva, 'quartoid', 'quartoId'));
 
-        return (
-          nomeHospede.toLowerCase().includes(termo) ||
-          numeroQuarto.toLowerCase().includes(termo) ||
-          (reserva.codigo || '').toLowerCase().includes(termo) ||
-          (hospede?.telefone || '').toLowerCase().includes(termo)
-        );
-      }
+        if (busca.trim()) {
+          const termo = busca.toLowerCase();
+          const hospede = hospedeMap.get(hospedeId);
+          const quarto = quartos.find((q: any) => Number(q.quartoid ?? q.quartoId) === quartoId);
+          const nomeHospede = hospede?.nomecompleto || '';
+          const numeroQuarto = (quarto as any)?.codigoidentificador || (quarto as any)?.codigoIdentificador || quarto?.numero || '';
 
-      return true;
-    }).map((reserva) => {
-      const hospede = hospedeMap.get(Number(reserva.hospedeid));
-      const quarto = quartos.find(q => Number(q.quartoid) === Number(reserva.quartoid));
-      return {
-        ...reserva,
-        hospedenome: hospede?.nomecompleto || `Hóspede #${reserva.hospedeid}`,
-        hospedetelefone: hospede?.telefone || hospede?.whatsapp || reserva.hospedetelefone || '',
-        quartonumero: quarto?.codigoidentificador || quarto?.numero || reserva.quartonumero || '',
-        quartocategoria: quarto?.categoria || '',
-      };
-    });
+          return (
+            nomeHospede.toLowerCase().includes(termo) ||
+            String(numeroQuarto).toLowerCase().includes(termo) ||
+            String(reserva.codigo || '').toLowerCase().includes(termo) ||
+            String(hospede?.telefone || '').toLowerCase().includes(termo)
+          );
+        }
+
+        return true;
+      })
+      .map((reserva: any) => {
+        const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
+        const hospede = hospedeMap.get(hospedeId);
+        const quartoId = Number(getReservaVal(reserva, 'quartoid', 'quartoId'));
+        const quarto = quartos.find((q: any) => Number(q.quartoid ?? q.quartoId) === quartoId);
+        const valorPago = getReservaVal(reserva, 'valorpago', 'valorPago');
+
+        return {
+          ...reserva,
+          reservaid: Number(getReservaVal(reserva, 'reservaid', 'reservaId')),
+          valorpago: valorPago,
+          hospedenome: hospede?.nomecompleto || `Hóspede #${hospedeId}`,
+          hospedetelefone: hospede?.telefone || hospede?.whatsapp || reserva.hospedetelefone || '',
+          quartonumero: (quarto as any)?.codigoidentificador || (quarto as any)?.codigoIdentificador || quarto?.numero || reserva.quartonumero || '',
+          quartocategoria: quarto?.categoria || '',
+        };
+      });
   }, [reservas, busca, hospedeMap, quartos]);
 
   const ocupacao = useMemo(() => {
@@ -308,7 +368,7 @@ export const PaginaMapaReservas: React.FC = () => {
     const totalDias = numeroDias * quartosFisicos.length;
     let diasOcupados = 0;
 
-    reservasVisiveis.forEach((res) => {
+    reservasVisiveis.forEach((res: any) => {
       const inicio = new Date(`${res.dataentrada}T00:00:00`);
       const fim = new Date(`${res.datasaida}T00:00:00`);
       const duracao = Math.ceil((fim.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
@@ -335,19 +395,27 @@ export const PaginaMapaReservas: React.FC = () => {
   }, [periodoInicio, numeroDias]);
 
   const renderizarLinhaQuarto = (quarto: Quarto) => {
-    const reservasDoQuarto = reservasVisiveis.filter((reserva) =>
-      Number(reserva.quartoid) === Number(quarto.quartoid)
+    const idAtualQuarto = Number(quarto.quartoid ?? (quarto as any).quartoId);
+    const reservasDoQuarto = reservasVisiveis.filter(
+      (reserva: any) => Number(reserva.quartoid) === idAtualQuarto
     );
     const quartoBloqueado = quarto.status === 'MANUTENCAO';
 
     return (
-      <div key={quarto.quartoid} className={`relative col-span-full h-12 border-b ${quartoBloqueado ? 'border-[#d1d5db] bg-[#f3f4f6]' : 'border-[#e5e7eb] bg-white'}`}>
+      <div
+        key={idAtualQuarto}
+        className={`relative col-span-full h-12 border-b ${
+          quartoBloqueado ? 'border-[#d1d5db] bg-[#f3f4f6]' : 'border-[#e5e7eb] bg-white'
+        }`}
+      >
         <div className="grid h-full" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
-          <div className={`sticky left-0 z-10 flex items-center justify-between gap-2 border-r px-3 ${
-            quartoBloqueado 
-              ? 'border-[#d1d5db] bg-[#f3f4f6] text-[#1f2937] shadow-[2px_0_4px_rgba(0,0,0,0.05)]' 
-              : 'border-[#e5e7eb] bg-white'
-          }`}>
+          <div
+            className={`sticky left-0 z-10 flex items-center justify-between gap-2 border-r px-3 ${
+              quartoBloqueado
+                ? 'border-[#d1d5db] bg-[#f3f4f6] text-[#1f2937] shadow-[2px_0_4px_rgba(0,0,0,0.05)]'
+                : 'border-[#e5e7eb] bg-white'
+            }`}
+          >
             <div className="flex items-center gap-2">
               {quartoBloqueado ? (
                 <Wrench className="h-3.5 w-3.5 text-[#4b5563] shrink-0" />
@@ -355,27 +423,33 @@ export const PaginaMapaReservas: React.FC = () => {
                 <span className="h-2.5 w-2.5 rounded-full bg-[#ff69b4]" />
               )}
               <span className={`text-sm font-bold ${quartoBloqueado ? 'text-[#374151]' : 'text-[#191c1d]'}`}>
-                {quarto.codigoidentificador || quarto.numero}
+                {(quarto as any).codigoidentificador || (quarto as any).codigoIdentificador || quarto.numero}
               </span>
             </div>
-            <span className={`text-[10px] font-semibold ${
-              quartoBloqueado 
-                ? 'rounded bg-[#e5e7eb] px-1.5 py-0.5 font-bold uppercase tracking-wider text-[#374151] border border-[#d1d5db]' 
-                : 'text-[#717971]'
-            }`}>
-              {quartoBloqueado ? 'Manutenção' : `${quarto.quantidadecamascasal ?? 0} casal, ${quarto.quantidadecamassolteiro ?? 0} solteiro`}
+            <span
+              className={`text-[10px] font-semibold ${
+                quartoBloqueado
+                  ? 'rounded bg-[#e5e7eb] px-1.5 py-0.5 font-bold uppercase tracking-wider text-[#374151] border border-[#d1d5db]'
+                  : 'text-[#717971]'
+              }`}
+            >
+              {quartoBloqueado
+                ? 'Manutenção'
+                : `${quarto.quantidadecamascasal ?? (quarto as any).quantidadeCamasCasal ?? 0} casal, ${
+                    quarto.quantidadecamassolteiro ?? (quarto as any).quantidadeCamasSolteiro ?? 0
+                  } solteiro`}
             </span>
           </div>
 
           {datasVisiveis.map((data) => {
             const dataIso = data.toISOString().slice(0, 10);
-            const reservaAtiva = reservasDoQuarto.find((reserva) => (
-              dataIso >= reserva.dataentrada && dataIso <= reserva.datasaida
-            ));
+            const reservaAtiva = reservasDoQuarto.find(
+              (reserva: any) => dataIso >= reserva.dataentrada && dataIso <= reserva.datasaida
+            );
 
             return (
               <button
-                key={`${quarto.quartoid}-${dataIso}`}
+                key={`${idAtualQuarto}-${dataIso}`}
                 type="button"
                 disabled={quartoBloqueado || Boolean(reservaAtiva) || isDataPassada(dataIso)}
                 onClick={() => {
@@ -386,7 +460,11 @@ export const PaginaMapaReservas: React.FC = () => {
                   setDataSelecionada(dataIso);
                   setModalAberto(true);
                 }}
-                title={quartoBloqueado ? `Quarto ${quarto.numero || quarto.codigoidentificador} em manutenção` : undefined}
+                title={
+                  quartoBloqueado
+                    ? `Quarto ${quarto.numero || (quarto as any).codigoidentificador} em manutenção`
+                    : undefined
+                }
                 className={`transition-colors ${
                   quartoBloqueado
                     ? 'border-r border-[#d1d5db] bg-[#e5e7eb]/80 text-[#6b7280] cursor-not-allowed'
@@ -401,7 +479,7 @@ export const PaginaMapaReservas: React.FC = () => {
 
         {/* Blocos de Reservas Ativas no Grid */}
         <div className="pointer-events-none absolute inset-y-0 left-[180px] right-0 z-20">
-          {reservasDoQuarto.map((reserva) => {
+          {reservasDoQuarto.map((reserva: any) => {
             const periodoInicioNormalizado = new Date(
               periodoInicio.getFullYear(),
               periodoInicio.getMonth(),
@@ -412,8 +490,14 @@ export const PaginaMapaReservas: React.FC = () => {
             const inicioVisivel = inicio < periodoInicioNormalizado ? periodoInicioNormalizado : inicio;
             const fimPeriodo = addDias(periodoInicioNormalizado, numeroDias);
             const fimVisivel = fim > fimPeriodo ? fimPeriodo : fim;
-            const startOffset = Math.max(0, Math.floor((inicioVisivel.getTime() - periodoInicioNormalizado.getTime()) / (1000 * 60 * 60 * 24)));
-            const duration = Math.max(1, Math.ceil((fimVisivel.getTime() - inicioVisivel.getTime()) / (1000 * 60 * 60 * 24)));
+            const startOffset = Math.max(
+              0,
+              Math.floor((inicioVisivel.getTime() - periodoInicioNormalizado.getTime()) / (1000 * 60 * 60 * 24))
+            );
+            const duration = Math.max(
+              1,
+              Math.ceil((fimVisivel.getTime() - inicioVisivel.getTime()) / (1000 * 60 * 60 * 24))
+            );
 
             return (
               <button
@@ -423,12 +507,27 @@ export const PaginaMapaReservas: React.FC = () => {
                   setReservaSelecionadaAcoes(reserva);
                   setModalAcoesAberto(true);
                 }}
-                aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${quarto.codigoidentificador || quarto.numero}`}
-                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm cursor-pointer hover:brightness-105 transition-all ${coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'}`}
-                style={{ left: `${startOffset * 80}px`, width: `${Math.max(duration * 80 - 4, 32)}px` }}
+                aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${
+                  (quarto as any).codigoidentificador || (quarto as any).codigoIdentificador || quarto.numero
+                }`}
+                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm cursor-pointer hover:brightness-105 transition-all ${
+                  coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'
+                }`}
+                style={{
+                  left: `${startOffset * 80}px`,
+                  width: `${Math.max(duration * 80 - 4, 32)}px`,
+                }}
               >
                 <span className="flex min-w-0 items-center gap-1 truncate">
-                  {reserva.statusreserva === 'RESERVADO' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : reserva.statusreserva === 'PRE_RESERVA' ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> : reserva.statusreserva === 'HOSPEDADO' ? <Clock3 className="h-3.5 w-3.5 shrink-0" /> : <Wrench className="h-3.5 w-3.5 shrink-0" />}
+                  {reserva.statusreserva === 'RESERVADO' ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  ) : reserva.statusreserva === 'PRE_RESERVA' ? (
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  ) : reserva.statusreserva === 'HOSPEDADO' ? (
+                    <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <Wrench className="h-3.5 w-3.5 shrink-0" />
+                  )}
                   <span className="truncate">{reserva.hospedenome}</span>
                 </span>
                 <span className="ml-1 shrink-0 rounded bg-white/10 px-1 py-0.5 text-[9px]">
@@ -464,7 +563,8 @@ export const PaginaMapaReservas: React.FC = () => {
                 Pré-cadastro de {hospedeFnrhAviso.nome} pronto para alocação de quarto!
               </p>
               <p className="text-[#205235] font-normal mt-0.5">
-                Clique sobre o quarto e data desejados no mapa abaixo para concluir a reserva. Os dados do hóspede serão selecionados automaticamente.
+                Clique sobre o quarto e data desejados no mapa abaixo para concluir a reserva. Os dados do hóspede
+                serão selecionados automaticamente.
               </p>
             </div>
           </div>
@@ -543,20 +643,22 @@ export const PaginaMapaReservas: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {(['TODOS', 'PRE_RESERVA', 'RESERVADO', 'HOSPEDADO', 'CREDITO', 'CONCLUIDA', 'CANCELADA'] as const).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setFiltroStatus(status)}
-                className={`rounded-full px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
-                  filtroStatus === status
-                    ? 'bg-[#053d1e] text-white'
-                    : 'bg-[#f8f9fa] text-[#414941] border border-[#c1c9bf] hover:bg-[#e6f4ea]'
-                }`}
-              >
-                {status === 'TODOS' ? 'Todos' : nomesStatusReserva[status] || status}
-              </button>
-            ))}
+            {(['TODOS', 'PRE_RESERVA', 'RESERVADO', 'HOSPEDADO', 'CREDITO', 'CONCLUIDA', 'CANCELADA'] as const).map(
+              (status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setFiltroStatus(status)}
+                  className={`rounded-full px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
+                    filtroStatus === status
+                      ? 'bg-[#053d1e] text-white'
+                      : 'bg-[#f8f9fa] text-[#414941] border border-[#c1c9bf] hover:bg-[#e6f4ea]'
+                  }`}
+                >
+                  {status === 'TODOS' ? 'Todos' : nomesStatusReserva[status] || status}
+                </button>
+              )
+            )}
           </div>
         </div>
       </div>
@@ -581,7 +683,7 @@ export const PaginaMapaReservas: React.FC = () => {
             <div className="text-left sm:text-right">
               <span className="text-[11px] font-semibold text-amber-900 block">Total de Créditos Retidos:</span>
               <span className="font-['Manrope'] text-lg font-extrabold text-amber-950">
-                {formatarMoeda(reservasCredito.reduce((acc, r) => acc + Number(r.valorpago || 0), 0))}
+                {formatarMoeda(reservasCredito.reduce((acc, r: any) => acc + Number(r.valorpago || 0), 0))}
               </span>
             </div>
           </div>
@@ -596,7 +698,7 @@ export const PaginaMapaReservas: React.FC = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {reservasCredito.map((res) => {
+              {reservasCredito.map((res: any) => {
                 const hospede = hospedeMap.get(Number(res.hospedeid));
                 const telefone = res.hospedetelefone || hospede?.telefone || hospede?.whatsapp || 'Não informado';
 
@@ -618,16 +720,12 @@ export const PaginaMapaReservas: React.FC = () => {
                       <div className="space-y-1.5 text-xs">
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span className="font-bold text-slate-900 truncate">
-                            {res.hospedenome}
-                          </span>
+                          <span className="font-bold text-slate-900 truncate">{res.hospedenome}</span>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span className="text-slate-600">
-                            {telefone}
-                          </span>
+                          <span className="text-slate-600">{telefone}</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -639,9 +737,7 @@ export const PaginaMapaReservas: React.FC = () => {
                       </div>
 
                       <div className="bg-[#e6f4ea]/60 border border-emerald-200 rounded-xl p-3 flex items-center justify-between">
-                        <span className="text-[11px] font-semibold text-emerald-900">
-                          Valor do Crédito:
-                        </span>
+                        <span className="text-[11px] font-semibold text-emerald-900">Valor do Crédito:</span>
                         <span className="font-['Manrope'] font-extrabold text-sm text-emerald-800">
                           {formatarMoeda(res.valorpago)}
                         </span>
@@ -676,7 +772,10 @@ export const PaginaMapaReservas: React.FC = () => {
         <div className="overflow-x-auto rounded-2xl border border-[#c1c9bf] bg-white shadow-sm">
           <div className="min-w-[1140px]">
             {/* Cabeçalho de Datas */}
-            <div className="grid border-b border-[#c1c9bf] bg-[#f8f9fa]" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
+            <div
+              className="grid border-b border-[#c1c9bf] bg-[#f8f9fa]"
+              style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}
+            >
               <div className="sticky left-0 z-30 flex items-center justify-between border-r border-[#c1c9bf] bg-[#f8f9fa] px-3 py-2 font-bold text-xs text-[#191c1d] shadow-[2px_0_4px_rgba(0,0,0,0.03)]">
                 <span>ACOMODAÇÃO</span>
                 <span className="text-[10px] text-[#717971]">{quartosFisicos.length} Quartos</span>
@@ -728,7 +827,10 @@ export const PaginaMapaReservas: React.FC = () => {
             <span className="text-xs font-semibold text-[#053d1e]">do período</span>
           </div>
           <div className="mt-2 h-2 w-full rounded-full bg-[#f3f4f6]">
-            <div className="h-2 rounded-full bg-[#053d1e] transition-all duration-300" style={{ width: `${ocupacao}%` }} />
+            <div
+              className="h-2 rounded-full bg-[#053d1e] transition-all duration-300"
+              style={{ width: `${ocupacao}%` }}
+            />
           </div>
         </div>
 
@@ -815,7 +917,11 @@ export const PaginaMapaReservas: React.FC = () => {
       />
 
       {carregandoReserva && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs" role="status" aria-live="polite">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs"
+          role="status"
+          aria-live="polite"
+        >
           <div className="rounded-xl bg-white px-5 py-4 shadow-xl flex items-center gap-3 text-sm font-semibold text-[#053d1e]">
             <LoaderCircle className="h-5 w-5 animate-spin" /> Salvando reserva...
           </div>

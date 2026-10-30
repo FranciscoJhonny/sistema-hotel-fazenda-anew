@@ -1,9 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { LoaderCircle, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { CategoriaProduto, Produto } from '../tipos';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { formatarMoeda, sanitizarValorMonetario } from '../utilitarios/formatadores';
+
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
 
 const categorias: { id: CategoriaProduto; label: string }[] = [
   { id: 'LOJINHA', label: 'Lojinha' },
@@ -19,7 +25,10 @@ const produtoInicial = {
 };
 
 const converterValorMonetario = (valor: string): number => {
-  const normalizado = valor.replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(?:\.|,|$))/g, '').replace(',', '.');
+  const normalizado = valor
+    .replace(/[^\d,.-]/g, '')
+    .replace(/\.(?=\d{3}(?:\.|,|$))/g, '')
+    .replace(',', '.');
   const numero = Number(normalizado);
   return Number.isFinite(numero) ? Math.max(0, numero) : 0;
 };
@@ -34,19 +43,34 @@ export const PaginaProdutos: React.FC = () => {
   const [busca, setBusca] = useState('');
   const [categoria, setCategoria] = useState('TODAS');
   const [modalAberta, setModalAberta] = useState(false);
-  const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
-  const [produtoParaExcluir, setProdutoParaExcluir] = useState<Produto | null>(null);
+  const [produtoEditando, setProdutoEditando] = useState<any | null>(null);
+  const [produtoParaExcluir, setProdutoParaExcluir] = useState<any | null>(null);
   const [formulario, setFormulario] = useState(produtoInicial);
   const [precoTexto, setPrecoTexto] = useState('');
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
-  const filtrados = produtos.filter(
-    (produto) =>
-      (categoria === 'TODAS' || produto.categoria === categoria) &&
-      produto.nome.toLowerCase().includes(busca.toLowerCase())
-  );
+  // Normalização da lista de produtos para suportar ambos os formatos
+  const produtosNormalizados = useMemo(() => {
+    return (produtos || []).map((p: any) => ({
+      ...p,
+      produtoid: getVal(p, 'produtoid', 'produtoId'),
+      nome: getVal(p, 'nome', 'nome') || '',
+      descricao: getVal(p, 'descricao', 'descricao') || '',
+      categoria: (getVal(p, 'categoria', 'categoria') as CategoriaProduto) || 'LOJINHA',
+      preco: Number(getVal(p, 'preco', 'preco') || 0),
+      estoque: Number(getVal(p, 'estoque', 'estoque') || 0),
+    }));
+  }, [produtos]);
+
+  const filtrados = useMemo(() => {
+    return produtosNormalizados.filter(
+      (produto) =>
+        (categoria === 'TODAS' || produto.categoria === categoria) &&
+        produto.nome.toLowerCase().includes(busca.toLowerCase())
+    );
+  }, [produtosNormalizados, categoria, busca]);
 
   const abrirNovo = () => {
     setProdutoEditando(null);
@@ -56,16 +80,17 @@ export const PaginaProdutos: React.FC = () => {
     setModalAberta(true);
   };
 
-  const abrirEdicao = (produto: Produto) => {
+  const abrirEdicao = (produto: any) => {
     setProdutoEditando(produto);
+    const preco = Number(getVal(produto, 'preco', 'preco') || 0);
     setFormulario({
-      nome: produto.nome,
-      descricao: produto.descricao || '',
-      categoria: (produto.categoria as CategoriaProduto) || 'LOJINHA',
-      preco: produto.preco,
-      estoque: produto.estoque,
+      nome: getVal(produto, 'nome', 'nome') || '',
+      descricao: getVal(produto, 'descricao', 'descricao') || '',
+      categoria: (getVal(produto, 'categoria', 'categoria') as CategoriaProduto) || 'LOJINHA',
+      preco: preco,
+      estoque: Number(getVal(produto, 'estoque', 'estoque') || 0),
     });
-    setPrecoTexto(formatarCampoMoeda(produto.preco));
+    setPrecoTexto(formatarCampoMoeda(preco));
     setErro(null);
     setModalAberta(true);
   };
@@ -75,11 +100,16 @@ export const PaginaProdutos: React.FC = () => {
     setCarregando(true);
     setErro(null);
     try {
-      const resultado = produtoEditando
-        ? await editarProduto(produtoEditando.produtoid, formulario)
+      const pId = produtoEditando ? getVal(produtoEditando, 'produtoid', 'produtoId') : null;
+
+      const resultado: any = produtoEditando
+        ? await editarProduto(pId, formulario)
         : await criarProduto(formulario).then(() => ({ sucesso: true, mensagem: '' }));
 
-      if (!resultado.sucesso) throw new Error(resultado.mensagem);
+      if (resultado && resultado.sucesso === false) {
+        throw new Error(resultado.mensagem || 'Erro ao salvar produto.');
+      }
+
       setModalAberta(false);
       setProdutoEditando(null);
       setFormulario(produtoInicial);
@@ -96,16 +126,19 @@ export const PaginaProdutos: React.FC = () => {
   const confirmarExclusao = async () => {
     if (!produtoParaExcluir) return;
     setCarregando(true);
-    const resultado = await excluirProduto(produtoParaExcluir.produtoid);
+    const pId = getVal(produtoParaExcluir, 'produtoid', 'produtoId');
+    const resultado: any = await excluirProduto(pId);
     setCarregando(false);
     setProdutoParaExcluir(null);
-    if (resultado.sucesso) {
+
+    if (resultado?.sucesso !== false) {
       setMensagem('Produto excluído com sucesso.');
       setTimeout(() => setMensagem(null), 3500);
     } else {
-      setErro(resultado.mensagem);
+      setErro(resultado?.mensagem || 'Erro ao excluir produto.');
     }
   };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -113,13 +146,24 @@ export const PaginaProdutos: React.FC = () => {
           <h1 className="font-['Manrope'] text-xl font-bold">Cadastro de Produtos</h1>
           <p className="text-xs text-[#717971] mt-1">Lojinha e Bar disponíveis para cadastro e lançamento.</p>
         </div>
-        <button onClick={abrirNovo} className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs">
+        <button
+          onClick={abrirNovo}
+          className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
+        >
           <Plus className="w-4 h-4" /> Novo Produto
         </button>
       </div>
 
-      {mensagem && <div className="p-3 rounded-xl bg-[#b8f0c2] text-[#053d1e] text-xs font-bold">{mensagem}</div>}
-      {erro && !modalAberta && <div className="p-3 rounded-xl bg-[#ffdad6] text-[#93000a] text-xs font-bold">{erro}</div>}
+      {mensagem && (
+        <div className="p-3 rounded-xl bg-[#b8f0c2] text-[#053d1e] text-xs font-bold">
+          {mensagem}
+        </div>
+      )}
+      {erro && !modalAberta && (
+        <div className="p-3 rounded-xl bg-[#ffdad6] text-[#93000a] text-xs font-bold">
+          {erro}
+        </div>
+      )}
 
       <div className="bg-white border border-[#c1c9bf] rounded-xl p-4 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
@@ -158,26 +202,40 @@ export const PaginaProdutos: React.FC = () => {
           </thead>
           <tbody className="divide-y divide-[#e1e3e4]">
             {filtrados.map((produto) => (
-              <tr key={produto.produtoid}>
+              <tr key={String(produto.produtoid)}>
                 <td className="p-3 font-semibold">{produto.nome}</td>
                 <td className="p-3">
-                  <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                    produto.categoria === 'LOJINHA'
-                      ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                  <span
+                    className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                      produto.categoria === 'LOJINHA'
+                        ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                        : produto.categoria === 'BAR'
+                        ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                        : 'bg-slate-100 text-slate-800 border border-slate-200'
+                    }`}
+                  >
+                    {produto.categoria === 'LOJINHA'
+                      ? 'Lojinha'
                       : produto.categoria === 'BAR'
-                      ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                      : 'bg-slate-100 text-slate-800 border border-slate-200'
-                  }`}>
-                    {produto.categoria === 'LOJINHA' ? 'Lojinha' : produto.categoria === 'BAR' ? 'Bar' : produto.categoria}
+                      ? 'Bar'
+                      : produto.categoria}
                   </span>
                 </td>
                 <td className="p-3 font-bold">{formatarMoeda(produto.preco)}</td>
                 <td className="p-3 font-semibold">{produto.estoque}</td>
                 <td className="p-3">
-                  <button onClick={() => abrirEdicao(produto)} className="p-1.5 text-[#053d1e] hover:bg-emerald-50 rounded" title="Editar">
+                  <button
+                    onClick={() => abrirEdicao(produto)}
+                    className="p-1.5 text-[#053d1e] hover:bg-emerald-50 rounded"
+                    title="Editar"
+                  >
                     <Pencil className="w-4 h-4" />
                   </button>
-                  <button onClick={() => setProdutoParaExcluir(produto)} className="p-1.5 text-[#ba1a1a] hover:bg-red-50 rounded" title="Excluir">
+                  <button
+                    onClick={() => setProdutoParaExcluir(produto)}
+                    className="p-1.5 text-[#ba1a1a] hover:bg-red-50 rounded"
+                    title="Excluir"
+                  >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </td>
@@ -188,22 +246,40 @@ export const PaginaProdutos: React.FC = () => {
       </div>
 
       {modalAberta && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs" role="dialog" aria-modal="true">
-          <form onSubmit={salvar} className="bg-white border border-[#c1c9bf] rounded-2xl shadow-2xl p-5 space-y-3 w-full max-w-xl">
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+        >
+          <form
+            onSubmit={salvar}
+            className="bg-white border border-[#c1c9bf] rounded-2xl shadow-2xl p-5 space-y-3 w-full max-w-xl"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h2 className="font-bold flex items-center gap-2 text-sm text-[#053d1e]">
                 <Package className="w-4 h-4 text-[#053d1e]" />
                 {produtoEditando ? 'Editar produto' : 'Novo produto'}
               </h2>
-              <button type="button" onClick={() => setModalAberta(false)} disabled={carregando} className="p-1 text-[#414941] hover:bg-slate-100 rounded">
+              <button
+                type="button"
+                onClick={() => setModalAberta(false)}
+                disabled={carregando}
+                className="p-1 text-[#414941] hover:bg-slate-100 rounded"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {erro && <div className="p-2 rounded-lg bg-[#ffdad6] text-[#93000a] text-xs font-semibold">{erro}</div>}
+            {erro && (
+              <div className="p-2 rounded-lg bg-[#ffdad6] text-[#93000a] text-xs font-semibold">
+                {erro}
+              </div>
+            )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Nome do Produto *</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Nome do Produto *
+              </label>
               <input
                 required
                 placeholder="Ex: Água Mineral 500ml, Sucos, Camiseta, etc."
@@ -229,7 +305,9 @@ export const PaginaProdutos: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Categoria *</label>
                 <select
                   value={formulario.categoria}
-                  onChange={(e) => setFormulario({ ...formulario, categoria: e.target.value as CategoriaProduto })}
+                  onChange={(e) =>
+                    setFormulario({ ...formulario, categoria: e.target.value as CategoriaProduto })
+                  }
                   className="w-full p-2 text-xs border border-[#c1c9bf] rounded-lg bg-white font-bold text-slate-800"
                 >
                   {categorias.map((item) => (
@@ -243,7 +321,9 @@ export const PaginaProdutos: React.FC = () => {
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Preço (R$) *</label>
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#717971]">R$</span>
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#717971]">
+                    R$
+                  </span>
                   <input
                     required
                     inputMode="decimal"
@@ -268,17 +348,27 @@ export const PaginaProdutos: React.FC = () => {
                   type="number"
                   placeholder="Estoque"
                   value={formulario.estoque}
-                  onChange={(e) => setFormulario({ ...formulario, estoque: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setFormulario({ ...formulario, estoque: Number(e.target.value) })
+                  }
                   className="w-full p-2 text-xs border border-[#c1c9bf] rounded-lg font-bold text-slate-800"
                 />
               </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button type="button" onClick={() => setModalAberta(false)} disabled={carregando} className="px-4 py-2 border border-[#c1c9bf] rounded-lg text-xs font-semibold hover:bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setModalAberta(false)}
+                disabled={carregando}
+                className="px-4 py-2 border border-[#c1c9bf] rounded-lg text-xs font-semibold hover:bg-slate-50 cursor-pointer"
+              >
                 Cancelar
               </button>
-              <button disabled={carregando} className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-lg text-xs font-bold shadow-xs">
+              <button
+                disabled={carregando}
+                className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-60"
+              >
                 Salvar Produto
               </button>
             </div>
@@ -289,7 +379,11 @@ export const PaginaProdutos: React.FC = () => {
       <ModalConfirmacao
         aberto={Boolean(produtoParaExcluir)}
         titulo="Excluir produto"
-        mensagem={`Tem certeza que deseja excluir o produto "${produtoParaExcluir?.nome}"?`}
+        mensagem={`Tem certeza que deseja excluir o produto "${getVal(
+          produtoParaExcluir,
+          'nome',
+          'nome'
+        )}"?`}
         tipo="perigo"
         textoConfirmar="Sim, excluir"
         textoCancelar="Cancelar"
@@ -298,7 +392,11 @@ export const PaginaProdutos: React.FC = () => {
       />
 
       {carregando && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs" role="status" aria-live="polite">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs"
+          role="status"
+          aria-live="polite"
+        >
           <div className="bg-white rounded-xl px-5 py-4 shadow-xl flex items-center gap-3 text-sm font-semibold text-[#053d1e]">
             <LoaderCircle className="w-5 h-5 animate-spin" />
             Processando...

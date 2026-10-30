@@ -9,14 +9,20 @@ import {
   ChevronLeft,
   ChevronRight,
   PauseCircle,
-  CalendarDays
+  CalendarDays,
 } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
 import { ModalCadastroHospede } from '../componentes/hospedes/ModalCadastroHospede';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Hospede, Reserva } from '../tipos';
 import { formatarCpf, formatarTelefone, formatarMoeda } from '../utilitarios/formatadores';
+
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
 
 const ITENS_POR_PAGINA = 10;
 
@@ -30,28 +36,36 @@ export const PaginaHospedes: React.FC = () => {
   const [hospedeExcluir, setHospedeExcluir] = useState<Hospede | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const hospedesFiltrados = hospedes.filter((h) => {
-    if (!busca.trim()) return true;
-    const termo = busca.toLowerCase();
-    return (
-      h.nomecompleto.toLowerCase().includes(termo) ||
-      h.cpf.includes(termo) ||
-      h.telefone.includes(termo) ||
-      (h.cidade && h.cidade.toLowerCase().includes(termo))
-    );
-  });
+  const hospedesFiltrados = useMemo(() => {
+    return (hospedes || []).filter((h: any) => {
+      if (!busca.trim()) return true;
+      const termo = busca.toLowerCase();
+      const nome = String(getVal(h, 'nomecompleto', 'nomeCompleto') || '').toLowerCase();
+      const cpf = String(getVal(h, 'cpf', 'cpf') || '');
+      const tel = String(getVal(h, 'telefone', 'telefone') || '');
+      const cidade = String(getVal(h, 'cidade', 'cidade') || '').toLowerCase();
+
+      return (
+        nome.includes(termo) ||
+        cpf.includes(termo) ||
+        tel.includes(termo) ||
+        cidade.includes(termo)
+      );
+    });
+  }, [hospedes, busca]);
 
   const totalPaginas = Math.ceil(hospedesFiltrados.length / ITENS_POR_PAGINA) || 1;
   const indiceInicial = (paginaAtual - 1) * ITENS_POR_PAGINA;
-  const hospedesPaginados = hospedesFiltrados.slice(
-    indiceInicial,
-    indiceInicial + ITENS_POR_PAGINA
-  );
+  const hospedesPaginados = useMemo(() => {
+    return hospedesFiltrados.slice(indiceInicial, indiceInicial + ITENS_POR_PAGINA);
+  }, [hospedesFiltrados, indiceInicial]);
 
-  const handleAbrirWhatsApp = (h: Hospede) => {
-    const numLimpo = (h.whatsapp || h.telefone || '').replace(/\D/g, '');
+  const handleAbrirWhatsApp = (h: any) => {
+    const tel = getVal(h, 'whatsapp', 'whatsapp') || getVal(h, 'telefone', 'telefone') || '';
+    const numLimpo = String(tel).replace(/\D/g, '');
     if (!numLimpo) return;
-    const saudacao = `Olá ${h.nomecompleto}! Tudo bem? Entramos em contato a respeito do seu cadastro no Hotel Fazenda Anew.`;
+    const nome = getVal(h, 'nomecompleto', 'nomeCompleto') || 'Cliente';
+    const saudacao = `Olá ${nome}! Tudo bem? Entramos em contato a respeito do seu cadastro no Hotel Fazenda Anew.`;
     const url = `https://wa.me/55${numLimpo}?text=${encodeURIComponent(saudacao)}`;
     window.open(url, '_blank');
   };
@@ -66,13 +80,20 @@ export const PaginaHospedes: React.FC = () => {
     setModalNovoAberto(true);
   };
 
-  const handleRemarcarReserva = (hospede: Hospede, reservaCredito?: Reserva) => {
+  const handleRemarcarReserva = (hospede: any, reservaCredito?: any) => {
+    const nome = getVal(hospede, 'nomecompleto', 'nomeCompleto');
+    const hId = getVal(hospede, 'hospedeid', 'hospedeId');
+    const vPago = reservaCredito ? Number(getVal(reservaCredito, 'valorpago', 'valorPago') || 0) : 0;
+
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('fnrh_reserva_preenchimento', JSON.stringify({
-        nomecompleto: hospede.nomecompleto,
-        hospedeid: hospede.hospedeid,
-        valorpago: reservaCredito ? Number(reservaCredito.valorpago || 0) : 0,
-      }));
+      sessionStorage.setItem(
+        'fnrh_reserva_preenchimento',
+        JSON.stringify({
+          nomecompleto: nome,
+          hospedeid: hId,
+          valorpago: vPago,
+        })
+      );
     }
     navegarPara('mapa-reservas');
   };
@@ -81,12 +102,13 @@ export const PaginaHospedes: React.FC = () => {
     dados: Omit<Hospede, 'hospedeid' | 'datainclusao' | 'dataoperacao' | 'ativo'>,
     hospedeId?: number | string
   ) => {
+    const nome = dados.nomecompleto;
     if (hospedeId) {
       await editarHospede(hospedeId, dados);
-      setFeedback(`Cadastro de ${dados.nomecompleto} atualizado com sucesso.`);
+      setFeedback(`Cadastro de ${nome} atualizado com sucesso.`);
     } else {
       await cadastrarHospede(dados);
-      setFeedback(`Hóspede ${dados.nomecompleto} cadastrado com sucesso.`);
+      setFeedback(`Hóspede ${nome} cadastrado com sucesso.`);
     }
     setModalNovoAberto(false);
     setTimeout(() => setFeedback(null), 3000);
@@ -94,7 +116,8 @@ export const PaginaHospedes: React.FC = () => {
 
   const handleConfirmarExclusao = async () => {
     if (hospedeExcluir) {
-      const ok = await excluirHospede(hospedeExcluir.hospedeid);
+      const hId = getVal(hospedeExcluir, 'hospedeid', 'hospedeId');
+      const ok = await excluirHospede(hId);
       if (ok) {
         setFeedback(`Hóspede removido com sucesso.`);
       } else {
@@ -185,27 +208,39 @@ export const PaginaHospedes: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {hospedesPaginados.map((h) => {
-                  const reservasDoHospede = reservas.filter(
-                    (r) => String(r.hospedeid) === String(h.hospedeid)
+                {hospedesPaginados.map((h: any) => {
+                  const hId = Number(getVal(h, 'hospedeid', 'hospedeId'));
+                  const nome = getVal(h, 'nomecompleto', 'nomeCompleto');
+                  const cpf = getVal(h, 'cpf', 'cpf');
+                  const tel = getVal(h, 'telefone', 'telefone');
+                  const email = getVal(h, 'email', 'email');
+                  const cidade = getVal(h, 'cidade', 'cidade');
+                  const estado = getVal(h, 'estado', 'estado');
+                  const alergias = getVal(h, 'alergias_restricoes', 'alergiasRestricoes');
+                  const observacoes = getVal(h, 'observacoes', 'observacoes');
+
+                  const reservasDoHospede = (reservas || []).filter(
+                    (r: any) => Number(getVal(r, 'hospedeid', 'hospedeId')) === hId
                   );
+
                   const reservasCredito = reservasDoHospede.filter(
-                    (r) => r.statusreserva === 'CREDITO'
+                    (r: any) => getVal(r, 'statusreserva', 'statusReserva') === 'CREDITO'
                   );
+
                   const totalCredito = reservasCredito.reduce(
-                    (acc, r) => acc + Number(r.valorpago || 0),
+                    (acc, r: any) => acc + Number(getVal(r, 'valorpago', 'valorPago') || 0),
                     0
                   );
 
                   return (
                     <tr
-                      key={h.hospedeid}
+                      key={hId}
                       className="hover:bg-slate-50/70 transition-colors group"
                     >
                       {/* ID */}
                       <td className="py-3 px-4">
                         <span className="font-bold text-slate-800 font-mono">
-                          #{h.hospedeid}
+                          #{hId}
                         </span>
                       </td>
 
@@ -213,25 +248,25 @@ export const PaginaHospedes: React.FC = () => {
                       <td className="py-3 px-4">
                         <div>
                           <span className="font-bold text-slate-900 block">
-                            {h.nomecompleto}
+                            {nome}
                           </span>
                           <span className="text-[11px] text-slate-500 font-mono">
-                            {h.cpf ? formatarCpf(h.cpf) : 'CPF não informado'}
+                            {cpf ? formatarCpf(cpf) : 'CPF não informado'}
                           </span>
-                          {h.alergias_restricoes && (
+                          {alergias && (
                             <span
                               className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium inline-block mt-1 max-w-xs truncate"
-                              title={`Restrições Alimentares: ${h.alergias_restricoes}`}
+                              title={`Restrições Alimentares: ${alergias}`}
                             >
-                              ⚠️ {h.alergias_restricoes}
+                              ⚠️ {alergias}
                             </span>
                           )}
-                          {h.observacoes && (
+                          {observacoes && (
                             <span
                               className="text-[10px] text-slate-500 italic block mt-0.5 truncate max-w-xs"
-                              title={h.observacoes}
+                              title={observacoes}
                             >
-                              Obs: {h.observacoes}
+                              Obs: {observacoes}
                             </span>
                           )}
                         </div>
@@ -239,10 +274,10 @@ export const PaginaHospedes: React.FC = () => {
 
                       {/* Contato */}
                       <td className="py-3 px-4">
-                        {h.telefone ? (
+                        {tel ? (
                           <div className="flex items-center gap-1.5">
                             <span className="font-medium text-slate-700">
-                              {formatarTelefone(h.telefone)}
+                              {formatarTelefone(tel)}
                             </span>
                             <button
                               type="button"
@@ -256,16 +291,16 @@ export const PaginaHospedes: React.FC = () => {
                         ) : (
                           <span className="text-slate-400">--</span>
                         )}
-                        {h.email && (
-                          <span className="text-[11px] text-slate-400 block">{h.email}</span>
+                        {email && (
+                          <span className="text-[11px] text-slate-400 block">{email}</span>
                         )}
                       </td>
 
                       {/* Localização */}
                       <td className="py-3 px-4">
-                        {h.cidade ? (
+                        {cidade ? (
                           <span className="font-medium text-slate-800 block">
-                            {h.cidade} - {h.estado || 'MS'}
+                            {cidade} - {estado || 'MS'}
                           </span>
                         ) : (
                           <span className="text-slate-400 italic">Não informada</span>
@@ -370,7 +405,11 @@ export const PaginaHospedes: React.FC = () => {
       <ModalConfirmacao
         aberto={Boolean(hospedeExcluir)}
         titulo="Excluir Hóspede"
-        mensagem={`Tem certeza de que deseja excluir o cadastro de "${hospedeExcluir?.nomecompleto}"?`}
+        mensagem={`Tem certeza de que deseja excluir o cadastro de "${getVal(
+          hospedeExcluir,
+          'nomecompleto',
+          'nomeCompleto'
+        )}"?`}
         tipo="perigo"
         textoConfirmar="Sim, Excluir"
         onCancelar={() => setHospedeExcluir(null)}

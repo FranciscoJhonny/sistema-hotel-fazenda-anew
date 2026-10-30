@@ -18,7 +18,7 @@ import {
   XCircle,
   LoaderCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-react';
 import { CadastroFnrh, Reserva, Pacote, Quarto } from '../tipos';
 import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/api/FnrhService';
@@ -32,8 +32,19 @@ import {
   formatarData,
   formatarMoeda,
   formatarTelefone,
-  calcularIdadeNumerica
+  calcularIdadeNumerica,
 } from '../utilitarios/formatadores';
+
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
 
 export interface ValoresCalculadosReserva {
   valorTotal: number;
@@ -48,42 +59,16 @@ export interface ValoresCalculadosReserva {
   totalHospedesFisicos: number;
 }
 
-/**
- * REGRA OFICIAL DE DIAS, PACOTES E CLASSIFICAÇÃO ETÁRIA:
- * 1. Contagem de Dias de Lazer:
- *    - Se dataEntrada === dataSaida: É DAY USE (1 dia, sem pernoite).
- *    - Se dataEntrada != dataSaida: A quantidade de dias é dada por (diasNoites + 1). Exemplo:
- *      * De 10/10 a 11/10 = 1 pernoite = 2 dias (entra 09h e sai 15h do dia seguinte).
- *      * De 09/10 a 11/10 ou 10/10 a 12/10 = 2 pernoites = 3 dias.
- *      * De 09/10 a 12/10 = 3 pernoites = 4 dias.
- *
- * 2. Identificação e Preços dos Pacotes (por pessoa/adulto):
- *    - 1 dia (mesma data de entrada e saída):
- *      -> Pacote: "Day Use" = R$ 200,00 por pessoa.
- *    - 2 dias (ex: 10/10 a 11/10):
- *      -> Pacote: "Final de Semana" = R$ 550,00 por pessoa.
- *    - 3 dias (ex: 10/10 a 12/10 ou 09/10 a 11/10):
- *      -> Pacote: "Final de Semana Estendido" = R$ 750,00 por pessoa.
- *    - 4 dias (ex: 09/10 a 12/10):
- *      -> Pacote: "Feriado Prolongado" = R$ 950,00 por pessoa.
- *
- * 3. Classificação Etária (calculada na data de entrada da reserva):
- *    - 0 a 5 anos: Bebê / Criança Grátis (0% - isento de cobrança).
- *    - 6 a 11 anos: Criança Pagante (Meia - 50% do valor do pacote).
- *    - 12 anos ou mais: Considerado ADULTO (Integral - 100% do valor do pacote).
- *
- * 4. Fórmula de Cálculo:
- *    Total = (Qtd Adultos [>= 12 anos] * ValorPacote) + (Qtd Crianças Meia [6 a 11 anos] * (ValorPacote * 0.5))
- *    Sinal (50%) = Total / 2
- */
 export const calcularValoresReserva = (
-  cadastro: CadastroFnrh,
+  cadastro: any,
   pacotes: Pacote[] = [],
   _quartos: Quarto[] = [],
   _configuracoes?: any
 ): ValoresCalculadosReserva => {
-  const dataEntradaStr = (cadastro.dataentrada || '').slice(0, 10).trim();
-  const dataSaidaStr = (cadastro.datasaida || '').slice(0, 10).trim();
+  const dEntrada = getVal(cadastro, 'dataentrada', 'dataEntrada');
+  const dSaida = getVal(cadastro, 'datasaida', 'dataSaida');
+  const dataEntradaStr = extrairDataIso(dEntrada).trim();
+  const dataSaidaStr = extrairDataIso(dSaida).trim();
 
   let dias = 2; // Padrão se não informado: 2 dias (Final de Semana)
 
@@ -123,9 +108,9 @@ export const calcularValoresReserva = (
     valorPorPessoa = 200;
     pacoteObjeto =
       pacotes.find(
-        (p) =>
-          String(p.tipopacote || '').toUpperCase() === 'DAY_USE' ||
-          Number(p.quantidadedias) === 1 ||
+        (p: any) =>
+          String(getVal(p, 'tipopacote', 'tipoPacote') || '').toUpperCase() === 'DAY_USE' ||
+          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 1 ||
           (p.nome || '').toLowerCase().includes('day use')
       ) || null;
     if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
@@ -134,8 +119,8 @@ export const calcularValoresReserva = (
     valorPorPessoa = 550;
     pacoteObjeto =
       pacotes.find(
-        (p) =>
-          Number(p.quantidadedias) === 2 ||
+        (p: any) =>
+          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 2 ||
           (p.nome || '').toLowerCase().includes('final de semana')
       ) || null;
     if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
@@ -144,8 +129,8 @@ export const calcularValoresReserva = (
     valorPorPessoa = 750;
     pacoteObjeto =
       pacotes.find(
-        (p) =>
-          Number(p.quantidadedias) === 3 ||
+        (p: any) =>
+          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 3 ||
           (p.nome || '').toLowerCase().includes('estendido')
       ) || null;
     if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
@@ -154,14 +139,14 @@ export const calcularValoresReserva = (
     valorPorPessoa = 950;
     pacoteObjeto =
       pacotes.find(
-        (p) =>
-          Number(p.quantidadedias) === 4 ||
+        (p: any) =>
+          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 4 ||
           (p.nome || '').toLowerCase().includes('feriado')
       ) || null;
     if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
   } else {
-    // Dias > 4
-    pacoteObjeto = pacotes.find((p) => Number(p.quantidadedias) === dias) || null;
+    pacoteObjeto =
+      pacotes.find((p: any) => Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === dias) || null;
     if (pacoteObjeto?.valor) {
       valorPorPessoa = Number(pacoteObjeto.valor);
       nomePacote = pacoteObjeto.nome;
@@ -171,10 +156,6 @@ export const calcularValoresReserva = (
     }
   }
 
-  // Regras de idade oficiais calculadas na data de entrada da reserva:
-  // 0 a 5 anos: Grátis (0%)
-  // 6 a 11 anos: Criança Pagante Meia (50%)
-  // 12 anos ou mais: ADULTO (Integral 100%)
   const idadeLimiteGratis = 5;
   const idadeLimiteMeia = 11;
   const porcentagemMeia = 50;
@@ -183,22 +164,21 @@ export const calcularValoresReserva = (
   let criancasGratis = 0;
   let criancasMeia = 0;
 
-  if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
-    cadastro.acompanhantes.forEach((a) => {
-      if (a.datanascimento) {
-        // Idade atual calculada com segurança
-        const idadeNum = Number(calcularIdadeNumerica(a.datanascimento));
+  const listaAcomp = getVal(cadastro, 'acompanhantes', 'acompanhantes') || [];
+
+  if (listaAcomp && listaAcomp.length > 0) {
+    listaAcomp.forEach((a: any) => {
+      const dtNasc = getVal(a, 'datanascimento', 'dataNascimento');
+      if (dtNasc) {
+        const idadeNum = Number(calcularIdadeNumerica(dtNasc));
         if (idadeNum <= idadeLimiteGratis) {
-          // 0 a 5 anos: Bebê / Criança Grátis
           criancasGratis++;
         } else if (idadeNum <= idadeLimiteMeia) {
-          // 6 a 11 anos: Criança Pagante (Meia)
           criancasMeia++;
         } else {
-          // 12 anos ou mais: Considerado ADULTO
           acompAdultos++;
         }
-      } else if (a.menoridade) {
+      } else if (getVal(a, 'menoridade', 'menoridade')) {
         criancasMeia++;
       } else {
         acompAdultos++;
@@ -206,28 +186,29 @@ export const calcularValoresReserva = (
     });
   }
 
-  // Titular é sempre 1 adulto + acompanhantes com 12 anos ou mais
   let qtdAdultos = 1 + acompAdultos;
   let qtdCriancasMeia = criancasMeia;
   let qtdCriancasGratis = criancasGratis;
 
-  // Se NÃO houver acompanhantes detalhados cadastrados, usa os contadores informados
-  if (!cadastro.acompanhantes || cadastro.acompanhantes.length === 0) {
-    qtdAdultos = Math.max(1, Number(cadastro.adultos || 1));
-    qtdCriancasMeia = Number(cadastro.criancas || 0);
+  if (!listaAcomp || listaAcomp.length === 0) {
+    qtdAdultos = Math.max(1, Number(getVal(cadastro, 'adultos', 'adultos') || 1));
+    qtdCriancasMeia = Number(getVal(cadastro, 'criancas', 'criancas') || 0);
     qtdCriancasGratis = 0;
   }
 
-  // Capacidade física total de acomodação (adultos + crianças meia + bebês/grátis)
   const totalHospedesFisicos = qtdAdultos + qtdCriancasMeia + qtdCriancasGratis;
 
-  // Fórmula oficial do pacote:
-  // Total = (Qtd Adultos [>= 12 anos] * ValorPacote) + (Qtd Crianças Meia [6 a 11 anos] * (ValorPacote * 0.5))
   const valorAdultos = qtdAdultos * valorPorPessoa;
   const valorCriancas = criancasMeia * ((valorPorPessoa * porcentagemMeia) / 100);
 
   const valorTotal = valorAdultos + valorCriancas;
   const valorSinal = valorTotal / 2;
+
+  const detalheTexto = `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${
+    valorCriancas > 0
+      ? ` + ${criancasMeia} cr x ${formatarMoeda((valorPorPessoa * porcentagemMeia) / 100)}`
+      : ''
+  }`;
 
   return {
     valorTotal,
@@ -235,7 +216,7 @@ export const calcularValoresReserva = (
     dias,
     pacote: pacoteObjeto,
     nomePacote,
-    detalhe: `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${valorCriancas > 0 ? ` + ${criancasMeia} cr x ${formatarMoeda((valorPorPessoa * porcentagemMeia) / 100)}` : ''}`,
+    detalhe: detalheTexto,
     qtdAdultos,
     qtdCriancasMeia: criancasMeia,
     qtdCriancasGratis: criancasGratis,
@@ -281,30 +262,38 @@ export const PaginaFnrhAdmin: React.FC = () => {
   const [copiadoId, setCopiadoId] = useState<number | null>(null);
 
   // Localiza a reserva vinculada por reservaid, hospedeid ou CPF do titular
-  const obterReservaDoCadastro = (item: CadastroFnrh): Reserva | null => {
-    // 1. Pelo reservaid registrado diretamente no cadastro
-    if (item.reservaid) {
-      const r = reservas.find((res) => Number(res.reservaid) === Number(item.reservaid));
+  const obterReservaDoCadastro = (item: any): Reserva | null => {
+    const itemReservaId = getVal(item, 'reservaid', 'reservaId');
+    if (itemReservaId) {
+      const r = reservas.find((res: any) => Number(getVal(res, 'reservaid', 'reservaId')) === Number(itemReservaId));
       if (r) return r;
     }
-    // 2. Pelo hospedeid vinculado na tabela public.hospede
-    if (item.hospedeid) {
-      const r = reservas.find(
-        (res) => Number(res.hospedeid) === Number(item.hospedeid) && res.statusreserva !== 'CANCELADA'
-      );
+
+    const itemHospedeId = getVal(item, 'hospedeid', 'hospedeId');
+    if (itemHospedeId) {
+      const r = reservas.find((res: any) => {
+        const rHospId = Number(getVal(res, 'hospedeid', 'hospedeId'));
+        const rStatus = getVal(res, 'statusreserva', 'statusReserva');
+        return rHospId === Number(itemHospedeId) && rStatus !== 'CANCELADA';
+      });
       if (r) return r;
     }
-    // 3. Pelo CPF do titular cadastrado
-    if (item.cpf) {
-      const cpfLimpo = item.cpf.replace(/\D/g, '');
+
+    const itemCpf = getVal(item, 'cpf', 'cpf');
+    if (itemCpf) {
+      const cpfLimpo = String(itemCpf).replace(/\D/g, '');
       if (cpfLimpo.length === 11) {
-        const hEncontrado = hospedes.find(
-          (h) => h.cpf && h.cpf.replace(/\D/g, '') === cpfLimpo
-        );
+        const hEncontrado = hospedes.find((h: any) => {
+          const hCpf = getVal(h, 'cpf', 'cpf');
+          return hCpf && String(hCpf).replace(/\D/g, '') === cpfLimpo;
+        });
         if (hEncontrado) {
-          const r = reservas.find(
-            (res) => Number(res.hospedeid) === Number(hEncontrado.hospedeid) && res.statusreserva !== 'CANCELADA'
-          );
+          const hId = Number(getVal(hEncontrado, 'hospedeid', 'hospedeId'));
+          const r = reservas.find((res: any) => {
+            const rHospId = Number(getVal(res, 'hospedeid', 'hospedeId'));
+            const rStatus = getVal(res, 'statusreserva', 'statusReserva');
+            return rHospId === hId && rStatus !== 'CANCELADA';
+          });
           if (r) return r;
         }
       }
@@ -312,15 +301,18 @@ export const PaginaFnrhAdmin: React.FC = () => {
     return null;
   };
 
-  const handleIrParaReserva = async (cadastro: CadastroFnrh) => {
-    setRedirecionandoReservaId(cadastro.cadastroid);
+  const handleIrParaReserva = async (cadastro: any) => {
+    const cId = Number(getVal(cadastro, 'cadastroid', 'cadastroId'));
+    setRedirecionandoReservaId(cId);
     try {
-      const dataEntradaRef = (cadastro.dataentrada || '').slice(0, 10).trim();
       const idadesCriancasCalculadas: number[] = [];
-      if (cadastro.acompanhantes && cadastro.acompanhantes.length > 0) {
-        cadastro.acompanhantes.forEach((a) => {
-          if (a.datanascimento) {
-            const age = calcularIdadeNumerica(a.datanascimento);
+      const listaAcomp = getVal(cadastro, 'acompanhantes', 'acompanhantes') || [];
+
+      if (listaAcomp && listaAcomp.length > 0) {
+        listaAcomp.forEach((a: any) => {
+          const dtNasc = getVal(a, 'datanascimento', 'dataNascimento');
+          if (dtNasc) {
+            const age = calcularIdadeNumerica(dtNasc);
             if (age >= 0 && age <= 11) {
               idadesCriancasCalculadas.push(age);
             }
@@ -329,32 +321,40 @@ export const PaginaFnrhAdmin: React.FC = () => {
       }
 
       const valoresCalculados = calcularValoresReserva(cadastro, pacotes, quartos, configuracoes);
-      const dataCriacaoFnrh = (cadastro.datainclusao || (cadastro as any).created_at || (cadastro as any).criado_em || cadastro.data_declaracao || '')?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+      const dataCriacaoFnrh =
+        extrairDataIso(
+          getVal(cadastro, 'datainclusao', 'dataInclusao') ||
+            (cadastro as any).created_at ||
+            (cadastro as any).criado_em ||
+            getVal(cadastro, 'data_declaracao', 'dataDeclaracao')
+        ) || new Date().toISOString().slice(0, 10);
+
+      const vSinal = Number(getVal(cadastro, 'valor_sinal', 'valorSinal') || 0);
+      const formaPag = getVal(cadastro, 'forma_pagamento', 'formaPagamento');
 
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(
           'fnrh_reserva_preenchimento',
           JSON.stringify({
-            cadastroid: cadastro.cadastroid,
-            hospedeid: cadastro.hospedeid,
-            nomecompleto: cadastro.nomecompleto,
-            telefone: cadastro.telefone,
-            cpf: cadastro.cpf,
+            cadastroid: cId,
+            hospedeid: getVal(cadastro, 'hospedeid', 'hospedeId'),
+            nomecompleto: getVal(cadastro, 'nomecompleto', 'nomeCompleto'),
+            telefone: getVal(cadastro, 'telefone', 'telefone'),
+            cpf: getVal(cadastro, 'cpf', 'cpf'),
             datareserva: dataCriacaoFnrh,
-            dataentrada: cadastro.dataentrada,
-            datasaida: cadastro.datasaida,
+            dataentrada: extrairDataIso(getVal(cadastro, 'dataentrada', 'dataEntrada')),
+            datasaida: extrairDataIso(getVal(cadastro, 'datasaida', 'dataSaida')),
             adultos: valoresCalculados.qtdAdultos,
             criancas: idadesCriancasCalculadas.length,
             criancas_gratis: valoresCalculados.qtdCriancasGratis,
             idades_criancas: idadesCriancasCalculadas,
-            valor_sinal: cadastro.valor_sinal > 0 ? cadastro.valor_sinal : (cadastro.forma_pagamento === 'CHECKOUT' ? 0 : valoresCalculados.valorSinal),
+            valor_sinal: vSinal > 0 ? vSinal : formaPag === 'CHECKOUT' ? 0 : valoresCalculados.valorSinal,
             valortotal: valoresCalculados.valorTotal,
-            pacoteid: valoresCalculados.pacote?.pacoteid,
+            pacoteid: getVal(valoresCalculados.pacote, 'pacoteid', 'pacoteId'),
           })
         );
       }
 
-      // Recarrega todos os hóspedes e reservas antes de abrir a tela do mapa
       await recarregarDados();
       navegarPara('mapa-reservas');
     } catch (e) {
@@ -365,7 +365,6 @@ export const PaginaFnrhAdmin: React.FC = () => {
     }
   };
 
-  // Carrega a lista de cadastros
   const carregarDados = async () => {
     setCarregando(true);
     setErro(null);
@@ -387,13 +386,15 @@ export const PaginaFnrhAdmin: React.FC = () => {
     setTimeout(() => setFeedback(null), 4000);
   };
 
-  const handleCopiarLink = async (cadastro: CadastroFnrh) => {
-    const link = gerarLinkPublicoFnrh(cadastro.token_acesso || '');
+  const handleCopiarLink = async (cadastro: any) => {
+    const token = getVal(cadastro, 'token_acesso', 'tokenAcesso') || '';
+    const link = gerarLinkPublicoFnrh(token);
+    const cId = Number(getVal(cadastro, 'cadastroid', 'cadastroId'));
     try {
       await navigator.clipboard.writeText(link);
-      setCopiadoId(cadastro.cadastroid);
+      setCopiadoId(cId);
       setTimeout(() => setCopiadoId(null), 2500);
-      exibirFeedback(`Link do cadastro #${cadastro.cadastroid} copiado!`);
+      exibirFeedback(`Link do cadastro #${cId} copiado!`);
     } catch {
       const textArea = document.createElement('textarea');
       textArea.value = link;
@@ -401,15 +402,18 @@ export const PaginaFnrhAdmin: React.FC = () => {
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      setCopiadoId(cadastro.cadastroid);
+      setCopiadoId(cId);
       setTimeout(() => setCopiadoId(null), 2500);
     }
   };
 
-  const handleEnviarWhatsApp = (cadastro: CadastroFnrh) => {
-    const link = gerarLinkPublicoFnrh(cadastro.token_acesso || '');
-    const numLimpo = (cadastro.telefone || '').replace(/\D/g, '');
-    const saudacao = cadastro.nomecompleto ? `Olá ${cadastro.nomecompleto}!` : 'Olá!';
+  const handleEnviarWhatsApp = (cadastro: any) => {
+    const token = getVal(cadastro, 'token_acesso', 'tokenAcesso') || '';
+    const link = gerarLinkPublicoFnrh(token);
+    const tel = getVal(cadastro, 'telefone', 'telefone') || '';
+    const numLimpo = String(tel).replace(/\D/g, '');
+    const nome = getVal(cadastro, 'nomecompleto', 'nomeCompleto');
+    const saudacao = nome ? `Olá ${nome}!` : 'Olá!';
     const texto = `${saudacao} Tudo bem?
 
 Para agilizarmos seu atendimento e a confirmação da sua reserva no *Hotel Fazenda Anew*, por favor preencha sua *Ficha Nacional de Registro de Hóspedes (FNRH)* através deste link seguro:
@@ -428,7 +432,8 @@ Qualquer dúvida, estamos à disposição!`;
 
   const handleConfirmarCancelamento = async () => {
     if (!cadastroCancelar) return;
-    const res = await FnrhService.excluirCadastroFnrh(cadastroCancelar.cadastroid);
+    const cId = Number(getVal(cadastroCancelar, 'cadastroid', 'cadastroId'));
+    const res = await FnrhService.excluirCadastroFnrh(cId);
     if (res.sucesso) {
       exibirFeedback('Link/Cadastro excluído com sucesso.');
       setCadastroCancelar(null);
@@ -442,13 +447,16 @@ Qualquer dúvida, estamos à disposição!`;
   useEffect(() => {
     if (!cadastros.length || !reservas.length) return;
 
-    cadastros.forEach(async (c) => {
-      const r = obterReservaDoCadastro(c);
-      if (r && (c.status !== 'RESERVA_CRIADA' || !c.reservaid)) {
+    cadastros.forEach(async (c: any) => {
+      const r: any = obterReservaDoCadastro(c);
+      const cStatus = getVal(c, 'status', 'status');
+      const cResId = getVal(c, 'reservaid', 'reservaId');
+
+      if (r && (cStatus !== 'RESERVA_CRIADA' || !cResId)) {
         await FnrhService.vincularReservaAoCadastroFnrh({
-          cadastroid: c.cadastroid,
-          hospedeid: Number(c.hospedeid || r.hospedeid),
-          reservaid: Number(r.reservaid),
+          cadastroid: Number(getVal(c, 'cadastroid', 'cadastroId')),
+          hospedeid: Number(getVal(c, 'hospedeid', 'hospedeId') || getVal(r, 'hospedeid', 'hospedeId')),
+          reservaid: Number(getVal(r, 'reservaid', 'reservaId')),
           usuarioId: usuarioAtual?.usuarioid,
         });
       }
@@ -463,17 +471,23 @@ Qualquer dúvida, estamos à disposição!`;
     let liberadas = 0;
     let reservasCriadas = 0;
 
-    cadastros.forEach((c) => {
+    cadastros.forEach((c: any) => {
       const r = obterReservaDoCadastro(c);
-      const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
-      const expirado = Boolean(c.token_expira_em && new Date(c.token_expira_em) < new Date());
-      const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
+      const statusUpper = String(getVal(c, 'status', 'status') || '').toUpperCase();
+      const resId = getVal(c, 'reservaid', 'reservaId');
+      const jaReserva = statusUpper === 'RESERVA_CRIADA' || Boolean(resId) || Boolean(r);
+      const expiraEm = getVal(c, 'token_expira_em', 'tokenExpiraEm');
+      const expirado = Boolean(expiraEm && new Date(expiraEm) < new Date());
+      const nome = getVal(c, 'nomecompleto', 'nomeCompleto');
+      const cpf = getVal(c, 'cpf', 'cpf');
+      const decl = getVal(c, 'declaracao_aceita', 'declaracaoAceita');
+      const temDados = Boolean(nome && cpf && decl);
 
       if (jaReserva) {
         reservasCriadas++;
-      } else if (c.status === 'LIBERADA_PARA_RESERVA') {
+      } else if (statusUpper === 'LIBERADA_PARA_RESERVA') {
         liberadas++;
-      } else if (c.status === 'AGUARDANDO_PAGAMENTO') {
+      } else if (statusUpper === 'AGUARDANDO_PAGAMENTO') {
         if (temDados) {
           preenchidoAguardandoSinal++;
         } else if (!expirado) {
@@ -485,16 +499,22 @@ Qualquer dúvida, estamos à disposição!`;
     return { total, aguardandoPreenchimento, preenchidoAguardandoSinal, liberadas, reservasCriadas };
   }, [cadastros, reservas, hospedes]);
 
-  // Ordenação estrita por prioridade de estados:
-  // 1º: Aguardando Preenchimento (status 'PENDENTE' / 'AGUARDANDO_PREENCHIMENTO')
-  // 2º: Ficha Preenchida / Aguardando Sinal (status 'AGUARDANDO_PAGAMENTO')
-  // 3º: Reservas Concluídas (status 'CONCLUIDO' / 'RESERVADO')
-  // Desempate: cadastroid DESC (mais recentes no topo de cada grupo)
-  const obterPrioridadeStatus = (c: CadastroFnrh): number => {
-    const statusUpper = String(c.status || '').toUpperCase();
+  const obterPrioridadeStatus = (c: any): number => {
+    const statusUpper = String(getVal(c, 'status', 'status') || '').toUpperCase();
     const r = obterReservaDoCadastro(c);
-    const jaReserva = statusUpper === 'RESERVA_CRIADA' || statusUpper === 'CONCLUIDO' || statusUpper === 'CONCLUIDA' || statusUpper === 'RESERVADO' || Boolean(c.reservaid) || Boolean(r);
-    const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
+    const resId = getVal(c, 'reservaid', 'reservaId');
+    const jaReserva =
+      statusUpper === 'RESERVA_CRIADA' ||
+      statusUpper === 'CONCLUIDO' ||
+      statusUpper === 'CONCLUIDA' ||
+      statusUpper === 'RESERVADO' ||
+      Boolean(resId) ||
+      Boolean(r);
+
+    const nome = getVal(c, 'nomecompleto', 'nomeCompleto');
+    const cpf = getVal(c, 'cpf', 'cpf');
+    const decl = getVal(c, 'declaracao_aceita', 'declaracaoAceita');
+    const temDados = Boolean(nome && cpf && decl);
 
     // 1º: Aguardando Preenchimento
     if (
@@ -525,11 +545,10 @@ Qualquer dúvida, estamos à disposição!`;
       return 3;
     }
 
-    // 4º: Outros (Cancelados, Expirados, etc.)
     return 4;
   };
 
-  const compararPorPrioridade = (a: CadastroFnrh, b: CadastroFnrh): number => {
+  const compararPorPrioridade = (a: any, b: any): number => {
     const prioA = obterPrioridadeStatus(a);
     const prioB = obterPrioridadeStatus(b);
 
@@ -537,53 +556,61 @@ Qualquer dúvida, estamos à disposição!`;
       return prioA - prioB;
     }
 
-    // Desempate: cadastroid DESC (mais recentes no topo de cada grupo)
-    return Number(b.cadastroid || 0) - Number(a.cadastroid || 0);
+    const idA = Number(getVal(a, 'cadastroid', 'cadastroId') || 0);
+    const idB = Number(getVal(b, 'cadastroid', 'cadastroId') || 0);
+    return idB - idA;
   };
 
-  // Lista Filtrada e Ordenada por Prioridade Estrita
   const cadastrosFiltrados = useMemo(() => {
-    const filtrados = cadastros.filter((c) => {
-      // Filtro de busca
+    const filtrados = cadastros.filter((c: any) => {
+      const nome = getVal(c, 'nomecompleto', 'nomeCompleto');
+      const cpf = getVal(c, 'cpf', 'cpf');
+      const tel = getVal(c, 'telefone', 'telefone');
+      const token = getVal(c, 'token_acesso', 'tokenAcesso');
+      const cId = String(getVal(c, 'cadastroid', 'cadastroId') || '');
+
       if (busca.trim()) {
         const termo = busca.toLowerCase();
         const termoNumeros = busca.replace(/\D/g, '');
-        const coincideNome = c.nomecompleto?.toLowerCase().includes(termo);
+        const coincideNome = nome?.toLowerCase().includes(termo);
         const coincideCpf = Boolean(
-          c.cpf?.toLowerCase().includes(termo) ||
-          (termoNumeros && c.cpf?.replace(/\D/g, '').includes(termoNumeros))
+          cpf?.toLowerCase().includes(termo) ||
+            (termoNumeros && cpf?.replace(/\D/g, '').includes(termoNumeros))
         );
         const coincideTel = Boolean(
-          c.telefone?.includes(termo) ||
-          (termoNumeros && c.telefone?.replace(/\D/g, '').includes(termoNumeros))
+          tel?.includes(termo) ||
+            (termoNumeros && tel?.replace(/\D/g, '').includes(termoNumeros))
         );
-        const coincideToken = c.token_acesso?.toLowerCase().includes(termo);
-        const coincideId = String(c.cadastroid) === termo;
+        const coincideToken = token?.toLowerCase().includes(termo);
+        const coincideId = cId === termo;
         if (!coincideNome && !coincideCpf && !coincideTel && !coincideToken && !coincideId) {
           return false;
         }
       }
 
-      const expirado = Boolean(c.token_expira_em && new Date(c.token_expira_em) < new Date());
-      const temDados = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
+      const expiraEm = getVal(c, 'token_expira_em', 'tokenExpiraEm');
+      const expirado = Boolean(expiraEm && new Date(expiraEm) < new Date());
+      const decl = getVal(c, 'declaracao_aceita', 'declaracaoAceita');
+      const temDados = Boolean(nome && cpf && decl);
       const r = obterReservaDoCadastro(c);
-      const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
+      const resId = getVal(c, 'reservaid', 'reservaId');
+      const statusUpper = String(getVal(c, 'status', 'status') || '').toUpperCase();
+      const jaReserva = statusUpper === 'RESERVA_CRIADA' || Boolean(resId) || Boolean(r);
 
-      // Filtro de status
       if (filtroStatus === 'AGUARDANDO_PREENCHIMENTO') {
-        return c.status === 'AGUARDANDO_PAGAMENTO' && !temDados && !expirado && !jaReserva;
+        return statusUpper === 'AGUARDANDO_PAGAMENTO' && !temDados && !expirado && !jaReserva;
       }
       if (filtroStatus === 'PREENCHIDO_AGUARDANDO_SINAL') {
-        return c.status === 'AGUARDANDO_PAGAMENTO' && temDados && !jaReserva;
+        return statusUpper === 'AGUARDANDO_PAGAMENTO' && temDados && !jaReserva;
       }
       if (filtroStatus === 'LIBERADA_PARA_RESERVA') {
-        return c.status === 'LIBERADA_PARA_RESERVA' && !jaReserva;
+        return statusUpper === 'LIBERADA_PARA_RESERVA' && !jaReserva;
       }
       if (filtroStatus === 'RESERVA_CRIADA') {
         return jaReserva;
       }
       if (filtroStatus === 'CANCELADA_EXPIRADA') {
-        return (c.status === 'CANCELADA' || (expirado && c.status === 'AGUARDANDO_PAGAMENTO')) && !jaReserva;
+        return (statusUpper === 'CANCELADA' || (expirado && statusUpper === 'AGUARDANDO_PAGAMENTO')) && !jaReserva;
       }
 
       return true;
@@ -592,36 +619,39 @@ Qualquer dúvida, estamos à disposição!`;
     return filtrados.sort(compararPorPrioridade);
   }, [cadastros, busca, filtroStatus, reservas, hospedes]);
 
-  // Paginação: 15 itens por página
   const totalPaginas = Math.max(1, Math.ceil(cadastrosFiltrados.length / ITENS_POR_PAGINA));
 
-  // Reset de página ao alterar busca ou filtro
   useEffect(() => {
     setPaginaAtual(1);
   }, [busca, filtroStatus]);
 
-  // Ajusta a página atual caso diminua o total de páginas
   useEffect(() => {
     if (paginaAtual > totalPaginas) {
       setPaginaAtual(totalPaginas);
     }
   }, [totalPaginas, paginaAtual]);
 
-  // 4. Renderize a lista utilizando a variável paginada cadastrosPaginados
   const cadastrosPaginados = useMemo(() => {
     const inicio = (paginaAtual - 1) * ITENS_POR_PAGINA;
     return cadastrosFiltrados.slice(inicio, inicio + ITENS_POR_PAGINA);
   }, [cadastrosFiltrados, paginaAtual]);
 
-  // Renderiza a tag de status visual
-  const renderizarStatusBadge = (c: CadastroFnrh) => {
-    const expirado = Boolean(c.token_expira_em && new Date(c.token_expira_em) < new Date() && c.status === 'AGUARDANDO_PAGAMENTO');
-    const preenchido = Boolean(c.nomecompleto && c.cpf && c.declaracao_aceita);
-    const r = obterReservaDoCadastro(c);
-    const jaReserva = c.status === 'RESERVA_CRIADA' || Boolean(c.reservaid) || Boolean(r);
-    const numReserva = r?.codigo || (c.reservaid ? `#${c.reservaid}` : (r?.reservaid ? `#${r.reservaid}` : ''));
+  const renderizarStatusBadge = (c: any) => {
+    const expiraEm = getVal(c, 'token_expira_em', 'tokenExpiraEm');
+    const statusUpper = String(getVal(c, 'status', 'status') || '').toUpperCase();
+    const expirado = Boolean(expiraEm && new Date(expiraEm) < new Date() && statusUpper === 'AGUARDANDO_PAGAMENTO');
+    const nome = getVal(c, 'nomecompleto', 'nomeCompleto');
+    const cpf = getVal(c, 'cpf', 'cpf');
+    const decl = getVal(c, 'declaracao_aceita', 'declaracaoAceita');
+    const preenchido = Boolean(nome && cpf && decl);
+    const r: any = obterReservaDoCadastro(c);
+    const resId = getVal(c, 'reservaid', 'reservaId');
+    const jaReserva = statusUpper === 'RESERVA_CRIADA' || Boolean(resId) || Boolean(r);
+    const numReserva =
+      getVal(r, 'codigo', 'codigo') ||
+      (resId ? `#${resId}` : getVal(r, 'reservaid', 'reservaId') ? `#${getVal(r, 'reservaid', 'reservaId')}` : '');
 
-    if (c.status === 'CANCELADA') {
+    if (statusUpper === 'CANCELADA') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-red-50 text-red-700 border border-red-200">
           <XCircle className="w-3 h-3" />
@@ -637,7 +667,7 @@ Qualquer dúvida, estamos à disposição!`;
         </span>
       );
     }
-    if (c.status === 'LIBERADA_PARA_RESERVA') {
+    if (statusUpper === 'LIBERADA_PARA_RESERVA') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full bg-blue-50 text-blue-800 border border-blue-200">
           <CheckCircle2 className="w-3 h-3" />
@@ -711,7 +741,6 @@ Qualquer dúvida, estamos à disposição!`;
         </div>
       </div>
 
-      {/* Mensagem de Erro Geral */}
       {erro && (
         <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-xs font-semibold text-red-700">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -845,279 +874,295 @@ Qualquer dúvida, estamos à disposição!`;
         ) : (
           <>
             <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold">
-                  <th className="py-3 px-4">Cadastro / Link</th>
-                  <th className="py-3 px-4">Hóspede Titular</th>
-                  <th className="py-3 px-4">Contato / WhatsApp</th>
-                  <th className="py-3 px-4">Estadia Prevista</th>
-                  <th className="py-3 px-4 font-bold text-[#053d1e]">Total Previsto</th>
-                  <th className="py-3 px-4 font-bold text-[#053d1e]">Sinal (50%)</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {cadastrosPaginados.map((item) => {
-                  const diasRestantes = item.token_expira_em
-                    ? Math.ceil((new Date(item.token_expira_em).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                    : 0;
-                  const reservaVinculada = obterReservaDoCadastro(item);
-                  const jaPossuiReserva = Boolean(
-                    item.status === 'RESERVA_CRIADA' ||
-                    item.reservaid ||
-                    reservaVinculada
-                  );
-                  const codigoOuIdReserva =
-                    reservaVinculada?.codigo ||
-                    (item.reservaid ? `#${item.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold">
+                    <th className="py-3 px-4">Cadastro / Link</th>
+                    <th className="py-3 px-4">Hóspede Titular</th>
+                    <th className="py-3 px-4">Contato / WhatsApp</th>
+                    <th className="py-3 px-4">Estadia Prevista</th>
+                    <th className="py-3 px-4 font-bold text-[#053d1e]">Total Previsto</th>
+                    <th className="py-3 px-4 font-bold text-[#053d1e]">Sinal (50%)</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {cadastrosPaginados.map((item: any) => {
+                    const cId = Number(getVal(item, 'cadastroid', 'cadastroId'));
+                    const expiraEm = getVal(item, 'token_expira_em', 'tokenExpiraEm');
+                    const diasRestantes = expiraEm
+                      ? Math.ceil((new Date(expiraEm).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                      : 0;
 
-                  // Cálculo dos valores da estadia e sinal conforme a Regra Oficial de Pacotes e Idade
-                  const valoresCalculados = calcularValoresReserva(item, pacotes, quartos, configuracoes);
+                    const reservaVinculada: any = obterReservaDoCadastro(item);
+                    const statusUpper = String(getVal(item, 'status', 'status') || '').toUpperCase();
+                    const itemResId = getVal(item, 'reservaid', 'reservaId');
+                    const jaPossuiReserva = Boolean(
+                      statusUpper === 'RESERVA_CRIADA' ||
+                        itemResId ||
+                        reservaVinculada
+                    );
 
-                  return (
-                    <tr
-                      key={item.cadastroid}
-                      className="hover:bg-slate-50/70 transition-colors group"
-                    >
-                      {/* ID e Link */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-800 font-mono">#{item.cadastroid}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopiarLink(item)}
-                            title="Copiar Link Seguro"
-                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                              copiadoId === item.cadastroid
-                                ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            {copiadoId === item.cadastroid ? (
-                              <Check className="w-3.5 h-3.5" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">
-                          Criado: {item.datainclusao ? new Date(item.datainclusao).toLocaleDateString('pt-BR') : '-'}
-                          {diasRestantes > 0
-                            ? ` • ${diasRestantes}d restantes`
-                            : ' • Expirado'}
-                        </span>
-                      </td>
+                    const codigoOuIdReserva =
+                      getVal(reservaVinculada, 'codigo', 'codigo') ||
+                      (itemResId ? `#${itemResId}` : getVal(reservaVinculada, 'reservaid', 'reservaId') ? `#${getVal(reservaVinculada, 'reservaid', 'reservaId')}` : '');
 
-                      {/* Hóspede */}
-                      <td className="py-3 px-4">
-                        {item.nomecompleto ? (
-                          <div>
-                            <span className="font-bold text-slate-900 block">{item.nomecompleto}</span>
-                            <span className="text-[11px] text-slate-500 font-mono">
-                              {item.cpf ? formatarCpf(item.cpf) : 'CPF não informado'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">Aguardando cliente preencher...</span>
-                        )}
-                      </td>
+                    const valoresCalculados = calcularValoresReserva(item, pacotes, quartos, configuracoes);
+                    const dEntrada = getVal(item, 'dataentrada', 'dataEntrada');
+                    const dSaida = getVal(item, 'datasaida', 'dataSaida');
+                    const listaAcomp = getVal(item, 'acompanhantes', 'acompanhantes') || [];
 
-                      {/* Contato */}
-                      <td className="py-3 px-4">
-                        {item.telefone ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-medium text-slate-700">
-                              {formatarTelefone(item.telefone)}
-                            </span>
+                    const nomeTitular = getVal(item, 'nomecompleto', 'nomeCompleto');
+                    const cpfTitular = getVal(item, 'cpf', 'cpf');
+                    const telTitular = getVal(item, 'telefone', 'telefone');
+                    const emailTitular = getVal(item, 'email', 'email');
+                    const dataInclusao = getVal(item, 'datainclusao', 'dataInclusao');
+
+                    return (
+                      <tr
+                        key={cId}
+                        className="hover:bg-slate-50/70 transition-colors group"
+                      >
+                        {/* ID e Link */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800 font-mono">#{cId}</span>
                             <button
                               type="button"
-                              onClick={() => handleEnviarWhatsApp(item)}
-                              title="Abrir no WhatsApp com mensagem pronta"
-                              className="p-1 rounded-md bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-colors cursor-pointer"
+                              onClick={() => handleCopiarLink(item)}
+                              title="Copiar Link Seguro"
+                              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                copiadoId === cId
+                                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
                             >
-                              <Send className="w-3 h-3" />
+                              {copiadoId === cId ? (
+                                <Check className="w-3.5 h-3.5" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
                             </button>
                           </div>
-                        ) : (
-                          <span className="text-slate-400">--</span>
-                        )}
-                        {item.email && (
-                          <span className="text-[11px] text-slate-400 block">{item.email}</span>
-                        )}
-                      </td>
+                          <span className="text-[10px] text-slate-400 block mt-0.5">
+                            Criado: {dataInclusao ? new Date(dataInclusao).toLocaleDateString('pt-BR') : '-'}
+                            {diasRestantes > 0 ? ` • ${diasRestantes}d restantes` : ' • Expirado'}
+                          </span>
+                        </td>
 
-                      {/* Estadia Prevista */}
-                      <td className="py-3 px-4">
-                        {(item.dataentrada || item.datasaida) ? (
-                          <div>
-                            <span className="font-medium text-slate-800 block">
-                              {item.dataentrada ? formatarData(item.dataentrada) : '--'} ➔{' '}
-                              {item.datasaida ? formatarData(item.datasaida) : '--'}
-                            </span>
-                            <span className="text-[11px] text-slate-500">
-                              <span className="font-semibold text-slate-700">
-                                {valoresCalculados.qtdAdultos} ad, {valoresCalculados.qtdCriancasMeia} cr
+                        {/* Hóspede */}
+                        <td className="py-3 px-4">
+                          {nomeTitular ? (
+                            <div>
+                              <span className="font-bold text-slate-900 block">{nomeTitular}</span>
+                              <span className="text-[11px] text-slate-500 font-mono">
+                                {cpfTitular ? formatarCpf(cpfTitular) : 'CPF não informado'}
                               </span>
-                              {valoresCalculados.qtdCriancasGratis > 0 && (
-                                <span className="ml-1 text-slate-400">
-                                  (+{valoresCalculados.qtdCriancasGratis} grátis)
-                                </span>
-                              )}
-                              {item.acompanhantes && item.acompanhantes.length > 0 && (
-                                <span className="ml-1 text-emerald-700 font-semibold">
-                                  ({item.acompanhantes.length} acomp.)
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">A definir</span>
-                        )}
-                      </td>
-
-                      {/* Total Previsto (Apenas valor em reais em negrito) */}
-                      <td className="py-3 px-4">
-                        <span className="font-extrabold text-[#053d1e] block font-['Manrope'] text-sm tracking-tight">
-                          {formatarMoeda(valoresCalculados.valorTotal)}
-                        </span>
-                      </td>
-
-                      {/* Sinal 50% (Exatamente a metade calculada) */}
-                      <td className="py-3 px-4">
-                        <span className="font-extrabold text-slate-800 block font-['Manrope'] text-sm tracking-tight">
-                          {formatarMoeda(valoresCalculados.valorSinal)}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3 px-4">{renderizarStatusBadge(item)}</td>
-
-                      {/* Ações */}
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Editar / Ver Ficha */}
-                          <button
-                            type="button"
-                            onClick={() => setCadastroDetalhes(item)}
-                            title={item.status === 'AGUARDANDO_PAGAMENTO' ? 'Visualizar e Editar Ficha Completa' : 'Visualizar Ficha Completa'}
-                            className="p-1.5 text-[#414941] hover:text-[#053d1e] hover:bg-[#e1e3e4] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
-                          >
-                            {item.status === 'AGUARDANDO_PAGAMENTO' ? (
-                              <>
-                                <Edit2 className="w-3.5 h-3.5" />
-                                <span>Editar</span>
-                              </>
-                            ) : (
-                              <>
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Ver Ficha</span>
-                              </>
-                            )}
-                          </button>
-
-                          {/* Confirmar Sinal */}
-                          {item.status === 'AGUARDANDO_PAGAMENTO' && (
-                            <button
-                              type="button"
-                              onClick={() => setCadastroSinal(item)}
-                              title="Confirmar Recebimento do Sinal (50%)"
-                              className="p-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-pointer"
-                            >
-                              <CreditCard className="w-3.5 h-3.5" />
-                              <span>Sinal 50%</span>
-                            </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Aguardando cliente preencher...</span>
                           )}
+                        </td>
 
-                          {/* Botão Criar Reserva */}
-                          {jaPossuiReserva ? (
+                        {/* Contato */}
+                        <td className="py-3 px-4">
+                          {telTitular ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-slate-700">
+                                {formatarTelefone(telTitular)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleEnviarWhatsApp(item)}
+                                title="Abrir no WhatsApp com mensagem pronta"
+                                className="p-1 rounded-md bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-colors cursor-pointer"
+                              >
+                                <Send className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">--</span>
+                          )}
+                          {emailTitular && (
+                            <span className="text-[11px] text-slate-400 block">{emailTitular}</span>
+                          )}
+                        </td>
+
+                        {/* Estadia Prevista */}
+                        <td className="py-3 px-4">
+                          {dEntrada || dSaida ? (
+                            <div>
+                              <span className="font-medium text-slate-800 block">
+                                {dEntrada ? formatarData(dEntrada) : '--'} ➔{' '}
+                                {dSaida ? formatarData(dSaida) : '--'}
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                <span className="font-semibold text-slate-700">
+                                  {valoresCalculados.qtdAdultos} ad, {valoresCalculados.qtdCriancasMeia} cr
+                                </span>
+                                {valoresCalculados.qtdCriancasGratis > 0 && (
+                                  <span className="ml-1 text-slate-400">
+                                    (+{valoresCalculados.qtdCriancasGratis} grátis)
+                                  </span>
+                                )}
+                                {listaAcomp && listaAcomp.length > 0 && (
+                                  <span className="ml-1 text-emerald-700 font-semibold">
+                                    ({listaAcomp.length} acomp.)
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">A definir</span>
+                          )}
+                        </td>
+
+                        {/* Total Previsto */}
+                        <td className="py-3 px-4">
+                          <span className="font-extrabold text-[#053d1e] block font-['Manrope'] text-sm tracking-tight">
+                            {formatarMoeda(valoresCalculados.valorTotal)}
+                          </span>
+                        </td>
+
+                        {/* Sinal 50% */}
+                        <td className="py-3 px-4">
+                          <span className="font-extrabold text-slate-800 block font-['Manrope'] text-sm tracking-tight">
+                            {formatarMoeda(valoresCalculados.valorSinal)}
+                          </span>
+                        </td>
+
+                        {/* Status */}
+                        <td className="py-3 px-4">{renderizarStatusBadge(item)}</td>
+
+                        {/* Ações */}
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Editar / Ver Ficha */}
                             <button
                               type="button"
-                              disabled
-                              title={`Reserva já realizada (${codigoOuIdReserva}). Hóspede já importado.`}
-                              className="p-1.5 text-slate-400 bg-slate-100/90 rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-not-allowed border border-slate-200"
+                              onClick={() => setCadastroDetalhes(item)}
+                              title={
+                                statusUpper === 'AGUARDANDO_PAGAMENTO'
+                                  ? 'Visualizar e Editar Ficha Completa'
+                                  : 'Visualizar Ficha Completa'
+                              }
+                              className="p-1.5 text-[#414941] hover:text-[#053d1e] hover:bg-[#e1e3e4] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
                             >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Reserva Criada {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}</span>
-                            </button>
-                          ) : item.status === 'LIBERADA_PARA_RESERVA' ? (
-                            <button
-                              type="button"
-                              onClick={() => handleIrParaReserva(item)}
-                              disabled={redirecionandoReservaId === item.cadastroid}
-                              title="Efetivar Reserva no Mapa de Reservas"
-                              className="p-1.5 text-[#053d1e] hover:bg-[#e6f4ea] rounded transition-colors text-xs flex items-center gap-1 font-bold cursor-pointer disabled:opacity-50"
-                            >
-                              {redirecionandoReservaId === item.cadastroid ? (
+                              {statusUpper === 'AGUARDANDO_PAGAMENTO' ? (
                                 <>
-                                  <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Carregando...</span>
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                  <span>Editar</span>
                                 </>
                               ) : (
                                 <>
-                                  <Calendar className="w-3.5 h-3.5" />
-                                  <span>Criar Reserva</span>
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Ver Ficha</span>
                                 </>
                               )}
                             </button>
-                          ) : null}
 
-                          {/* Excluir / Cancelar Link */}
-                          {item.status !== 'CANCELADA' && !jaPossuiReserva && (
-                            <button
-                              type="button"
-                              onClick={() => setCadastroCancelar(item)}
-                              title="Cancelar este link"
-                              className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Excluir</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {/* Confirmar Sinal */}
+                            {statusUpper === 'AGUARDANDO_PAGAMENTO' && (
+                              <button
+                                type="button"
+                                onClick={() => setCadastroSinal(item)}
+                                title="Confirmar Recebimento do Sinal (50%)"
+                                className="p-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-pointer"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Sinal 50%</span>
+                              </button>
+                            )}
 
-          {/* Componente de Paginação */}
-          <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-            <span>
-              Exibindo <strong>{Math.min((paginaAtual - 1) * ITENS_POR_PAGINA + 1, cadastrosFiltrados.length)}</strong> a{' '}
-              <strong>{Math.min(paginaAtual * ITENS_POR_PAGINA, cadastrosFiltrados.length)}</strong> de{' '}
-              <strong>{cadastrosFiltrados.length}</strong> cadastros (Página <strong>{paginaAtual}</strong> de{' '}
-              <strong>{totalPaginas}</strong>)
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPaginaAtual((p) => Math.max(1, p - 1))}
-                disabled={paginaAtual === 1}
-                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                title="Página anterior"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-2.5 py-1 rounded-md bg-white border border-slate-200 font-bold text-slate-800 text-xs">
-                {paginaAtual} / {totalPaginas}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPaginaAtual((p) => Math.min(totalPaginas, p + 1))}
-                disabled={paginaAtual === totalPaginas}
-                className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
-                title="Próxima página"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+                            {/* Botão Criar Reserva */}
+                            {jaPossuiReserva ? (
+                              <button
+                                type="button"
+                                disabled
+                                title={`Reserva já realizada (${codigoOuIdReserva}). Hóspede já importado.`}
+                                className="p-1.5 text-slate-400 bg-slate-100/90 rounded transition-colors text-xs flex items-center gap-1 font-semibold cursor-not-allowed border border-slate-200"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Reserva Criada {codigoOuIdReserva ? `(${codigoOuIdReserva})` : ''}</span>
+                              </button>
+                            ) : statusUpper === 'LIBERADA_PARA_RESERVA' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleIrParaReserva(item)}
+                                disabled={redirecionandoReservaId === cId}
+                                title="Efetivar Reserva no Mapa de Reservas"
+                                className="p-1.5 text-[#053d1e] hover:bg-[#e6f4ea] rounded transition-colors text-xs flex items-center gap-1 font-bold cursor-pointer disabled:opacity-50"
+                              >
+                                {redirecionandoReservaId === cId ? (
+                                  <>
+                                    <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Carregando...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    <span>Criar Reserva</span>
+                                  </>
+                                )}
+                              </button>
+                            ) : null}
+
+                            {/* Excluir / Cancelar Link */}
+                            {statusUpper !== 'CANCELADA' && !jaPossuiReserva && (
+                              <button
+                                type="button"
+                                onClick={() => setCadastroCancelar(item)}
+                                title="Cancelar este link"
+                                className="p-1.5 text-[#ba1a1a] hover:bg-[#ffdad6] rounded transition-colors text-xs flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Excluir</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
-        </>
-      )}
+
+            {/* Paginação */}
+            <div className="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+              <span>
+                Exibindo <strong>{Math.min((paginaAtual - 1) * ITENS_POR_PAGINA + 1, cadastrosFiltrados.length)}</strong> a{' '}
+                <strong>{Math.min(paginaAtual * ITENS_POR_PAGINA, cadastrosFiltrados.length)}</strong> de{' '}
+                <strong>{cadastrosFiltrados.length}</strong> cadastros (Página <strong>{paginaAtual}</strong> de{' '}
+                <strong>{totalPaginas}</strong>)
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPaginaAtual((p) => Math.max(1, p - 1))}
+                  disabled={paginaAtual === 1}
+                  className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-2.5 py-1 rounded-md bg-white border border-slate-200 font-bold text-slate-800 text-xs">
+                  {paginaAtual} / {totalPaginas}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPaginaAtual((p) => Math.min(totalPaginas, p + 1))}
+                  disabled={paginaAtual === totalPaginas}
+                  className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  title="Próxima página"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modal de Geração de Novo Link */}
@@ -1125,7 +1170,8 @@ Qualquer dúvida, estamos à disposição!`;
         aberto={modalGerarAberto}
         onFechar={() => setModalGerarAberto(false)}
         onLinkCriado={(novo) => {
-          exibirFeedback(`Link gerado com sucesso para o cadastro #${novo.cadastroid}!`);
+          const novoId = getVal(novo, 'cadastroid', 'cadastroId');
+          exibirFeedback(`Link gerado com sucesso para o cadastro #${novoId}!`);
           carregarDados();
         }}
       />
@@ -1135,8 +1181,16 @@ Qualquer dúvida, estamos à disposição!`;
         aberto={Boolean(cadastroDetalhes)}
         cadastro={cadastroDetalhes}
         reservaVinculada={cadastroDetalhes ? obterReservaDoCadastro(cadastroDetalhes) : null}
-        valorTotalSugerido={cadastroDetalhes ? calcularValoresReserva(cadastroDetalhes, pacotes, quartos, configuracoes).valorTotal : undefined}
-        pacoteSugerido={cadastroDetalhes ? calcularValoresReserva(cadastroDetalhes, pacotes, quartos, configuracoes).pacote : null}
+        valorTotalSugerido={
+          cadastroDetalhes
+            ? calcularValoresReserva(cadastroDetalhes, pacotes, quartos, configuracoes).valorTotal
+            : undefined
+        }
+        pacoteSugerido={
+          cadastroDetalhes
+            ? calcularValoresReserva(cadastroDetalhes, pacotes, quartos, configuracoes).pacote
+            : null
+        }
         onFechar={() => setCadastroDetalhes(null)}
         onConfirmarSinal={(c) => {
           setCadastroDetalhes(null);
@@ -1153,8 +1207,16 @@ Qualquer dúvida, estamos à disposição!`;
       <ModalConfirmarSinalFnrh
         aberto={Boolean(cadastroSinal)}
         cadastro={cadastroSinal}
-        valorTotalSugerido={cadastroSinal ? calcularValoresReserva(cadastroSinal, pacotes, quartos, configuracoes).valorTotal : undefined}
-        pacoteSugerido={cadastroSinal ? calcularValoresReserva(cadastroSinal, pacotes, quartos, configuracoes).pacote : null}
+        valorTotalSugerido={
+          cadastroSinal
+            ? calcularValoresReserva(cadastroSinal, pacotes, quartos, configuracoes).valorTotal
+            : undefined
+        }
+        pacoteSugerido={
+          cadastroSinal
+            ? calcularValoresReserva(cadastroSinal, pacotes, quartos, configuracoes).pacote
+            : null
+        }
         onFechar={() => setCadastroSinal(null)}
         onSucesso={(msg) => {
           exibirFeedback(msg);
@@ -1166,8 +1228,14 @@ Qualquer dúvida, estamos à disposição!`;
       <ModalConfirmacao
         aberto={Boolean(cadastroCancelar)}
         titulo="Excluir Link FNRH"
-        mensagem={`Tem certeza que deseja excluir o link do cadastro #${cadastroCancelar?.cadastroid}${
-          cadastroCancelar?.nomecompleto ? ` (${cadastroCancelar.nomecompleto})` : ''
+        mensagem={`Tem certeza que deseja excluir o link do cadastro #${getVal(
+          cadastroCancelar,
+          'cadastroid',
+          'cadastroId'
+        )}${
+          getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')
+            ? ` (${getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')})`
+            : ''
         }? O cliente não poderá mais enviar dados através deste link.`}
         tipo="perigo"
         textoConfirmar="Sim, Excluir Link"

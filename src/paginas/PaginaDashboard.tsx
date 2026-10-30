@@ -6,7 +6,7 @@ import {
   CheckCircle2,
   Clock,
   PlusCircle,
-  Search
+  Search,
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import { CardQuarto } from '../componentes/quartos/CardQuarto';
@@ -22,11 +22,23 @@ type QuartoEnriquecido = Quarto & {
   proximaReserva: Reserva | null;
 };
 
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (PostgreSQL)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
+const extrairDataIso = (valor: any): string => {
+  if (!valor) return '';
+  return String(valor).slice(0, 10);
+};
+
 export const PaginaDashboard: React.FC = () => {
   const {
     quartos,
     reservas,
     dataSistema,
+    hospedes,
     navegarPara,
     realizarCheckin,
     realizarCheckout,
@@ -49,9 +61,47 @@ export const PaginaDashboard: React.FC = () => {
     return `${ano}-${mes}-${dia}`;
   });
 
+  const dataHojeStr = dataSistema ? extrairDataIso(dataSistema) : new Date().toISOString().slice(0, 10);
+
+  // Normalização de reservas para garantir dados preenchidos
+  const reservasNormalizadas = useMemo(() => {
+    return (reservas || []).map((r: any) => {
+      const hospedeId = Number(getVal(r, 'hospedeid', 'hospedeId'));
+      const quartoId = Number(getVal(r, 'quartoid', 'quartoId'));
+      const hospedeObj = hospedes?.find((h: any) => Number(getVal(h, 'hospedeid', 'hospedeId')) === hospedeId);
+      const quartoObj = quartos?.find((q: any) => Number(getVal(q, 'quartoid', 'quartoId')) === quartoId);
+
+      const nomeHospede =
+        getVal(r, 'hospedenome', 'hospedeNome') ||
+        hospedeObj?.nomecompleto ||        
+        `Hóspede #${hospedeId}`;
+
+      const numQuarto =
+        getVal(r, 'quartonumero', 'quartoNumero') ||
+        quartoObj?.numero ||
+        quartoObj?.codigoidentificador ||        
+        '';
+
+      return {
+        ...r,
+        reservaid: Number(getVal(r, 'reservaid', 'reservaId')),
+        quartoid: quartoId,
+        hospedeid: hospedeId,
+        codigo: getVal(r, 'codigo', 'codigo') || '',
+        dataentrada: extrairDataIso(getVal(r, 'dataentrada', 'dataEntrada')),
+        datasaida: extrairDataIso(getVal(r, 'datasaida', 'dataSaida')),
+        statusreserva: getVal(r, 'statusreserva', 'statusReserva') || '',
+        adultos: Number(getVal(r, 'adultos', 'adultos') || 0),
+        criancas: Number(getVal(r, 'criancas', 'criancas') || 0),
+        hospedenome: nomeHospede,
+        quartonumero: numQuarto,
+      };
+    });
+  }, [reservas, hospedes, quartos]);
+
   const quartosFisicos = useMemo(() => {
-    return (quartos || []).filter((q) => {
-      const cod = String(q.codigoidentificador || '').toUpperCase();
+    return (quartos || []).filter((q: any) => {
+      const cod = String(q.codigoidentificador || q.codigoIdentificador || '').toUpperCase();
       const num = String(q.numero || '').toUpperCase();
       const cat = String(q.categoria || '').toUpperCase();
       return cod !== 'DAY_USE' && num !== 'DU' && num !== 'DAY USE' && cat !== 'DAY USE';
@@ -60,35 +110,46 @@ export const PaginaDashboard: React.FC = () => {
 
   // CÁLCULO DINÂMICO DOS QUARTOS BASEADO NAS RESERVAS E DATA
   const quartosEnriquecidos: QuartoEnriquecido[] = useMemo(() => {
-    if (!quartosFisicos || !reservas) return [];
+    if (!quartosFisicos || !reservasNormalizadas) return [];
 
-    return quartosFisicos.map((quarto: Quarto) => {
+    return quartosFisicos.map((quarto: any) => {
       const qStatus = (quarto.status || '').toUpperCase();
+      const qId = Number(getVal(quarto, 'quartoid', 'quartoId'));
+
       if (qStatus === 'MANUTENCAO') {
         return {
           ...quarto,
+          quartoid: qId,
           statusCalculado: 'MANUTENCAO' as StatusQuarto,
           reservaAtiva: null,
           proximaReserva: null,
         };
       }
 
-      const reservasDoQuarto = reservas.filter(r =>
-        String(r.quartoid) === String(quarto.quartoid) &&
-        r.statusreserva !== 'CANCELADA' &&
-        r.statusreserva !== 'CONCLUIDA'
+      const reservasDoQuarto = reservasNormalizadas.filter(
+        (r: any) =>
+          Number(r.quartoid) === qId &&
+          r.statusreserva !== 'CANCELADA' &&
+          r.statusreserva !== 'CONCLUIDA'
       );
 
-      // ✅ AQUI USA A DATA CONSULTA PARA CALCULAR O STATUS
+      const dataAlvo = new Date(`${dataConsulta}T12:00:00`);
+
       const { status, reservaAtiva, proximaReserva } = calcularStatusQuarto(
         reservasDoQuarto,
-        new Date(dataConsulta),
+        dataAlvo,
         quarto.status
       );
 
-      return { ...quarto, statusCalculado: status, reservaAtiva, proximaReserva };
+      return {
+        ...quarto,
+        quartoid: qId,
+        statusCalculado: status,
+        reservaAtiva,
+        proximaReserva,
+      };
     });
-  }, [quartosFisicos, reservas, dataConsulta]);
+  }, [quartosFisicos, reservasNormalizadas, dataConsulta]);
 
   // Métricas baseadas no status CALCULADO
   const totalQuartos = quartosEnriquecidos.length || 0;
@@ -103,30 +164,36 @@ export const PaginaDashboard: React.FC = () => {
   const taxaOcupacao = totalQuartos > 0 ? Math.round((quartosOcupados / totalQuartos) * 100) : 0;
   const taxaDisponiveis = totalQuartos > 0 ? Math.round((quartosDisponiveis / totalQuartos) * 100) : 0;
 
-  // Reservas de hoje (baseado na dataConsulta)
-  const checkinsHoje = reservas.filter((r) => {
-    const dataEntrada = new Date(r.dataentrada).toISOString().split('T')[0];    
-    return (r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO') && r.dataentrada <= dataSistema;
-  });
-  
+  // Reservas de check-in para a data
+  const checkinsHoje = useMemo(() => {
+    return reservasNormalizadas.filter((r: any) => {
+      const statusValido = r.statusreserva === 'PRE_RESERVA' || r.statusreserva === 'RESERVADO';
+      return statusValido && r.dataentrada <= dataConsulta;
+    });
+  }, [reservasNormalizadas, dataConsulta]);
 
-  const checkoutsHoje = reservas.filter((r) => {
-    const dataSaida = new Date(r.datasaida).toISOString().split('T')[0];
-    return r.statusreserva === 'HOSPEDADO';
-  });
+  // Reservas de saída para a data
+  const checkoutsHoje = useMemo(() => {
+    return reservasNormalizadas.filter((r: any) => {
+      return r.statusreserva === 'HOSPEDADO' && r.datasaida === dataConsulta;
+    });
+  }, [reservasNormalizadas, dataConsulta]);
 
   // Total de hóspedes no local
-  const hospedesPresentes = reservas
-    .filter((r) => r.statusreserva === 'HOSPEDADO')
-    .reduce((acc, curr) => acc + (curr.adultos || 0) + (curr.criancas || 0), 0);
+  const hospedesPresentes = useMemo(() => {
+    return reservasNormalizadas
+      .filter((r: any) => r.statusreserva === 'HOSPEDADO')
+      .reduce((acc: number, curr: any) => acc + (curr.adultos || 0) + (curr.criancas || 0), 0);
+  }, [reservasNormalizadas]);
 
   // Filtragem dos quartos baseada no status CALCULADO
-  const quartosFiltrados = quartosEnriquecidos.filter((q) => {
-    if (filtroStatus === 'TODOS') return true;
-    return q.statusCalculado === filtroStatus;
-  });
+  const quartosFiltrados = useMemo(() => {
+    return quartosEnriquecidos.filter((q) => {
+      if (filtroStatus === 'TODOS') return true;
+      return q.statusCalculado === filtroStatus;
+    });
+  }, [quartosEnriquecidos, filtroStatus]);
 
-  // ✅ CORREÇÃO AQUI: Mudado de 'QuartoEnriquecido' para 'Quarto'
   const handleAbrirDetalhesQuarto = (quarto: Quarto) => {
     setQuartoSelecionado(quarto);
     setModalDetalhesAberto(true);
@@ -149,19 +216,15 @@ export const PaginaDashboard: React.FC = () => {
     setTimeout(() => setFeedbackAcao(null), 3000);
   };
 
-
   const formatarDataParaInput = (data: string) => {
     if (!data) return '';
-    // A data vem no formato "YYYY-MM-DD" do input
     const [ano, mes, dia] = data.split('-');
     return `${dia}/${mes}/${ano}`;
   };
-  // Adicione no topo do arquivo ou em um utilitário
+
   const formatarDataSemFuso = (data: string): string => {
     if (!data) return '';
-    // Se já está no formato brasileiro (contém /)
     if (data.includes('/')) return data;
-    // Se está no formato ISO (YYYY-MM-DD)
     const [ano, mes, dia] = data.split('-');
     if (ano && mes && dia) return `${dia}/${mes}/${ano}`;
     return data;
@@ -169,7 +232,12 @@ export const PaginaDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6 p-4 max-w-7xl mx-auto">
-
+      {feedbackAcao && (
+        <div className="bg-[#b8f0c2] text-[#00210d] px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-[#92c89d] shadow-xs">
+          <CheckCircle2 className="w-5 h-5 text-[#053d1e] shrink-0" />
+          <span>{feedbackAcao}</span>
+        </div>
+      )}
 
       {/* 1. SEÇÃO DE CARDS DE MÉTRICAS OPERACIONAIS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -185,11 +253,16 @@ export const PaginaDashboard: React.FC = () => {
             <div className="flex items-baseline gap-2 mt-1">
               <h3 className="font-['Manrope'] text-3xl font-extrabold text-[#111827]">{taxaOcupacao}%</h3>
             </div>
-            <p className="text-xs text-[#6b7280] mt-1 font-medium">{quartosOcupados} de {totalQuartos} Ocupados</p>
+            <p className="text-xs text-[#6b7280] mt-1 font-medium">
+              {quartosOcupados} de {totalQuartos} Ocupados
+            </p>
           </div>
           <div className="mt-4">
             <div className="w-full bg-[#f3f4f6] h-2 rounded-full overflow-hidden">
-              <div className="bg-[#245437] h-full rounded-full transition-all duration-500" style={{ width: `${taxaOcupacao}%` }} />
+              <div
+                className="bg-[#245437] h-full rounded-full transition-all duration-500"
+                style={{ width: `${taxaOcupacao}%` }}
+              />
             </div>
           </div>
         </div>
@@ -209,7 +282,10 @@ export const PaginaDashboard: React.FC = () => {
             <p className="text-xs text-[#6b7280] mt-1 font-medium">Previstos</p>
           </div>
           <div className="mt-4 pt-3 border-t border-[#f3f4f6]">
-            <button onClick={() => navegarPara('checkin')} className="text-xs font-semibold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer">
+            <button
+              onClick={() => navegarPara('checkin')}
+              className="text-xs font-semibold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer"
+            >
               Ver <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -230,7 +306,10 @@ export const PaginaDashboard: React.FC = () => {
             <p className="text-xs text-[#6b7280] mt-1 font-medium">Previstos</p>
           </div>
           <div className="mt-4 pt-3 border-t border-[#f3f4f6]">
-            <button onClick={() => navegarPara('checkout')} className="text-xs font-semibold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer">
+            <button
+              onClick={() => navegarPara('checkout')}
+              className="text-xs font-semibold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer"
+            >
               Ver <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -258,7 +337,8 @@ export const PaginaDashboard: React.FC = () => {
           </div>
         </div>
       </div>
-      {/* ✅ CAMPO DE DATA VISÍVEL AQUI */}
+
+      {/* CAMPO DE DATA PARA CONSULTA */}
       <div className="bg-white border border-[#e5e7eb] rounded-2xl p-4 shadow-xs">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="flex items-center gap-2">
@@ -277,12 +357,14 @@ export const PaginaDashboard: React.FC = () => {
             <Search className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
           </div>
           <div className="text-xs text-gray-500">
-            Data selecionada: <span className="font-semibold text-[#245437]">
+            Data selecionada:{' '}
+            <span className="font-semibold text-[#245437]">
               {formatarDataSemFuso(dataConsulta)}
             </span>
           </div>
         </div>
       </div>
+
       {/* 2. MAPA OPERACIONAL DOS QUARTOS */}
       <div className="bg-white border border-[#e5e7eb] rounded-2xl p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 mb-5 border-b border-[#f3f4f6]">
@@ -300,41 +382,100 @@ export const PaginaDashboard: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <button onClick={() => setFiltroStatus('TODOS')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'TODOS' ? 'bg-[#245437] text-white shadow-xs' : 'bg-[#f3f4f6] text-[#4b5563] hover:bg-[#e5e7eb]'}`}>
+              <button
+                onClick={() => setFiltroStatus('TODOS')}
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                  filtroStatus === 'TODOS'
+                    ? 'bg-[#245437] text-white shadow-xs'
+                    : 'bg-[#f3f4f6] text-[#4b5563] hover:bg-[#e5e7eb]'
+                }`}
+              >
                 Todos ({totalQuartos})
               </button>
               {quartosALimpar > 0 && (
-                <button onClick={() => setFiltroStatus('A_LIMPAR')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'A_LIMPAR' ? 'bg-[#d97706] text-white shadow-xs' : 'bg-[#fff3dc] text-[#b45309] hover:bg-[#fde68a]'}`}>
+                <button
+                  onClick={() => setFiltroStatus('A_LIMPAR')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                    filtroStatus === 'A_LIMPAR'
+                      ? 'bg-[#d97706] text-white shadow-xs'
+                      : 'bg-[#fff3dc] text-[#b45309] hover:bg-[#fde68a]'
+                  }`}
+                >
                   A Limpar ({quartosALimpar})
                 </button>
               )}
               {quartosEmLimpeza > 0 && (
-                <button onClick={() => setFiltroStatus('EM_LIMPEZA')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'EM_LIMPEZA' ? 'bg-[#0284c7] text-white shadow-xs' : 'bg-[#e0f2fe] text-[#0369a1] hover:bg-[#bae6fd]'}`}>
+                <button
+                  onClick={() => setFiltroStatus('EM_LIMPEZA')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                    filtroStatus === 'EM_LIMPEZA'
+                      ? 'bg-[#0284c7] text-white shadow-xs'
+                      : 'bg-[#e0f2fe] text-[#0369a1] hover:bg-[#bae6fd]'
+                  }`}
+                >
                   Em Limpeza ({quartosEmLimpeza})
                 </button>
               )}
-              <button onClick={() => setFiltroStatus('DISPONIVEL')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'DISPONIVEL' ? 'bg-[#166534] text-white shadow-xs' : 'bg-[#dcfce7] text-[#166534] hover:bg-[#bbf7d0]'}`}>
+              <button
+                onClick={() => setFiltroStatus('DISPONIVEL')}
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                  filtroStatus === 'DISPONIVEL'
+                    ? 'bg-[#166534] text-white shadow-xs'
+                    : 'bg-[#dcfce7] text-[#166534] hover:bg-[#bbf7d0]'
+                }`}
+              >
                 Disponíveis ({quartosDisponiveis})
               </button>
-              <button onClick={() => setFiltroStatus('OCUPADO')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'OCUPADO' ? 'bg-[#dc2626] text-white shadow-xs' : 'bg-[#fee2e2] text-[#991b1b] hover:bg-[#fecaca]'}`}>
+              <button
+                onClick={() => setFiltroStatus('OCUPADO')}
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                  filtroStatus === 'OCUPADO'
+                    ? 'bg-[#dc2626] text-white shadow-xs'
+                    : 'bg-[#fee2e2] text-[#991b1b] hover:bg-[#fecaca]'
+                }`}
+              >
                 Ocupados ({quartosOcupados})
               </button>
-              <button onClick={() => setFiltroStatus('AGUARDANDO_CHECKIN')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'AGUARDANDO_CHECKIN' ? 'bg-[#d97706] text-white shadow-xs' : 'bg-[#fef3c7] text-[#92400e] hover:bg-[#fde68a]'}`}>
+              <button
+                onClick={() => setFiltroStatus('AGUARDANDO_CHECKIN')}
+                className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                  filtroStatus === 'AGUARDANDO_CHECKIN'
+                    ? 'bg-[#d97706] text-white shadow-xs'
+                    : 'bg-[#fef3c7] text-[#92400e] hover:bg-[#fde68a]'
+                }`}
+              >
                 Aguardando ({quartosAguardando})
               </button>
               {quartosReservados > 0 && (
-                <button onClick={() => setFiltroStatus('RESERVADO')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'RESERVADO' ? 'bg-[#2563eb] text-white shadow-xs' : 'bg-[#dbeafe] text-[#1e40af] hover:bg-[#bfdbfe]'}`}>
+                <button
+                  onClick={() => setFiltroStatus('RESERVADO')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                    filtroStatus === 'RESERVADO'
+                      ? 'bg-[#2563eb] text-white shadow-xs'
+                      : 'bg-[#dbeafe] text-[#1e40af] hover:bg-[#bfdbfe]'
+                  }`}
+                >
                   Reservados ({quartosReservados})
                 </button>
               )}
               {quartosManutencao > 0 && (
-                <button onClick={() => setFiltroStatus('MANUTENCAO')} className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${filtroStatus === 'MANUTENCAO' ? 'bg-[#4b5563] text-white shadow-xs' : 'bg-[#e5e7eb] text-[#374151] hover:bg-[#d1d5db]'}`}>
+                <button
+                  onClick={() => setFiltroStatus('MANUTENCAO')}
+                  className={`px-3 py-1.5 rounded-xl font-semibold transition-colors cursor-pointer ${
+                    filtroStatus === 'MANUTENCAO'
+                      ? 'bg-[#4b5563] text-white shadow-xs'
+                      : 'bg-[#e5e7eb] text-[#374151] hover:bg-[#d1d5db]'
+                  }`}
+                >
                   Manutenção ({quartosManutencao})
                 </button>
               )}
             </div>
 
-            <button onClick={() => navegarPara('mapa-reservas')} className="flex items-center gap-1.5 bg-[#245437] hover:bg-[#1b432b] text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer ml-auto sm:ml-2">
+            <button
+              onClick={() => navegarPara('mapa-reservas')}
+              className="flex items-center gap-1.5 bg-[#245437] hover:bg-[#1b432b] text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer ml-auto sm:ml-2"
+            >
               <PlusCircle className="w-3.5 h-3.5" />
               <span>Nova Reserva</span>
             </button>
@@ -353,7 +494,6 @@ export const PaginaDashboard: React.FC = () => {
               <CardQuarto
                 key={quarto.quartoid}
                 quarto={quarto}
-                //aoClicar={handleAbrirDetalhesQuarto}
               />
             ))
           )}
@@ -367,9 +507,14 @@ export const PaginaDashboard: React.FC = () => {
           <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-[#d97706]" />
-              <h3 className="font-['Manrope'] text-base font-bold text-[#111827]">Check-ins ({checkinsHoje.length})</h3>
+              <h3 className="font-['Manrope'] text-base font-bold text-[#111827]">
+                Check-ins ({checkinsHoje.length})
+              </h3>
             </div>
-            <button onClick={() => navegarPara('checkin')} className="text-xs font-bold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer">
+            <button
+              onClick={() => navegarPara('checkin')}
+              className="text-xs font-bold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer"
+            >
               Ver todos <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -378,16 +523,26 @@ export const PaginaDashboard: React.FC = () => {
             {checkinsHoje.length === 0 ? (
               <p className="text-xs text-[#6b7280] text-center py-6">Nenhum check-in para esta data.</p>
             ) : (
-              checkinsHoje.slice(0, 2).map((res) => (
-                <div key={res.reservaid} className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#245437] transition-colors">
+              checkinsHoje.slice(0, 2).map((res: any) => (
+                <div
+                  key={res.reservaid}
+                  className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#245437] transition-colors"
+                >
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-['Manrope'] font-bold text-sm text-[#111827]">{res.hospedenome}</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f0fdf4] text-[#166534]">{res.codigo}</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f0fdf4] text-[#166534]">
+                        {res.codigo}
+                      </span>
                     </div>
-                    <p className="text-xs text-[#4b5563] mt-0.5">Quarto {res.quartonumero} • {res.adultos} Ad / {res.criancas} Cri</p>
+                    <p className="text-xs text-[#4b5563] mt-0.5">
+                      Quarto {res.quartonumero} • {res.adultos} Ad / {res.criancas} Cri
+                    </p>
                   </div>
-                  <button onClick={() => handleCheckinRapido(res.reservaid)} className="shrink-0 px-3 py-1.5 text-xs font-bold bg-[#245437] hover:bg-[#1b432b] text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer">
+                  <button
+                    onClick={() => handleCheckinRapido(res.reservaid)}
+                    className="shrink-0 px-3 py-1.5 text-xs font-bold bg-[#245437] hover:bg-[#1b432b] text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Check-in
                   </button>
@@ -402,9 +557,14 @@ export const PaginaDashboard: React.FC = () => {
           <div className="flex items-center justify-between pb-3 border-b border-[#f3f4f6]">
             <div className="flex items-center gap-2">
               <CalendarX className="w-5 h-5 text-[#dc2626]" />
-              <h3 className="font-['Manrope'] text-base font-bold text-[#111827]">Check-outs ({checkoutsHoje.length})</h3>
+              <h3 className="font-['Manrope'] text-base font-bold text-[#111827]">
+                Check-outs ({checkoutsHoje.length})
+              </h3>
             </div>
-            <button onClick={() => navegarPara('checkout')} className="text-xs font-bold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer">
+            <button
+              onClick={() => navegarPara('checkout')}
+              className="text-xs font-bold text-[#245437] hover:underline flex items-center gap-1 cursor-pointer"
+            >
               Ver todos <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -413,16 +573,24 @@ export const PaginaDashboard: React.FC = () => {
             {checkoutsHoje.length === 0 ? (
               <p className="text-xs text-[#6b7280] text-center py-6">Nenhum check-out para esta data.</p>
             ) : (
-              checkoutsHoje.slice(0, 2).map((res) => (
-                <div key={res.reservaid} className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#dc2626] transition-colors">
+              checkoutsHoje.slice(0, 2).map((res: any) => (
+                <div
+                  key={res.reservaid}
+                  className="p-3.5 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-[#dc2626] transition-colors"
+                >
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-['Manrope'] font-bold text-sm text-[#111827]">{res.hospedenome}</span>
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#fee2e2] text-[#991b1b]">{res.codigo}</span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#fee2e2] text-[#991b1b]">
+                        {res.codigo}
+                      </span>
                     </div>
                     <p className="text-xs text-[#4b5563] mt-0.5">Quarto {res.quartonumero}</p>
                   </div>
-                  <button onClick={() => handleCheckoutRapido(res.reservaid)} className="shrink-0 px-3 py-1.5 text-xs font-bold bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer">
+                  <button
+                    onClick={() => handleCheckoutRapido(res.reservaid)}
+                    className="shrink-0 px-3 py-1.5 text-xs font-bold bg-[#dc2626] hover:bg-[#b91c1c] text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
                     <ArrowRight className="w-3.5 h-3.5" />
                     Check-out
                   </button>
@@ -437,13 +605,19 @@ export const PaginaDashboard: React.FC = () => {
       <ModalDetalhesQuarto
         quarto={quartoSelecionado}
         aberto={modalDetalhesAberto}
-        onFechar={() => { setModalDetalhesAberto(false); setQuartoSelecionado(null); }}
+        onFechar={() => {
+          setModalDetalhesAberto(false);
+          setQuartoSelecionado(null);
+        }}
         onNovaReservaParaQuarto={handleNovaReservaParaQuarto}
       />
 
       <ModalNovaReserva
         aberto={modalNovaReservaAberto}
-        onFechar={() => { setModalNovaReservaAberto(false); setQuartoParaReserva(null); }}
+        onFechar={() => {
+          setModalNovaReservaAberto(false);
+          setQuartoParaReserva(null);
+        }}
         quartoPreSelecionado={quartoParaReserva}
       />
     </div>

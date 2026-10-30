@@ -15,6 +15,12 @@ type Acompanhante = {
 
 type DadosFnrh = Record<string, string | number | boolean>;
 
+// Helper universal para ler tanto camelCase (.NET) quanto lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
 const acompanhanteInicial = (): Acompanhante => ({
   nomecompleto: '',
   documento: '',
@@ -82,17 +88,20 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
         const cadastro: any = resultado.dados;
 
-        // Trava LGPD / Link de Uso Único:
+        const jaEnviadoVal = Boolean(getVal(cadastro, 'ja_enviado', 'jaEnviado'));
+        const declaracaoAceitaVal = Boolean(getVal(cadastro, 'declaracao_aceita', 'declaracaoAceita'));
+        const statusVal = String(getVal(cadastro, 'status', 'status') || '').toUpperCase();
+
+        // Trava LGPD / Link de Uso Único
         if (
-          cadastro.ja_enviado === true ||
-          cadastro.jaEnviado === true ||
-          Boolean(cadastro.declaracao_aceita) ||
-          Boolean(cadastro.declaracaoAceita) ||
-          cadastro.status === 'LIBERADA_PARA_RESERVA' ||
-          cadastro.status === 'RESERVA_CRIADA'
+          jaEnviadoVal ||
+          declaracaoAceitaVal ||
+          statusVal === 'LIBERADA_PARA_RESERVA' ||
+          statusVal === 'RESERVA_CRIADA'
         ) {
           setJaEnviado(true);
-          setNomeHospedeEnviado(cadastro.nomecompleto ? String(cadastro.nomecompleto).toUpperCase() : (cadastro.nomeCompleto ? String(cadastro.nomeCompleto).toUpperCase() : ''));
+          const nomeSalvo = getVal(cadastro, 'nomecompleto', 'nomeCompleto');
+          setNomeHospedeEnviado(nomeSalvo ? String(nomeSalvo).toUpperCase() : '');
           setCarregando(false);
           return;
         }
@@ -105,74 +114,71 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           return '';
         };
 
+        const nomeTitular = getVal(cadastro, 'nomecompleto', 'nomeCompleto');
+        const dtNasc = getVal(cadastro, 'datanascimento', 'dataNascimento');
+        const dtEntrada = getVal(cadastro, 'dataentrada', 'dataEntrada');
+        const dtSaida = getVal(cadastro, 'datasaida', 'dataSaida');
+        const hrChegada = getVal(cadastro, 'horarioprevistochegada', 'horarioPrevistoChegada');
+        const hrSaida = getVal(cadastro, 'horarioprevistasaida', 'horarioPrevistoSaida');
+
         const dadosCarregados: DadosFnrh = {
-          nomecompleto: cadastro.nomecompleto
-            ? String(cadastro.nomecompleto).toUpperCase()
-            : cadastro.nomeCompleto
-            ? String(cadastro.nomeCompleto).toUpperCase()
-            : '',
-          cpf: aplicarMascaraCpf(String(cadastro.cpf || '')),
-          rg: String(cadastro.rg || ''),
-          passaporte: String(cadastro.passaporte || ''),
-          datanascimento: formatarParaInputDate(cadastro.datanascimento || cadastro.dataNascimento),
-          nacionalidade: String(cadastro.nacionalidade || 'Brasileira'),
-          sexo: normalizarSexo(cadastro.sexo),
-          telefone: aplicarMascaraTelefone(String(cadastro.telefone || '')),
-          email: String(cadastro.email || ''),
-          endereco: String(cadastro.endereco || ''),
-          numero: String(cadastro.numero || ''),
-          cidade: String(cadastro.cidade || ''),
-          estado: String(cadastro.estado || ''),
-          cep: formatarCep(String(cadastro.cep || '')),
-          profissao: String(cadastro.profissao || ''),
-          proximodestino: String(cadastro.proximodestino || cadastro.proximoDestino || ''),
-          ultimaprocedencia: String(cadastro.ultimaprocedencia || cadastro.ultimaProcedencia || ''),
+          nomecompleto: nomeTitular ? String(nomeTitular).toUpperCase() : '',
+          cpf: aplicarMascaraCpf(String(getVal(cadastro, 'cpf', 'cpf') || '')),
+          rg: String(getVal(cadastro, 'rg', 'rg') || ''),
+          passaporte: String(getVal(cadastro, 'passaporte', 'passaporte') || ''),
+          datanascimento: formatarParaInputDate(dtNasc),
+          nacionalidade: String(getVal(cadastro, 'nacionalidade', 'nacionalidade') || 'Brasileira'),
+          sexo: normalizarSexo(getVal(cadastro, 'sexo', 'sexo')),
+          telefone: aplicarMascaraTelefone(String(getVal(cadastro, 'telefone', 'telefone') || '')),
+          email: String(getVal(cadastro, 'email', 'email') || ''),
+          endereco: String(getVal(cadastro, 'endereco', 'endereco') || ''),
+          numero: String(getVal(cadastro, 'numero', 'numero') || ''),
+          cidade: String(getVal(cadastro, 'cidade', 'cidade') || ''),
+          estado: String(getVal(cadastro, 'estado', 'estado') || ''),
+          cep: formatarCep(String(getVal(cadastro, 'cep', 'cep') || '')),
+          profissao: String(getVal(cadastro, 'profissao', 'profissao') || ''),
+          proximodestino: String(getVal(cadastro, 'proximodestino', 'proximoDestino') || ''),
+          ultimaprocedencia: String(getVal(cadastro, 'ultimaprocedencia', 'ultimaProcedencia') || ''),
           cpfresponsavelmenor: aplicarMascaraCpf(
-            String(cadastro.cpfresponsavelmenor || cadastro.cpfResponsavelMenor || '')
+            String(getVal(cadastro, 'cpfresponsavelmenor', 'cpfResponsavelMenor') || '')
           ),
-          dataentrada: formatarParaInputDate(cadastro.dataentrada || cadastro.dataEntrada),
-          horarioprevistochegada: formatarParaInputTime(
-            cadastro.horarioprevistochegada || cadastro.horarioPrevistoChegada,
-            '07:00'
-          ),
-          datasaida: formatarParaInputDate(cadastro.datasaida || cadastro.dataSaida),
-          horarioprevistasaida: formatarParaInputTime(
-            cadastro.horarioprevistasaida || cadastro.horarioPrevistoSaida,
-            '15:00'
-          ),
-          motivoviagem: String(cadastro.motivoviagem || cadastro.motivoViagem || ''),
-          transporte: String(cadastro.transporte || ''),
-          placa: String(cadastro.placa || ''),
-          modelocor: String(cadastro.modelocor || cadastro.modeloCor || ''),
-          numerohospedes: Number(cadastro.numerohospedes || cadastro.numeroHospedes || 1),
-          adultos: Number(cadastro.adultos ?? 1),
-          criancas: Number(cadastro.criancas ?? 0),
-          forma_pagamento: String(cadastro.forma_pagamento || cadastro.formaPagamento || ''),
-          alergias_restricoes: String(cadastro.alergias_restricoes || cadastro.alergiasRestricoes || ''),
-          solicitacoes_especiais: String(cadastro.solicitacoes_especiais || cadastro.solicitacoesEspeciais || ''),
-          declaracao_aceita: Boolean(cadastro.declaracao_aceita ?? cadastro.declaracaoAceita ?? false),
+          dataentrada: formatarParaInputDate(dtEntrada),
+          horarioprevistochegada: formatarParaInputTime(hrChegada, '07:00'),
+          datasaida: formatarParaInputDate(dtSaida),
+          horarioprevistasaida: formatarParaInputTime(hrSaida, '15:00'),
+          motivoviagem: String(getVal(cadastro, 'motivoviagem', 'motivoViagem') || ''),
+          transporte: String(getVal(cadastro, 'transporte', 'transporte') || ''),
+          placa: String(getVal(cadastro, 'placa', 'placa') || ''),
+          modelocor: String(getVal(cadastro, 'modelocor', 'modeloCor') || ''),
+          numerohospedes: Number(getVal(cadastro, 'numerohospedes', 'numeroHospedes') || 1),
+          adultos: Number(getVal(cadastro, 'adultos', 'adultos') ?? 1),
+          criancas: Number(getVal(cadastro, 'criancas', 'criancas') ?? 0),
+          forma_pagamento: String(getVal(cadastro, 'forma_pagamento', 'formaPagamento') || ''),
+          alergias_restricoes: String(getVal(cadastro, 'alergias_restricoes', 'alergiasRestricoes') || ''),
+          solicitacoes_especiais: String(getVal(cadastro, 'solicitacoes_especiais', 'solicitacoesEspeciais') || ''),
+          declaracao_aceita: Boolean(getVal(cadastro, 'declaracao_aceita', 'declaracaoAceita') ?? false),
         };
 
         setDados((atual) => ({ ...atual, ...dadosCarregados }));
+
+        const listaAcomp = getVal(cadastro, 'acompanhantes', 'acompanhantes') || [];
         setAcompanhantes(
-          (cadastro.acompanhantes || []).map((item: any) => ({
-            ...acompanhanteInicial(),
-            ...item,
-            nomecompleto: item.nomecompleto
-              ? String(item.nomecompleto).toUpperCase()
-              : item.nomeCompleto
-              ? String(item.nomeCompleto).toUpperCase()
-              : '',
-            documento: String(item.documento || ''),
-            datanascimento: formatarParaInputDate(item.datanascimento || item.dataNascimento),
-            menoridade: Boolean(item.menoridade),
-            cpfresponsavel: item.cpfresponsavel
-              ? aplicarMascaraCpf(String(item.cpfresponsavel))
-              : item.cpfResponsavel
-              ? aplicarMascaraCpf(String(item.cpfResponsavel))
-              : '',
-            observacoes: String(item.observacoes || ''),
-          }))
+          listaAcomp.map((item: any) => {
+            const nomeAcomp = getVal(item, 'nomecompleto', 'nomeCompleto');
+            const cpfResp = getVal(item, 'cpfresponsavel', 'cpfResponsavel');
+            const dtNascAcomp = getVal(item, 'datanascimento', 'dataNascimento');
+
+            return {
+              ...acompanhanteInicial(),
+              ...item,
+              nomecompleto: nomeAcomp ? String(nomeAcomp).toUpperCase() : '',
+              documento: String(getVal(item, 'documento', 'documento') || ''),
+              datanascimento: formatarParaInputDate(dtNascAcomp),
+              menoridade: Boolean(getVal(item, 'menoridade', 'menoridade')),
+              cpfresponsavel: cpfResp ? aplicarMascaraCpf(String(cpfResp)) : '',
+              observacoes: String(getVal(item, 'observacoes', 'observacoes') || ''),
+            };
+          })
         );
       } catch (err: any) {
         setErro(err?.message || 'Erro ao carregar cadastro.');
@@ -185,8 +191,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
 
   const alterar = (campo: string, valor: string | number | boolean) => {
     let novoValor = valor;
-    
-    // Converte nome completo do titular em caixa alta
+
     if (campo === 'nomecompleto') {
       novoValor = String(valor).toUpperCase();
     } else if (campo === 'cpf' || campo === 'cpfresponsavelmenor') {
@@ -218,7 +223,6 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
   const alterarAcompanhante = (indice: number, campo: keyof Acompanhante, valor: string | boolean) => {
     let novoValor = valor;
 
-    // Converte nome completo do acompanhante em caixa alta
     if (campo === 'nomecompleto') {
       novoValor = String(valor).toUpperCase();
     } else if (campo === 'cpfresponsavel') {
@@ -247,7 +251,6 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
 
-    // Valida se o CPF possui 11 dígitos
     const digitosCpf = cpfFormatado.replace(/\D/g, '');
     if (digitosCpf.length !== 11) {
       setModalErro('O CPF do titular deve conter 11 dígitos numéricos completos.');
@@ -271,7 +274,6 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
       return;
     }
 
-    // Garante que o nome vá em caixa alta e os campos com máscaras corretas
     const dadosParaSalvar = {
       ...dados,
       nomecompleto: nomeTitularFormatado,
@@ -330,7 +332,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-[#053d1e] border border-emerald-200 shadow-2xs">
             <ShieldCheck className="h-9 w-9 text-emerald-700" />
           </div>
-          
+
           <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 border border-emerald-300">
             Ficha Cadastral Já Enviada
           </span>

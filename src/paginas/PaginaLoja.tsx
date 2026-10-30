@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ShoppingBag,
   Plus,
@@ -14,28 +14,52 @@ import { useHotel } from '../contextos/ContextoHotel';
 import { Produto, FormaPagamento } from '../tipos';
 import { formatarMoeda } from '../utilitarios/formatadores';
 
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
+};
+
 export const PaginaLoja: React.FC = () => {
   const { produtos, registrarVenda } = useHotel();
 
   const [busca, setBusca] = useState<string>('');
-  const [carrinho, setCarrinho] = useState<{ produto: Produto; quantidade: number }[]>([]);
+  const [carrinho, setCarrinho] = useState<{ produto: any; quantidade: number }[]>([]);
   const [nomeCliente, setNomeCliente] = useState<string>('Visitante Balcão');
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('PIX');
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
 
-  const produtosFiltrados = produtos.filter((p) => {
-    if (!busca.trim()) return true;
-    const termo = busca.toLowerCase();
-    return p.nome.toLowerCase().includes(termo) || p.categoria.toLowerCase().includes(termo);
-  });
+  // Normalização da lista de produtos
+  const produtosNormalizados = useMemo(() => {
+    return (produtos || []).map((p: any) => ({
+      ...p,
+      produtoid: getVal(p, 'produtoid', 'produtoId'),
+      nome: getVal(p, 'nome', 'nome') || '',
+      categoria: getVal(p, 'categoria', 'categoria') || '',
+      descricao: getVal(p, 'descricao', 'descricao') || '',
+      preco: Number(getVal(p, 'preco', 'preco') || 0),
+      estoque: Number(getVal(p, 'estoque', 'estoque') || 0),
+    }));
+  }, [produtos]);
 
-  const adicionarAoCarrinho = (produto: Produto) => {
-    if (produto.estoque <= 0) return;
+  const produtosFiltrados = useMemo(() => {
+    return produtosNormalizados.filter((p) => {
+      if (!busca.trim()) return true;
+      const termo = busca.toLowerCase();
+      return p.nome.toLowerCase().includes(termo) || p.categoria.toLowerCase().includes(termo);
+    });
+  }, [produtosNormalizados, busca]);
+
+  const adicionarAoCarrinho = (produto: any) => {
+    const estoque = Number(produto.estoque || 0);
+    if (estoque <= 0) return;
 
     setCarrinho((prev) => {
-      const existente = prev.find((item) => String(item.produto.produtoid) === String(produto.produtoid));
+      const existente = prev.find(
+        (item) => String(item.produto.produtoid) === String(produto.produtoid)
+      );
       if (existente) {
-        if (existente.quantidade >= produto.estoque) return prev;
+        if (existente.quantidade >= estoque) return prev;
         return prev.map((item) =>
           String(item.produto.produtoid) === String(produto.produtoid)
             ? { ...item, quantidade: item.quantidade + 1 }
@@ -58,24 +82,28 @@ export const PaginaLoja: React.FC = () => {
           }
           return item;
         })
-        .filter(Boolean) as { produto: Produto; quantidade: number }[]
+        .filter(Boolean) as { produto: any; quantidade: number }[]
     );
   };
 
   const removerDoCarrinho = (produtoId: number | string) => {
-    setCarrinho((prev) => prev.filter((item) => String(item.produto.produtoid) !== String(produtoId)));
+    setCarrinho((prev) =>
+      prev.filter((item) => String(item.produto.produtoid) !== String(produtoId))
+    );
   };
 
-  const totalCarrinho = carrinho.reduce(
-    (acc, curr) => acc + curr.produto.preco * curr.quantidade,
-    0
-  );
+  const totalCarrinho = useMemo(() => {
+    return carrinho.reduce(
+      (acc, curr) => acc + Number(curr.produto.preco || 0) * curr.quantidade,
+      0
+    );
+  }, [carrinho]);
 
   const handleFinalizarVenda = async (e: React.FormEvent) => {
     e.preventDefault();
     if (carrinho.length === 0) return;
 
-    const nova = await registrarVenda({
+    const nova: any = await registrarVenda({
       tipo: 'LOJA',
       hospedenome: nomeCliente,
       itens: carrinho.map((item) => ({
@@ -90,7 +118,8 @@ export const PaginaLoja: React.FC = () => {
       statuspagamento: 'PAGO',
     });
 
-    setFeedbackSucesso(`Venda ${nova.codigo} registrada com sucesso!`);
+    const codigoVenda = getVal(nova, 'codigo', 'codigo') || 'Registrada';
+    setFeedbackSucesso(`Venda ${codigoVenda} registrada com sucesso!`);
     setCarrinho([]);
     setNomeCliente('Visitante Balcão');
     setTimeout(() => setFeedbackSucesso(null), 3500);
