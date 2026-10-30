@@ -2,15 +2,17 @@
 
 export type StatusQuarto = 'DISPONIVEL' | 'RESERVADO' | 'OCUPADO' | 'AGUARDANDO_CHECKIN' | 'MANUTENCAO' | 'A_LIMPAR' | 'EM_LIMPEZA';
 
-export type CategoriaQuarto = 
-  | 'Standard Duplo'
-  | 'Standard Casal'
-  | 'Standard Triplo'
-  | 'Luxo Casal'
-  | 'Luxo Duplo'
-  | 'Chalé Master'
-  | 'Chalé Família'
-  | 'Vila Premium';
+export type CategoriaQuarto =
+  | "Standard Duplo"
+  | "Standard Casal"
+  | "Standard Triplo"
+  | "Superior Triplo"   
+  | "Luxo Casal"
+  | "Luxo Duplo"
+  | "Luxo Quadruplo"    
+  | "Chalé Master"
+  | "Chalé Família"
+  | "Vila Premium";
 
 export type BlocoQuarto = 'B' | 'C' | 'D';
 

@@ -1,11 +1,25 @@
-import React, { useState, useMemo } from 'react';
-import { LoaderCircle, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  LoaderCircle,
+  Package,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { CategoriaProduto, Produto } from '../tipos';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
-import { formatarMoeda, sanitizarValorMonetario } from '../utilitarios/formatadores';
+import {
+  formatarMoeda,
+  aplicarMascaraMoeda,
+  desformatarMoeda,
+} from '../utilitarios/formatadores';
 
-// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (PostgreSQL)
 const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
   if (!obj) return undefined;
   return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
@@ -24,19 +38,7 @@ const produtoInicial = {
   estoque: 0,
 };
 
-const converterValorMonetario = (valor: string): number => {
-  const normalizado = valor
-    .replace(/[^\d,.-]/g, '')
-    .replace(/\.(?=\d{3}(?:\.|,|$))/g, '')
-    .replace(',', '.');
-  const numero = Number(normalizado);
-  return Number.isFinite(numero) ? Math.max(0, numero) : 0;
-};
-
-const formatarCampoMoeda = (valor: number): string => {
-  if (!valor) return '';
-  return valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-};
+const ITENS_POR_PAGINA = 10;
 
 export const PaginaProdutos: React.FC = () => {
   const { produtos, criarProduto, editarProduto, excluirProduto } = useHotel();
@@ -51,7 +53,10 @@ export const PaginaProdutos: React.FC = () => {
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
-  // Normalização da lista de produtos para suportar ambos os formatos
+  // Estado da paginação
+  const [paginaAtual, setPaginaAtual] = useState(1);
+
+  // Normalização da lista de produtos para suportar ambos os formatos (.NET e PostgreSQL)
   const produtosNormalizados = useMemo(() => {
     return (produtos || []).map((p: any) => ({
       ...p,
@@ -72,6 +77,20 @@ export const PaginaProdutos: React.FC = () => {
     );
   }, [produtosNormalizados, categoria, busca]);
 
+  // Reseta para a página 1 ao filtrar ou buscar
+  useEffect(() => {
+    setPaginaAtual(1);
+  }, [busca, categoria]);
+
+  // Cálculos de paginação
+  const totalItens = filtrados.length;
+  const totalPaginas = Math.max(1, Math.ceil(totalItens / ITENS_POR_PAGINA));
+  const indiceInicio = (paginaAtual - 1) * ITENS_POR_PAGINA;
+  const indiceFim = Math.min(indiceInicio + ITENS_POR_PAGINA, totalItens);
+  const produtosPaginados = useMemo(() => {
+    return filtrados.slice(indiceInicio, indiceFim);
+  }, [filtrados, indiceInicio, indiceFim]);
+
   const abrirNovo = () => {
     setProdutoEditando(null);
     setFormulario(produtoInicial);
@@ -90,9 +109,19 @@ export const PaginaProdutos: React.FC = () => {
       preco: preco,
       estoque: Number(getVal(produto, 'estoque', 'estoque') || 0),
     });
-    setPrecoTexto(formatarCampoMoeda(preco));
+    setPrecoTexto(preco > 0 ? aplicarMascaraMoeda(preco) : '');
     setErro(null);
     setModalAberta(true);
+  };
+
+  const handleAlterarPreco = (textoDigitado: string) => {
+    const formatado = aplicarMascaraMoeda(textoDigitado);
+    const numero = desformatarMoeda(formatado);
+    setPrecoTexto(formatado);
+    setFormulario((prev) => ({
+      ...prev,
+      preco: numero,
+    }));
   };
 
   const salvar = async (event: React.FormEvent) => {
@@ -102,9 +131,17 @@ export const PaginaProdutos: React.FC = () => {
     try {
       const pId = produtoEditando ? getVal(produtoEditando, 'produtoid', 'produtoId') : null;
 
+      const payload = {
+        nome: formulario.nome.trim(),
+        descricao: formulario.descricao.trim(),
+        categoria: formulario.categoria,
+        preco: Number(formulario.preco),
+        estoque: Number(formulario.estoque),
+      };
+
       const resultado: any = produtoEditando
-        ? await editarProduto(pId, formulario)
-        : await criarProduto(formulario).then(() => ({ sucesso: true, mensagem: '' }));
+        ? await editarProduto(pId, payload)
+        : await criarProduto(payload).then(() => ({ sucesso: true, mensagem: '' }));
 
       if (resultado && resultado.sucesso === false) {
         throw new Error(resultado.mensagem || 'Erro ao salvar produto.');
@@ -148,7 +185,7 @@ export const PaginaProdutos: React.FC = () => {
         </div>
         <button
           onClick={abrirNovo}
-          className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs"
+          className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs transition-colors"
         >
           <Plus className="w-4 h-4" /> Novo Produto
         </button>
@@ -172,13 +209,13 @@ export const PaginaProdutos: React.FC = () => {
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome..."
-            className="w-full pl-9 p-2 text-xs border border-[#c1c9bf] rounded-lg"
+            className="w-full pl-9 p-2 text-xs border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e]"
           />
         </div>
         <select
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
-          className="p-2 text-xs border border-[#c1c9bf] rounded-lg bg-white font-medium"
+          className="p-2 text-xs border border-[#c1c9bf] rounded-lg bg-white font-medium outline-none cursor-pointer"
         >
           <option value="TODAS">Todas as categorias</option>
           {categorias.map((item) => (
@@ -189,190 +226,247 @@ export const PaginaProdutos: React.FC = () => {
         </select>
       </div>
 
-      <div className="bg-white border border-[#c1c9bf] rounded-2xl overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead className="bg-[#f8f9fa] border-b border-[#c1c9bf]">
-            <tr>
-              {['Nome', 'Categoria', 'Preço', 'Estoque', 'Ações'].map((item) => (
-                <th key={item} className="p-3">
-                  {item}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#e1e3e4]">
-            {filtrados.map((produto) => (
-              <tr key={String(produto.produtoid)}>
-                <td className="p-3 font-semibold">{produto.nome}</td>
-                <td className="p-3">
-                  <span
-                    className={`px-2 py-0.5 rounded font-bold text-[10px] ${
-                      produto.categoria === 'LOJINHA'
-                        ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                        : produto.categoria === 'BAR'
-                        ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                        : 'bg-slate-100 text-slate-800 border border-slate-200'
-                    }`}
-                  >
-                    {produto.categoria === 'LOJINHA'
-                      ? 'Lojinha'
-                      : produto.categoria === 'BAR'
-                      ? 'Bar'
-                      : produto.categoria}
-                  </span>
-                </td>
-                <td className="p-3 font-bold">{formatarMoeda(produto.preco)}</td>
-                <td className="p-3 font-semibold">{produto.estoque}</td>
-                <td className="p-3">
-                  <button
-                    onClick={() => abrirEdicao(produto)}
-                    className="p-1.5 text-[#053d1e] hover:bg-emerald-50 rounded"
-                    title="Editar"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setProdutoParaExcluir(produto)}
-                    className="p-1.5 text-[#ba1a1a] hover:bg-red-50 rounded"
-                    title="Excluir"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
+      <div className="bg-white border border-[#c1c9bf] rounded-2xl overflow-hidden shadow-xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-[#f8f9fa] border-b border-[#c1c9bf]">
+              <tr>
+                {['Nome', 'Categoria', 'Preço', 'Estoque', 'Ações'].map((item) => (
+                  <th key={item} className="p-3 font-bold text-slate-700">
+                    {item}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[#e1e3e4]">
+              {produtosPaginados.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-500">
+                    Nenhum produto encontrado.
+                  </td>
+                </tr>
+              ) : (
+                produtosPaginados.map((produto) => (
+                  <tr key={String(produto.produtoid)} className="hover:bg-slate-50/50">
+                    <td className="p-3 font-semibold text-slate-800">{produto.nome}</td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                          produto.categoria === 'LOJINHA'
+                            ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                            : produto.categoria === 'BAR'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : 'bg-slate-100 text-slate-800 border border-slate-200'
+                        }`}
+                      >
+                        {produto.categoria === 'LOJINHA'
+                          ? 'Lojinha'
+                          : produto.categoria === 'BAR'
+                          ? 'Bar'
+                          : produto.categoria}
+                      </span>
+                    </td>
+                    <td className="p-3 font-bold text-slate-900">{formatarMoeda(produto.preco)}</td>
+                    <td className="p-3 font-semibold text-slate-700">{produto.estoque}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => abrirEdicao(produto)}
+                          className="p-1.5 text-[#053d1e] hover:bg-emerald-50 rounded cursor-pointer transition-colors"
+                          title="Editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setProdutoParaExcluir(produto)}
+                          className="p-1.5 text-[#ba1a1a] hover:bg-red-50 rounded cursor-pointer transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Barra de Paginação */}
+        {totalItens > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-[#f8f9fa] border-t border-[#c1c9bf] text-xs text-[#717971]">
+            <div>
+              Exibindo <span className="font-bold text-slate-800">{indiceInicio + 1}</span> a{' '}
+              <span className="font-bold text-slate-800">{indiceFim}</span> de{' '}
+              <span className="font-bold text-slate-800">{totalItens}</span> produtos (Página{' '}
+              <span className="font-bold text-slate-800">{paginaAtual}</span> de{' '}
+              <span className="font-bold text-slate-800">{totalPaginas}</span>)
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPaginaAtual((prev) => Math.max(1, prev - 1))}
+                disabled={paginaAtual === 1}
+                className="p-1.5 rounded-lg border border-[#c1c9bf] bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                title="Página Anterior"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <span className="px-3 py-1 text-xs font-bold bg-[#053d1e] text-white rounded-lg shadow-xs">
+                {paginaAtual} / {totalPaginas}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setPaginaAtual((prev) => Math.min(totalPaginas, prev + 1))}
+                disabled={paginaAtual >= totalPaginas}
+                className="p-1.5 rounded-lg border border-[#c1c9bf] bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                title="Próxima Página"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
+      {/* Modal de Cadastro / Edição com Topo Verde Escuro Padronizado */}
       {modalAberta && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs"
+          className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in"
           role="dialog"
           aria-modal="true"
         >
-          <form
-            onSubmit={salvar}
-            className="bg-white border border-[#c1c9bf] rounded-2xl shadow-2xl p-5 space-y-3 w-full max-w-xl"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h2 className="font-bold flex items-center gap-2 text-sm text-[#053d1e]">
-                <Package className="w-4 h-4 text-[#053d1e]" />
-                {produtoEditando ? 'Editar produto' : 'Novo produto'}
-              </h2>
+          <div className="relative w-full max-w-xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-[#c1c9bf] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Topo no padrão verde escuro (#053d1e) */}
+            <div className="bg-[#053d1e] px-6 py-4 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <Package className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold font-['Manrope'] text-white">
+                    {produtoEditando ? 'Editar Produto' : 'Novo Produto'}
+                  </h2>
+                  <p className="text-xs text-white/80">
+                    {produtoEditando
+                      ? `Atualize as informações do item "${formulario.nome || ''}".`
+                      : 'Cadastre um novo item para lançamento na Lojinha ou Bar.'}
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setModalAberta(false)}
                 disabled={carregando}
-                className="p-1 text-[#414941] hover:bg-slate-100 rounded"
+                className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {erro && (
-              <div className="p-2 rounded-lg bg-[#ffdad6] text-[#93000a] text-xs font-semibold">
-                {erro}
-              </div>
-            )}
+            {/* Formulário com Scroll interno */}
+            <form onSubmit={salvar} className="p-6 space-y-4 overflow-y-auto flex-1">
+              {erro && (
+                <div className="p-3 rounded-xl bg-[#ffdad6] text-[#93000a] text-xs font-semibold">
+                  {erro}
+                </div>
+              )}
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Nome do Produto *
-              </label>
-              <input
-                required
-                placeholder="Ex: Água Mineral 500ml, Sucos, Camiseta, etc."
-                value={formulario.nome}
-                onChange={(e) => setFormulario({ ...formulario, nome: e.target.value })}
-                className="w-full p-2 text-xs border border-[#c1c9bf] rounded-lg font-semibold"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Descrição</label>
-              <textarea
-                placeholder="Descrição opcional do item"
-                rows={2}
-                value={formulario.descricao}
-                onChange={(e) => setFormulario({ ...formulario, descricao: e.target.value })}
-                className="w-full p-2 text-xs border border-[#c1c9bf] rounded-lg"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Categoria *</label>
-                <select
-                  value={formulario.categoria}
-                  onChange={(e) =>
-                    setFormulario({ ...formulario, categoria: e.target.value as CategoriaProduto })
-                  }
-                  className="w-full p-2 text-xs border border-[#c1c9bf] rounded-lg bg-white font-bold text-slate-800"
-                >
-                  {categorias.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nome do Produto *
+                </label>
+                <input
+                  required
+                  placeholder="Ex: Água Mineral 500ml, Sucos, Camiseta, etc."
+                  value={formulario.nome}
+                  onChange={(e) => setFormulario({ ...formulario, nome: e.target.value })}
+                  className="w-full p-2.5 text-xs border border-[#c1c9bf] bg-[#f8f9fa] rounded-lg font-semibold outline-none focus:border-[#053d1e]"
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Preço (R$) *</label>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#717971]">
-                    R$
-                  </span>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Descrição</label>
+                <textarea
+                  placeholder="Descrição opcional do item"
+                  rows={2}
+                  value={formulario.descricao}
+                  onChange={(e) => setFormulario({ ...formulario, descricao: e.target.value })}
+                  className="w-full p-2.5 text-xs border border-[#c1c9bf] bg-[#f8f9fa] rounded-lg outline-none focus:border-[#053d1e]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Categoria *</label>
+                  <select
+                    value={formulario.categoria}
+                    onChange={(e) =>
+                      setFormulario({ ...formulario, categoria: e.target.value as CategoriaProduto })
+                    }
+                    className="w-full p-2.5 text-xs border border-[#c1c9bf] rounded-lg bg-[#f8f9fa] font-bold text-slate-800 outline-none cursor-pointer"
+                  >
+                    {categorias.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Preço com Máscara Monetária */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Preço (R$) *</label>
                   <input
                     required
-                    inputMode="decimal"
                     type="text"
-                    placeholder="0,00"
+                    inputMode="numeric"
+                    placeholder="R$ 0,00"
                     value={precoTexto}
-                    onChange={(e) => {
-                      const texto = e.target.value;
-                      setPrecoTexto(texto);
-                      setFormulario({ ...formulario, preco: converterValorMonetario(texto) });
-                    }}
-                    className="w-full p-2 pl-9 text-xs border border-[#c1c9bf] rounded-lg font-bold text-slate-800"
+                    onChange={(e) => handleAlterarPreco(e.target.value)}
+                    className="w-full p-2.5 text-xs border border-[#c1c9bf] bg-[#f8f9fa] rounded-lg font-bold text-[#053d1e] outline-none focus:border-[#053d1e]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Estoque *</label>
+                  <input
+                    required
+                    min="0"
+                    type="number"
+                    placeholder="Estoque"
+                    value={formulario.estoque}
+                    onChange={(e) =>
+                      setFormulario({ ...formulario, estoque: Number(e.target.value) })
+                    }
+                    className="w-full p-2.5 text-xs border border-[#c1c9bf] bg-[#f8f9fa] rounded-lg font-bold text-slate-800 outline-none focus:border-[#053d1e]"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Estoque *</label>
-                <input
-                  required
-                  min="0"
-                  type="number"
-                  placeholder="Estoque"
-                  value={formulario.estoque}
-                  onChange={(e) =>
-                    setFormulario({ ...formulario, estoque: Number(e.target.value) })
-                  }
-                  className="w-full p-2 text-xs border border-[#c1c9bf] rounded-lg font-bold text-slate-800"
-                />
+              {/* Rodapé da Modal */}
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalAberta(false)}
+                  disabled={carregando}
+                  className="px-4 py-2 border border-[#c1c9bf] rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  disabled={carregando}
+                  className="px-5 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer disabled:opacity-60 transition-colors"
+                >
+                  Salvar Produto
+                </button>
               </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setModalAberta(false)}
-                disabled={carregando}
-                className="px-4 py-2 border border-[#c1c9bf] rounded-lg text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                disabled={carregando}
-                className="px-4 py-2 bg-[#053d1e] hover:bg-[#043017] text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-60"
-              >
-                Salvar Produto
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       )}
 

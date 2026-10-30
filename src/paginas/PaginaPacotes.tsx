@@ -22,32 +22,45 @@ import {
   Info,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
-import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
+import {
+  formatarData,
+  formatarMoeda,
+  aplicarMascaraMoeda,
+  desformatarMoeda,
+} from '../utilitarios/formatadores';
 import { Pacote } from '../tipos';
 import { pacoteService } from '../servicos/api/PacoteService';
 
-// Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
+// Helper universal para compatibilidade camelCase (.NET) e lowercase (PostgreSQL)
 const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
   if (!obj) return undefined;
   return obj[campoMin] !== undefined ? obj[campoMin] : obj[campoCamel];
 };
 
-const extrairDataIso = (valor: any): string => {
+// Extrai data sem bloquear anos reais que estejam no banco (ex: 2020 a 2099)
+const extrairDataIsoSegura = (valor: any): string => {
   if (!valor) return '';
-  return String(valor).slice(0, 10);
+  const str = String(valor).slice(0, 10);
+  if (str.startsWith('0001') || str.startsWith('1900') || str === '01/01/0001') {
+    return '';
+  }
+  return str;
 };
 
-// Converte string vazia para null e datas válidas para ISO com horário
+// Converte a string de data em ISO com horário, ou null se estiver vazia
 const formatarDataParaApi = (dataStr: string): string | null => {
-  if (!dataStr || !dataStr.trim()) return null;
-  return `${dataStr.slice(0, 10)}T00:00:00Z`;
+  if (!dataStr || !dataStr.trim()) {
+    return null;
+  }
+  return `${dataStr.slice(0, 10)}T12:00:00Z`;
 };
 
 interface FormularioPacoteState {
   nome: string;
   descricao: string;
   tipopacote: 'HOSPEDAGEM' | 'FERIADO' | 'DAY_USE' | 'EVENTO';
-  valor: number | string;
+  valorTexto: string;
+  valor: number;
   quantidadedias: number;
   adultosinclusos: number;
   criancasinclusas: number;
@@ -64,7 +77,8 @@ const estadoInicialFormulario: FormularioPacoteState = {
   nome: '',
   descricao: '',
   tipopacote: 'HOSPEDAGEM',
-  valor: '',
+  valorTexto: '',
+  valor: 0,
   quantidadedias: 1,
   adultosinclusos: 2,
   criancasinclusas: 0,
@@ -95,7 +109,6 @@ const obterBadgeTipoPacote = (tipo?: string) => {
 export const PaginaPacotes: React.FC = () => {
   const { reservas, recarregarDados } = useHotel();
 
-  // Lista local de pacotes (ativos e inativos)
   const [pacotes, setPacotes] = useState<Pacote[]>([]);
   const [carregandoListagem, setCarregandoListagem] = useState<boolean>(true);
 
@@ -104,22 +117,21 @@ export const PaginaPacotes: React.FC = () => {
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroStatus, setFiltroStatus] = useState<'TODOS' | 'ATIVOS' | 'INATIVOS'>('TODOS');
 
-  // Estados do Modal de Cadastro / Edição
+  // Estados do Modal
   const [modalAberta, setModalAberta] = useState<boolean>(false);
   const [pacoteEditando, setPacoteEditando] = useState<any | null>(null);
   const [formulario, setFormulario] = useState<FormularioPacoteState>(estadoInicialFormulario);
 
-  // Estados de Exclusão / Desativação
+  // Estados de Exclusão
   const [modalExclusaoAberta, setModalExclusaoAberta] = useState<boolean>(false);
   const [pacoteParaExcluir, setPacoteParaExcluir] = useState<any | null>(null);
   const [qtdReservasVinculadas, setQtdReservasVinculadas] = useState<number>(0);
 
-  // Status de Processamento e Banners
+  // Status de Processamento
   const [carregandoAcao, setCarregandoAcao] = useState<boolean>(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [mensagemErro, setMensagemErro] = useState<string | null>(null);
 
-  // Buscar lista completa de pacotes diretamente da API .NET 8 via pacoteService
   const carregarPacotes = async () => {
     setCarregandoListagem(true);
     try {
@@ -151,7 +163,6 @@ export const PaginaPacotes: React.FC = () => {
     setTimeout(() => setMensagemErro(null), 5000);
   };
 
-  // Filtragem dos pacotes normalizados
   const pacotesFiltrados = useMemo(() => {
     return (pacotes || []).filter((pacote: any) => {
       const termo = busca.trim().toLowerCase();
@@ -159,7 +170,9 @@ export const PaginaPacotes: React.FC = () => {
       const desc = String(getVal(pacote, 'descricao', 'descricao') || '').toLowerCase();
       const correspondeBusca = !termo || nome.includes(termo) || desc.includes(termo);
 
-      const tipo = String(getVal(pacote, 'tipopacote', 'tipoPacote') || 'HOSPEDAGEM').toUpperCase();
+      const tipo = String(
+        getVal(pacote, 'tipopacote', 'tipoPacote') || getVal(pacote, 'tipo', 'tipo') || 'HOSPEDAGEM'
+      ).toUpperCase();
       const correspondeTipo = filtroTipo === 'TODOS' || tipo === filtroTipo;
 
       const ativo = getVal(pacote, 'ativo', 'ativo') !== false;
@@ -172,7 +185,6 @@ export const PaginaPacotes: React.FC = () => {
     });
   }, [pacotes, busca, filtroTipo, filtroStatus]);
 
-  // Abertura do Modal de Novo Pacote
   const handleAbrirNovo = () => {
     setPacoteEditando(null);
     setFormulario(estadoInicialFormulario);
@@ -180,19 +192,32 @@ export const PaginaPacotes: React.FC = () => {
     setModalAberta(true);
   };
 
-  // Abertura do Modal de Edição com leitura segura
   const handleAbrirEdicao = (pacote: any) => {
     setPacoteEditando(pacote);
+
+    const valorNumerico = Number(
+      getVal(pacote, 'valor', 'valor') ??
+      getVal(pacote, 'valoradulto', 'valorAdulto') ??
+      0
+    );
+
+    const tipoDetectado = String(
+      getVal(pacote, 'tipopacote', 'tipoPacote') || getVal(pacote, 'tipo', 'tipo') || 'HOSPEDAGEM'
+    ).toUpperCase() as any;
+
     setFormulario({
       nome: getVal(pacote, 'nome', 'nome') || '',
       descricao: getVal(pacote, 'descricao', 'descricao') || '',
-      tipopacote: (getVal(pacote, 'tipopacote', 'tipoPacote') as any) || 'HOSPEDAGEM',
-      valor: getVal(pacote, 'valor', 'valor') || 0,
+      tipopacote: ['HOSPEDAGEM', 'FERIADO', 'DAY_USE', 'EVENTO'].includes(tipoDetectado)
+        ? tipoDetectado
+        : 'HOSPEDAGEM',
+      valor: valorNumerico,
+      valorTexto: valorNumerico > 0 ? aplicarMascaraMoeda(valorNumerico) : '',
       quantidadedias: Number(getVal(pacote, 'quantidadedias', 'quantidadeDias')) || 1,
       adultosinclusos: Number(getVal(pacote, 'adultosinclusos', 'adultosInclusos')) || 1,
       criancasinclusas: Number(getVal(pacote, 'criancasinclusas', 'criancasInclusas')) || 0,
-      datainicio: extrairDataIso(getVal(pacote, 'datainicio', 'dataInicio')),
-      datafim: extrairDataIso(getVal(pacote, 'datafim', 'dataFim')),
+      datainicio: extrairDataIsoSegura(getVal(pacote, 'datainicio', 'dataInicio')),
+      datafim: extrairDataIsoSegura(getVal(pacote, 'datafim', 'dataFim')),
       incluicafemanha: getVal(pacote, 'incluicafemanha', 'incluiCafeManha') !== false,
       incluialmoco: getVal(pacote, 'incluialmoco', 'incluiAlmoco') !== false,
       incluijantar: getVal(pacote, 'incluijantar', 'incluiJantar') !== false,
@@ -217,6 +242,16 @@ export const PaginaPacotes: React.FC = () => {
     });
   };
 
+  const handleAlterarValorMonetario = (textoDigitado: string) => {
+    const formatado = aplicarMascaraMoeda(textoDigitado);
+    const numero = desformatarMoeda(formatado);
+    setFormulario((prev) => ({
+      ...prev,
+      valorTexto: formatado,
+      valor: numero,
+    }));
+  };
+
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
     setMensagemErro(null);
@@ -226,8 +261,7 @@ export const PaginaPacotes: React.FC = () => {
       return;
     }
 
-    const valorNum = Number(formulario.valor);
-    if (isNaN(valorNum) || valorNum <= 0) {
+    if (formulario.valor <= 0) {
       exibirErro('Informe um valor válido maior que zero (R$).');
       return;
     }
@@ -250,25 +284,40 @@ export const PaginaPacotes: React.FC = () => {
     setCarregandoAcao(true);
     try {
       const eDayUse = formulario.tipopacote === 'DAY_USE';
+      const pacoteId = pacoteEditando
+        ? Number(getVal(pacoteEditando, 'pacoteid', 'pacoteId'))
+        : 0;
+
+      const dataInicioValida = formatarDataParaApi(formulario.datainicio);
+      const dataFimValida = formatarDataParaApi(formulario.datafim);
+
+      // Payload limpo e compatível com PacotePostDto / PacotePutDto
       const payload: any = {
+        ...(pacoteEditando ? { pacoteId } : {}),
         nome: formulario.nome.trim(),
         descricao: formulario.descricao.trim(),
+        tipo: formulario.tipopacote,
         tipopacote: formulario.tipopacote,
-        valor: valorNum,
-        quantidadedias: eDayUse ? 1 : Number(formulario.quantidadedias),
-        adultosinclusos: Number(formulario.adultosinclusos),
-        criancasinclusas: Number(formulario.criancasinclusas),
-        datainicio: formatarDataParaApi(formulario.datainicio),
-        datafim: formatarDataParaApi(formulario.datafim),
-        incluicafemanha: Boolean(formulario.incluicafemanha),
-        incluialmoco: Boolean(formulario.incluialmoco),
-        incluijantar: eDayUse ? false : Boolean(formulario.incluijantar),
-        incluipasseios: Boolean(formulario.incluipasseios),
+        valor: formulario.valor,
+        valorAdulto: formulario.valor,
+        valorCriancaMeia: formulario.valor * 0.5,
+        valorCriancaGratis: 0,
+        minimoDiarias: eDayUse ? 1 : Number(formulario.quantidadedias),
+        quantidadeDias: eDayUse ? 1 : Number(formulario.quantidadedias),
+        adultosInclusos: Number(formulario.adultosinclusos),
+        criancasInclusas: Number(formulario.criancasinclusas),
+        dataInicio: dataInicioValida,
+        dataFim: dataFimValida,
+        datainicio: dataInicioValida,
+        datafim: dataFimValida,
+        incluiCafeManha: Boolean(formulario.incluicafemanha),
+        incluiAlmoco: Boolean(formulario.incluialmoco),
+        incluiJantar: eDayUse ? false : Boolean(formulario.incluijantar),
+        incluiPasseios: Boolean(formulario.incluipasseios),
         ativo: Boolean(formulario.ativo),
       };
 
       if (pacoteEditando) {
-        const pacoteId = getVal(pacoteEditando, 'pacoteid', 'pacoteId');
         const res = await pacoteService.atualizar(pacoteId, payload);
         if (!res.sucesso) {
           exibirErro(`Erro ao atualizar pacote: ${res.erro}`);
@@ -357,7 +406,6 @@ export const PaginaPacotes: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Banner de Mensagem de Sucesso */}
       {mensagemSucesso && (
         <div
           role="status"
@@ -368,7 +416,6 @@ export const PaginaPacotes: React.FC = () => {
         </div>
       )}
 
-      {/* Banner de Mensagem de Erro */}
       {mensagemErro && (
         <div
           role="alert"
@@ -379,7 +426,7 @@ export const PaginaPacotes: React.FC = () => {
         </div>
       )}
 
-      {/* CABEÇALHO PADRONIZADO */}
+      {/* CABEÇALHO */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-[#c1c9bf] bg-white p-5 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
@@ -403,9 +450,8 @@ export const PaginaPacotes: React.FC = () => {
         </button>
       </div>
 
-      {/* BARRA DE AÇÕES E FILTROS */}
+      {/* BARRA DE BUSCA E FILTROS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-xs">
-        {/* Campo de Busca */}
         <div className="relative flex-1 max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#717971]" />
           <input
@@ -417,9 +463,7 @@ export const PaginaPacotes: React.FC = () => {
           />
         </div>
 
-        {/* Filtros de Tipo e Status */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Dropdown de Tipo */}
           <select
             value={filtroTipo}
             onChange={(e) => setFiltroTipo(e.target.value)}
@@ -432,7 +476,6 @@ export const PaginaPacotes: React.FC = () => {
             <option value="EVENTO">Eventos</option>
           </select>
 
-          {/* Filtro por Status */}
           <div className="flex items-center rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] p-1">
             {[
               { id: 'TODOS', label: 'Todos' },
@@ -456,7 +499,7 @@ export const PaginaPacotes: React.FC = () => {
         </div>
       </div>
 
-      {/* GRID DE CARDS DE PACOTES */}
+      {/* GRID DE PACOTES */}
       {carregandoListagem ? (
         <div className="flex flex-col items-center justify-center py-16 bg-white border border-[#c1c9bf] rounded-2xl shadow-xs">
           <LoaderCircle className="h-8 w-8 animate-spin text-[#053d1e] mb-2" />
@@ -473,17 +516,20 @@ export const PaginaPacotes: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {pacotesFiltrados.map((pacote: any) => {
-            const badge = obterBadgeTipoPacote(getVal(pacote, 'tipopacote', 'tipoPacote'));
+            const tipo = getVal(pacote, 'tipopacote', 'tipoPacote') || getVal(pacote, 'tipo', 'tipo');
+            const badge = obterBadgeTipoPacote(tipo);
             const eAtivo = getVal(pacote, 'ativo', 'ativo') !== false;
             const pId = getVal(pacote, 'pacoteid', 'pacoteId');
             const nome = getVal(pacote, 'nome', 'nome');
             const desc = getVal(pacote, 'descricao', 'descricao');
-            const valor = Number(getVal(pacote, 'valor', 'valor') || 0);
+            const valor = Number(
+              getVal(pacote, 'valor', 'valor') ?? getVal(pacote, 'valoradulto', 'valorAdulto') ?? 0
+            );
             const qtdDias = Number(getVal(pacote, 'quantidadedias', 'quantidadeDias') || 1);
             const adultos = Number(getVal(pacote, 'adultosinclusos', 'adultosInclusos') || 1);
             const criancas = Number(getVal(pacote, 'criancasinclusas', 'criancasInclusas') || 0);
-            const dInicio = extrairDataIso(getVal(pacote, 'datainicio', 'dataInicio'));
-            const dFim = extrairDataIso(getVal(pacote, 'datafim', 'dataFim'));
+            const dInicio = extrairDataIsoSegura(getVal(pacote, 'datainicio', 'dataInicio'));
+            const dFim = extrairDataIsoSegura(getVal(pacote, 'datafim', 'dataFim'));
             const cafe = getVal(pacote, 'incluicafemanha', 'incluiCafeManha') !== false;
             const almoco = getVal(pacote, 'incluialmoco', 'incluiAlmoco') !== false;
             const jantar = getVal(pacote, 'incluijantar', 'incluiJantar') !== false;
@@ -497,7 +543,6 @@ export const PaginaPacotes: React.FC = () => {
                 }`}
               >
                 <div>
-                  {/* Cabeçalho do Card */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -527,14 +572,12 @@ export const PaginaPacotes: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Descrição */}
                   {desc && (
                     <p className="text-xs text-[#414941] mb-4 line-clamp-2" title={desc}>
                       {desc}
                     </p>
                   )}
 
-                  {/* Composição e Período */}
                   <div className="space-y-2 border-t border-b border-[#f3f4f6] py-3 my-3 text-xs text-[#414941]">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-1.5 font-medium text-[#717971]">
@@ -566,7 +609,6 @@ export const PaginaPacotes: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Inclusões */}
                   <div className="mb-4">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-[#717971] block mb-2">
                       Inclusões do Pacote:
@@ -611,7 +653,6 @@ export const PaginaPacotes: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Rodapé de Ações do Card */}
                 <div className="flex items-center justify-end gap-2 border-t border-[#f3f4f6] pt-3">
                   <button
                     type="button"
@@ -638,36 +679,40 @@ export const PaginaPacotes: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL DE FORMULÁRIO (CRIAÇÃO E EDIÇÃO) */}
+      {/* MODAL DE CADASTRO E EDIÇÃO PADRONIZADO */}
       {modalAberta && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in overflow-y-auto"
           role="dialog"
           aria-modal="true"
         >
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl space-y-5 border border-[#c1c9bf]">
-            {/* Cabecalho da Modal */}
-            <div className="flex items-center justify-between border-b border-[#f3f4f6] pb-4">
-              <div>
-                <h2 className="font-['Manrope'] text-xl font-bold text-[#191c1d]">
-                  {pacoteEditando ? `Editar Pacote: ${getVal(pacoteEditando, 'nome', 'nome')}` : 'Cadastrar Novo Pacote'}
-                </h2>
-                <p className="text-xs text-[#717971] mt-0.5">
-                  Preencha os detalhes e inclusões do pacote promocional.
-                </p>
+          <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-[#c1c9bf] overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-200">
+            {/* Cabeçalho Verde Escuro */}
+            <div className="bg-[#053d1e] px-6 py-4 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <Sparkles className="w-5 h-5 text-emerald-300" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold font-['Manrope'] text-white">
+                    {pacoteEditando ? `Editar Pacote: ${getVal(pacoteEditando, 'nome', 'nome')}` : 'Cadastrar Novo Pacote'}
+                  </h2>
+                  <p className="text-xs text-white/80">
+                    Preencha os detalhes e inclusões do pacote promocional.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setModalAberta(false)}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors cursor-pointer"
+                className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Formulário */}
-            <form onSubmit={handleSalvar} className="space-y-4">
-              {/* Nome e Tipo */}
+            {/* Conteúdo do Formulário */}
+            <form onSubmit={handleSalvar} className="p-6 space-y-4 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-[#191c1d] mb-1">
@@ -690,7 +735,7 @@ export const PaginaPacotes: React.FC = () => {
                   <select
                     value={formulario.tipopacote}
                     onChange={(e) => handleMudarTipoPacote(e.target.value as any)}
-                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none"
+                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none cursor-pointer"
                   >
                     <option value="HOSPEDAGEM">Hospedagem</option>
                     <option value="FERIADO">Feriado Especial</option>
@@ -700,21 +745,20 @@ export const PaginaPacotes: React.FC = () => {
                 </div>
               </div>
 
-              {/* Valor, Dias, Adultos e Crianças */}
+              {/* Valor e Hóspedes */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-[#191c1d] mb-1">
                     Valor do Pacote (R$) <span className="text-rose-600">*</span>
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    value={formulario.valor}
-                    onChange={(e) => setFormulario({ ...formulario, valor: e.target.value })}
-                    placeholder="0.00"
-                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none"
+                    value={formulario.valorTexto}
+                    onChange={(e) => handleAlterarValorMonetario(e.target.value)}
+                    placeholder="R$ 0,00"
+                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-bold text-[#053d1e] focus:border-[#053d1e] focus:outline-none"
                   />
                 </div>
 
@@ -767,7 +811,7 @@ export const PaginaPacotes: React.FC = () => {
                 </div>
               </div>
 
-              {/* Datas de Validade */}
+              {/* Datas de Validade (Opcionais para todos os tipos) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-[#191c1d] mb-1">
@@ -777,7 +821,7 @@ export const PaginaPacotes: React.FC = () => {
                     type="date"
                     value={formulario.datainicio}
                     onChange={(e) => setFormulario({ ...formulario, datainicio: e.target.value })}
-                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none"
+                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none cursor-pointer"
                   />
                 </div>
 
@@ -787,9 +831,10 @@ export const PaginaPacotes: React.FC = () => {
                   </label>
                   <input
                     type="date"
+                    min={formulario.datainicio}
                     value={formulario.datafim}
                     onChange={(e) => setFormulario({ ...formulario, datafim: e.target.value })}
-                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none"
+                    className="w-full rounded-xl border border-[#c1c9bf] bg-[#f8f9fa] px-3.5 py-2 text-xs font-semibold text-[#191c1d] focus:border-[#053d1e] focus:outline-none cursor-pointer"
                   />
                 </div>
               </div>
@@ -906,7 +951,7 @@ export const PaginaPacotes: React.FC = () => {
                 </label>
               </div>
 
-              {/* Botões do Rodapé da Modal */}
+              {/* Rodapé da Modal */}
               <div className="flex items-center justify-end gap-3 border-t border-[#f3f4f6] pt-4">
                 <button
                   type="button"
@@ -934,7 +979,7 @@ export const PaginaPacotes: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO / DESATIVAÇÃO */}
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {modalExclusaoAberta && pacoteParaExcluir && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in"
