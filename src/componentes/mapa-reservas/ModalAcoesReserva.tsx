@@ -52,7 +52,6 @@ const extrairIdadesDasObservacoes = (obs: string, qtdCriancas: number): number[]
 
   while ((match = regex.exec(obs)) !== null) {
     const idade = parseInt(match[1], 10);
-    // Considera apenas faixas de idade de crianças (0 a 11 anos)
     if (idade >= 0 && idade <= 11) {
       idadesEncontradas.push(idade);
     }
@@ -132,6 +131,52 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       });
   }, [quartos]);
 
+  // FILTRAR APENAS QUARTOS DISPONÍVEIS NAS NOVAS DATAS ESCOLHIDAS
+  const quartosDisponiveis = useMemo(() => {
+    if (!novaDataEntrada || !novaDataSaida) {
+      return quartosFisicos;
+    }
+
+    const resAtualId = Number(getVal(reserva, 'reservaid', 'reservaId'));
+
+    return quartosFisicos.filter((quarto: any) => {
+      const qId = Number(getVal(quarto, 'quartoid', 'quartoId'));
+
+      // Verifica se existe alguma outra reserva ativa ocupando este quarto no período
+      const temConflito = (reservas || []).some((r: any) => {
+        const rId = Number(getVal(r, 'reservaid', 'reservaId'));
+        if (rId === resAtualId) return false; // Ignora a própria reserva
+
+        const rStatus = String(getVal(r, 'statusreserva', 'statusReserva') || '').toUpperCase();
+        if (rStatus === 'CANCELADA' || rStatus === 'CREDITO') return false;
+
+        const rQuarto = Number(getVal(r, 'quartoid', 'quartoId'));
+        if (rQuarto !== qId) return false;
+
+        const rEntrada = String(getVal(r, 'dataentrada', 'dataEntrada') || '').slice(0, 10);
+        const rSaida = String(getVal(r, 'datasaida', 'dataSaida') || '').slice(0, 10);
+        if (!rEntrada || !rSaida) return false;
+
+        // Regra de colisão de datas: rEntrada < novaSaida && rSaida > novaEntrada
+        return rEntrada < novaDataSaida && rSaida > novaDataEntrada;
+      });
+
+      return !temConflito;
+    });
+  }, [quartosFisicos, reservas, novaDataEntrada, novaDataSaida, reserva]);
+
+  // Ajusta o quarto selecionado caso ele fique indisponível após mudar as datas
+  useEffect(() => {
+    if (remarcandoDatas && novoQuartoId && quartosDisponiveis.length > 0) {
+      const continuaDisponivel = quartosDisponiveis.some(
+        (q: any) => Number(getVal(q, 'quartoid', 'quartoId')) === novoQuartoId
+      );
+      if (!continuaDisponivel) {
+        setNovoQuartoId(0);
+      }
+    }
+  }, [quartosDisponiveis, novoQuartoId, remarcandoDatas]);
+
   const pacotesAtivos = useMemo(() => {
     return (pacotes || []).filter((p: any) => getVal(p, 'ativo', 'ativo') !== false);
   }, [pacotes]);
@@ -190,7 +235,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     return pacotesAtivos.find((p: any) => Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === dias) || null;
   };
 
-  // Obtém o valor base por pessoa e informações do pacote
   const obterValorPorPessoa = (
     pacoteIdAlvo: string,
     dEntrada: string,
@@ -243,7 +287,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     let valCriancas = 0;
     for (let i = 0; i < criancas; i++) {
       const idade = idades[i] ?? 6;
-      // Regra oficial: 0 a 5 anos = Grátis | 6 a 11 anos = Meia (50%)
       if (idade > 5) {
         valCriancas += valorBase * 0.5;
       }
@@ -289,7 +332,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       setNovoValorTotalCustomizado(false);
       setNovasObservacoes(getVal(reserva, 'observacoes', 'observacoes') || '');
 
-      // Extrai idades reais do texto de observações existente para não jogar 6 anos arbitrário
       const obsTexto = getVal(reserva, 'observacoes', 'observacoes') || '';
       const idadesExtraidas = extrairIdadesDasObservacoes(obsTexto, cr);
 
@@ -363,7 +405,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
           setAcompanhantes(validos);
         }
 
-        // Calcula com precisão as idades a partir da data de nascimento dos acompanhantes
         if (validos.length > 0) {
           const idadesCalc: number[] = [];
           validos.forEach((a) => {
@@ -392,7 +433,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     carregarAcompanhantesDaReserva();
   }, [aberto, reserva]);
 
-  // Ao alterar a entrada, calcula automaticamente +1 dia para saída
   const handleDataEntradaChange = (val: string) => {
     setNovaDataEntrada(val);
     if (!val) return;
@@ -531,7 +571,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
 
     const quartoDestinoId = novoQuartoId || Number(getVal(reserva, 'quartoid', 'quartoId'));
     if (!quartoDestinoId) {
-      setErro('Selecione uma acomodação para a reserva.');
+      setErro('Selecione uma acomodação disponível para a reserva.');
       return;
     }
 
@@ -549,8 +589,8 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
           rQuarto === Number(quartoDestinoId) &&
           rId !== resId &&
           ['RESERVADO', 'HOSPEDADO', 'PRE_RESERVA'].includes(rStatus) &&
-          rEntrada <= novaDataSaida &&
-          rSaida >= novaDataEntrada
+          rEntrada < novaDataSaida &&
+          rSaida > novaDataEntrada
         );
       });
 
@@ -896,7 +936,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   <strong>{formatarMoeda(valorPagoNum)}</strong> será mantido e o saldo recalculado automaticamente.
                 </p>
 
-                {/* Linha 1: Datas com cálculo automático de +1 dia na saída */}
+                {/* Linha 1: Datas */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -923,18 +963,24 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   </div>
                 </div>
 
-                {/* Linha 2: Acomodação e Pacote */}
+                {/* Linha 2: Acomodação (com filtro de disponibilidade) e Pacote */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nova Acomodação / Quarto:
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold text-slate-700">
+                        Nova Acomodação / Quarto:
+                      </label>
+                      <span className="text-[10px] font-bold text-emerald-700">
+                        ({quartosDisponiveis.length} disponíveis)
+                      </span>
+                    </div>
                     <select
                       value={novoQuartoId}
                       onChange={(e) => setNovoQuartoId(Number(e.target.value))}
                       className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
                     >
-                      {quartosFisicos.map((q: any) => {
+                      <option value={0}>Selecione uma acomodação livre...</option>
+                      {quartosDisponiveis.map((q: any) => {
                         const qId = Number(getVal(q, 'quartoid', 'quartoId'));
                         const cod = getVal(q, 'codigoidentificador', 'codigoIdentificador') || getVal(q, 'numero', 'numero');
                         const cat = getVal(q, 'categoria', 'categoria');
@@ -1040,7 +1086,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     </div>
                   </div>
 
-                  {/* Idades individuais das crianças com idades reais detectadas */}
+                  {/* Idades individuais das crianças */}
                   {novoCriancas > 0 && (
                     <div className="pt-2 border-t border-slate-100 space-y-1.5">
                       <span className="text-[10px] font-bold text-slate-600 block">

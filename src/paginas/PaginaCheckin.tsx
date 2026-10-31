@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   UserCheck,
   Search,
@@ -12,6 +12,7 @@ import {
   AlertCircle,
   FileCheck,
   LoaderCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva } from '../tipos';
@@ -28,23 +29,48 @@ const extrairDataIso = (valor: any): string => {
   return String(valor).slice(0, 10);
 };
 
+// Gera o formato local aceito pelo input type="datetime-local" (YYYY-MM-DDTHH:mm)
+const obterDataHoraAtualLocal = (): string => {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  const horas = String(agora.getHours()).padStart(2, '0');
+  const minutos = String(agora.getMinutes()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}T${horas}:${minutos}`;
+};
+
 export const PaginaCheckin: React.FC = () => {
   const { reservas, quartos, hospedes, dataSistema, realizarCheckin, usuarioAtual } = useHotel();
 
   const [busca, setBusca] = useState<string>('');
   const [reservaSelecionada, setReservaSelecionada] = useState<any | null>(null);
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
+  const [feedbackErro, setFeedbackErro] = useState<string | null>(null);
   const [comprovanteCheckin, setComprovanteCheckin] = useState<any | null>(null);
   const [carregandoCheckin, setCarregandoCheckin] = useState<boolean>(false);
+  
+  // Estado para capturar e enviar o momento exato do Check-in
+  const [checkinRealizadoEm, setCheckinRealizadoEm] = useState<string>(obterDataHoraAtualLocal());
+
+  // Atualiza a data/hora local toda vez que o atendente seleciona uma reserva diferente
+  useEffect(() => {
+    if (reservaSelecionada) {
+      setCheckinRealizadoEm(obterDataHoraAtualLocal());
+    }
+  }, [reservaSelecionada]);
 
   // Normalizar data do sistema (AAAA-MM-DD)
   const dataHojeStr = dataSistema ? extrairDataIso(dataSistema) : new Date().toISOString().slice(0, 10);
 
-  // Normalizar a lista de reservas com acesso unificado aos campos
+  // Normalizar a lista de reservas garantindo integridade dos campos da API .NET
   const reservasNormalizadas = React.useMemo(() => {
     return reservas.map((r: any) => {
-      const hospedeId = Number(getVal(r, 'hospedeid', 'hospedeId'));
-      const quartoId = Number(getVal(r, 'quartoid', 'quartoId'));
+      const hospedeId = Number(getVal(r, 'hospedeid', 'hospedeId') || 0);
+      const quartoId = Number(getVal(r, 'quartoid', 'quartoId') || 0);
+      const reservaId = Number(getVal(r, 'reservaid', 'reservaId') || 0);
+      const codigo = String(getVal(r, 'codigo', 'codigo') || '').trim();
+
       const hospedeObj = hospedes?.find((h: any) => Number(getVal(h, 'hospedeid', 'hospedeId')) === hospedeId);
       const quartoObj = quartos?.find((q: any) => Number(getVal(q, 'quartoid', 'quartoId')) === quartoId);
 
@@ -78,8 +104,16 @@ export const PaginaCheckin: React.FC = () => {
 
       return {
         ...r,
-        reservaid: Number(getVal(r, 'reservaid', 'reservaId')),
-        codigo: getVal(r, 'codigo', 'codigo') || '',
+        reservaid: reservaId,
+        reservaId: reservaId,
+        codigo: codigo || `RES-${reservaId}`,
+        Codigo: codigo || `RES-${reservaId}`,
+        quartoid: quartoId,
+        quartoId: quartoId,
+        QuartoId: quartoId,
+        hospedeid: hospedeId,
+        hospedeId: hospedeId,
+        HospedeId: hospedeId,
         dataentrada: extrairDataIso(getVal(r, 'dataentrada', 'dataEntrada')),
         datasaida: extrairDataIso(getVal(r, 'datasaida', 'dataSaida')),
         statusreserva: getVal(r, 'statusreserva', 'statusReserva') || '',
@@ -121,21 +155,58 @@ export const PaginaCheckin: React.FC = () => {
     });
   }, [reservasAguardando, busca]);
 
-  const handleEfetivarCheckin = async (reserva: any) => {
-    setCarregandoCheckin(true);
-    try {
-      const idParaCheckin = reserva.reservaid;
-      const res = await realizarCheckin(idParaCheckin);
-      if (res.sucesso) {
-        setFeedbackSucesso(res.mensagem);
-        setComprovanteCheckin(reserva);
-        setReservaSelecionada(null);
-        setTimeout(() => setFeedbackSucesso(null), 4000);
-      }
-    } finally {
-      setCarregandoCheckin(false);
+  const handleEfetivarCheckin = async (reservaItem: any) => {
+  setFeedbackErro(null);
+
+  const qId = Number(reservaItem.quartoid ?? reservaItem.quartoId);
+  const hId = Number(reservaItem.hospedeid ?? reservaItem.hospedeId);
+
+  if (!qId || qId <= 0) {
+    setFeedbackErro('Erro: O quarto da reserva não foi identificado.');
+    return;
+  }
+  if (!hId || hId <= 0) {
+    setFeedbackErro('Erro: O hóspede da reserva não foi identificado.');
+    return;
+  }
+
+  setCarregandoCheckin(true);
+  try {
+    const idParaCheckin = Number(reservaItem.reservaid ?? reservaItem.reservaId);
+
+    const dataHoraIsoUtc = checkinRealizadoEm
+      ? new Date(checkinRealizadoEm).toISOString()
+      : new Date().toISOString();
+
+    const dadosParaEnvio = {
+      ...reservaItem,
+      quartoid: qId,
+      quartoId: qId,
+      hospedeid: hId,
+      hospedeId: hId,
+      checkinrealizadoem: dataHoraIsoUtc,
+      checkinRealizadoEm: dataHoraIsoUtc,
+    };
+
+    const res: any = await realizarCheckin(idParaCheckin, dadosParaEnvio);
+
+    if (!res.sucesso) {
+      setFeedbackErro(res.mensagem || 'Falha ao efetivar check-in.');
+    } else {
+      setFeedbackSucesso(res.mensagem);
+      setComprovanteCheckin({
+        ...reservaItem,
+        checkinrealizadoem: dataHoraIsoUtc,
+      });
+      setReservaSelecionada(null);
+      setTimeout(() => setFeedbackSucesso(null), 4000);
     }
-  };
+  } catch (err: any) {
+    setFeedbackErro(err?.message || 'Erro de comunicação ao efetivar check-in.');
+  } finally {
+    setCarregandoCheckin(false);
+  }
+};
 
   return (
     <div className="space-y-6">
@@ -165,6 +236,13 @@ export const PaginaCheckin: React.FC = () => {
         <div className="bg-[#b8f0c2] text-[#00210d] px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-[#92c89d] shadow-xs">
           <CheckCircle2 className="w-5 h-5 text-[#053d1e] shrink-0" />
           <span>{feedbackSucesso}</span>
+        </div>
+      )}
+
+      {feedbackErro && (
+        <div className="bg-red-50 text-red-900 px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2 border border-red-300 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+          <span className="whitespace-pre-line">{feedbackErro}</span>
         </div>
       )}
 
@@ -202,7 +280,10 @@ export const PaginaCheckin: React.FC = () => {
                 return (
                   <div
                     key={res.reservaid}
-                    onClick={() => setReservaSelecionada(res)}
+                    onClick={() => {
+                      setFeedbackErro(null);
+                      setReservaSelecionada(res);
+                    }}
                     className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
                       selecionado
                         ? 'border-2 border-[#053d1e] bg-[#b8f0c2]/10 ring-2 ring-[#053d1e]/20 shadow-md'
@@ -275,6 +356,23 @@ export const PaginaCheckin: React.FC = () => {
                 <p className="text-[#053d1e] font-semibold">
                   Destinado: Quarto {reservaSelecionada.quartonumero} ({reservaSelecionada.quartocodigo}) • {reservaSelecionada.quartocategoria}
                 </p>
+              </div>
+
+              {/* Data e Horário Real do Check-in */}
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 space-y-1.5 text-xs">
+                <label className="block text-[11px] font-bold text-[#053d1e] flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#053d1e]" />
+                  Data e Horário do Check-in:
+                </label>
+                <input
+                  type="datetime-local"
+                  value={checkinRealizadoEm}
+                  onChange={(e) => setCheckinRealizadoEm(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
+                />
+                <span className="text-[10px] text-emerald-800 block">
+                  Registrado no campo <strong>checkinrealizadoem</strong> do sistema.
+                </span>
               </div>
 
               {/* Status do Pagamento */}
@@ -351,6 +449,12 @@ export const PaginaCheckin: React.FC = () => {
                 <span className="text-[#717971]">Período:</span>
                 <span className="font-medium text-[#191c1d]">
                   {formatarData(comprovanteCheckin.dataentrada)} até {formatarData(comprovanteCheckin.datasaida)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#717971]">Realizado em:</span>
+                <span className="font-semibold text-[#053d1e]">
+                  {new Date(comprovanteCheckin.checkinrealizadoem).toLocaleString('pt-BR')}
                 </span>
               </div>
               <div className="flex justify-between">

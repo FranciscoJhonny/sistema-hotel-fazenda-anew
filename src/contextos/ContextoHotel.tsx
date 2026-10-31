@@ -68,7 +68,7 @@ interface ContextoHotelType {
   cancelarReserva: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   suspenderReservaComCredito: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   trocarQuartoReserva: (reservaId: number | string, novoQuartoId: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
-  realizarCheckin: (reservaId: number | string) => Promise<{ sucesso: boolean; mensagem: string }>;
+  realizarCheckin: (reservaId: number | string, dadosCheckin?: any) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>, observacoesCheckout?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   criarConsumoExtra: (consumo: {
     reservaid: number;
@@ -161,7 +161,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         reservasResult,
         hospedesResult,
         produtosResult,
-        vendasResult,
+        vendaResult,
         pacotesResult,
         usuariosResult,
         configuracaoResult,
@@ -424,15 +424,15 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const reservaParaInserir = {
       codigo: (novaReserva as any).codigo || `RES-${Date.now().toString().slice(-6)}`,
-      hospedeid: novaReserva.hospedeid,
-      quartoid: eDayUse ? (quartoDayUse ? quartoDayUse.quartoid : 17) : quarto.quartoid,
+      hospedeid: Number(novaReserva.hospedeid),
+      quartoid: Number(eDayUse ? (quartoDayUse ? quartoDayUse.quartoid : 17) : quarto.quartoid),
       adultos: novaReserva.adultos || 1,
       criancas: novaReserva.criancas || 0,
       dataentrada: novaReserva.dataentrada,
       datasaida: novaReserva.datasaida,
       horarioprevistochegada: novaReserva.horarioprevistochegada || '14:00',
       tipoatendimento: eDayUse ? 'DAY_USE' : (novaReserva.tipoatendimento || 'HOSPEDAGEM'),
-      pacoteid: novaReserva.pacoteid || null,
+      pacoteid: novaReserva.pacoteid ? Number(novaReserva.pacoteid) : undefined,
       valortotal: valorTotal,
       valorpago: valorPago,
       saldo: valorTotal - valorPago,
@@ -654,23 +654,81 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   };
 
-  const realizarCheckin = async (reservaId: number | string): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
-    if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
+  const realizarCheckin = async (reservaId: number | string, dadosCheckin?: any) => {
+    try {
+      const idNum = Number(reservaId);
 
-    const agora = new Date().toISOString();
-    const dadosReserva = {
-      statusreserva: 'HOSPEDADO' as StatusReserva,
-      checkinrealizadoem: agora,
-      checkinusuario: usuarioAtual?.usuarioid,
-      dataoperacao: agora,
-      naturezaoperacao: 'UPDATE',
-    };
+      const reservaAtual = reservas.find(
+        (r: any) => Number(r.reservaid ?? r.reservaId) === idNum
+      );
 
-    await reservaService.atualizar(reservaId, dadosReserva);
-    setReservas((prev) => prev.map((r) => (String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r)) as Reserva[]);
-    await atualizarStatusQuarto(reserva.quartoid, 'OCUPADO');
-    return { sucesso: true, mensagem: `Check-in de ${reserva.hospedenome} realizado!` };
+      const r = { ...reservaAtual, ...dadosCheckin };
+
+      const idReserva = Number(r.reservaid ?? r.reservaId ?? idNum);
+      const idQuarto = Number(r.quartoid ?? r.quartoId ?? 0);
+      const idHospede = Number(r.hospedeid ?? r.hospedeId ?? 0);
+      const codigo = String(r.codigo ?? r.Codigo ?? `RES-${idReserva}`).trim();
+
+      if (!idQuarto || idQuarto <= 0) {
+        return { sucesso: false, mensagem: 'Identificador do quarto inválido ou não vinculado à reserva.' };
+      }
+      if (!idHospede || idHospede <= 0) {
+        return { sucesso: false, mensagem: 'Identificador do hóspede inválido ou não vinculado à reserva.' };
+      }
+
+      const agoraIso = new Date().toISOString();
+      const dataHoraCheckin = r.checkinrealizadoem || r.checkinRealizadoEm || agoraIso;
+
+      const payloadPutDto: any = {
+        reservaId: idReserva,
+        codigo: codigo,
+        quartoId: idQuarto,
+        hospedeId: idHospede,
+        cadastroId: r.cadastroid ?? r.cadastroId ? Number(r.cadastroid ?? r.cadastroId) : null,
+        pacoteId: r.pacoteid ?? r.pacoteId ? Number(r.pacoteid ?? r.pacoteId) : null,
+        dataEntrada: r.dataentrada ?? r.dataEntrada,
+        dataSaida: r.datasaida ?? r.dataSaida,
+        dataReserva: r.datareserva ?? r.dataReserva ?? r.dataentrada ?? r.dataEntrada,
+        statusReserva: 'HOSPEDADO',
+        tipoAtendimento: r.tipoatendimento ?? r.tipoAtendimento ?? 'HOSPEDAGEM',
+        adultos: Number(r.adultos ?? 1),
+        criancas: Number(r.criancas ?? 0),
+        valorDiaria: Number(r.valordiaria ?? r.valorDiaria ?? 0),
+        valorTotal: Number(r.valortotal ?? r.valorTotal ?? 0),
+        valorPago: Number(r.valorpago ?? r.valorPago ?? 0),
+        saldo: Number(r.saldo ?? 0),
+        formaPagamento: r.formapagamento ?? r.formaPagamento ?? 'PIX',
+        statusPagamento: r.statuspagamento ?? r.statusPagamento ?? 'PAGO',
+        observacoes: r.observacoes ?? '',
+        observacoesCheckout: r.observacoes_checkout ?? r.observacoesCheckout ?? '',
+        horarioPrevistoChegada: r.horarioprevistochegada ?? r.horarioPrevistoChegada ?? null,
+        horarioPrevistoSaida: r.horarioprevistosaida ?? r.horarioPrevistoSaida ?? null,
+        checkinRealizadoEm: dataHoraCheckin,
+        ativo: true,
+      };
+
+      const resposta = await reservaService.atualizar(idReserva, payloadPutDto);
+
+      if (!resposta.sucesso) {
+        return {
+          sucesso: false,
+          mensagem: resposta.erro || resposta.mensagem || 'Erro ao atualizar reserva na API.',
+        };
+      }
+
+      if (idQuarto > 0) {
+        await atualizarStatusQuarto(idQuarto, 'OCUPADO');
+      }
+
+      await recarregarDados();
+
+      return { sucesso: true, mensagem: `Check-in da reserva ${codigo} concluído com sucesso!` };
+    } catch (error: any) {
+      return {
+        sucesso: false,
+        mensagem: error?.message || 'Falha inesperada ao executar o check-in.',
+      };
+    }
   };
 
   const realizarCheckout = async (
@@ -678,7 +736,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     pagamentosInput: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>> = [],
     observacoesCheckout?: string
   ): Promise<{ sucesso: boolean; mensagem: string }> => {
-    const reserva = reservas.find((r) => String(r.reservaid) === String(reservaId));
+    const idNum = Number(reservaId);
+    const reserva = reservas.find((r) => Number(r.reservaid ?? (r as any).reservaId) === idNum);
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
 
     const agora = new Date().toISOString();
@@ -687,7 +746,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     if (pagamentosConfirmados.length > 0) {
       for (const pagamento of pagamentosConfirmados) {
         const resPag = await pagamentoService.criar({
-          reservaid: Number(reservaId),
+          reservaid: idNum,
           valor: Number(pagamento.valor),
           formapagamento: pagamento.formapagamento,
           status: 'PAGO' as const,
@@ -708,25 +767,51 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const totalPagoAteAgora = Number(reserva.valorpago || 0) + pagamentosConfirmados.reduce((acc, p) => acc + Number(p.valor), 0);
     const novoSaldo = Math.max(0, Number(reserva.valortotal || 0) - totalPagoAteAgora);
-    const dadosReserva: any = {
-      statusreserva: 'CONCLUIDA' as StatusReserva,
-      valorpago: totalPagoAteAgora,
+    
+    const obsCheckoutFinal = observacoesCheckout !== undefined 
+      ? observacoesCheckout 
+      : ((reserva as any).observacoes_checkout || (reserva as any).observacoesCheckout || '');
+
+    // Payload DTO completo para passar sem erro 400 no ReservaPutDto
+    const payloadPutDto: any = {
+      reservaId: idNum,
+      codigo: String(reserva.codigo || `RES-${idNum}`),
+      quartoId: Number(reserva.quartoid || (reserva as any).quartoId),
+      hospedeId: Number(reserva.hospedeid || (reserva as any).hospedeId),
+      cadastroId: (reserva as any).cadastroid ?? (reserva as any).cadastroId ? Number((reserva as any).cadastroid ?? (reserva as any).cadastroId) : null,
+      pacoteId: reserva.pacoteid ?? (reserva as any).pacoteId ? Number(reserva.pacoteid ?? (reserva as any).pacoteId) : null,
+      dataEntrada: reserva.dataentrada || (reserva as any).dataEntrada,
+      dataSaida: reserva.datasaida || (reserva as any).dataSaida,
+      dataReserva: (reserva as any).datareserva || (reserva as any).dataReserva || reserva.dataentrada || (reserva as any).dataEntrada,
+      statusReserva: 'CONCLUIDA',
+      tipoAtendimento: (reserva as any).tipoatendimento || (reserva as any).tipoAtendimento || 'HOSPEDAGEM',
+      adultos: Number(reserva.adultos || 1),
+      criancas: Number(reserva.criancas || 0),
+      valorDiaria: Number((reserva as any).valordiaria || (reserva as any).valorDiaria || 0),
+      valorTotal: Number(reserva.valortotal || 0),
+      valorPago: totalPagoAteAgora,
       saldo: novoSaldo,
-      statuspagamento: novoSaldo <= 0 ? ('PAGO' as const) : ('PARCIAL' as const),
-      checkoutrealizadoem: agora,
-      checkoutusuario: usuarioAtual?.usuarioid,
-      dataoperacao: agora,
-      naturezaoperacao: 'UPDATE',
+      formaPagamento: (reserva as any).formapagamento || (reserva as any).formaPagamento || 'PIX',
+      statusPagamento: novoSaldo <= 0 ? 'PAGO' : 'PARCIAL',
+      observacoes: reserva.observacoes || '',
+      observacoesCheckout: obsCheckoutFinal,
+      checkoutRealizadoEm: agora,
+      ativo: true,
     };
 
-    if (observacoesCheckout !== undefined) {
-      dadosReserva.observacoes_checkout = observacoesCheckout;
+    const resApi = await reservaService.atualizar(idNum, payloadPutDto);
+    if (!resApi.sucesso) {
+      return { sucesso: false, mensagem: resApi.erro || 'Erro ao finalizar check-out na API.' };
     }
 
-    await reservaService.atualizar(reservaId, dadosReserva);
-    setReservas((prev) => prev.map((r) => (String(r.reservaid) === String(reservaId) ? { ...r, ...dadosReserva } : r)) as Reserva[]);
-    await atualizarStatusQuarto(reserva.quartoid, 'A_LIMPAR');
-    return { sucesso: true, mensagem: `Check-out de ${reserva.hospedenome} realizado!` };
+    setReservas((prev) => prev.map((r) => (Number(r.reservaid ?? (r as any).reservaId) === idNum ? { ...r, ...payloadPutDto } : r)) as Reserva[]);
+    
+    if (reserva.quartoid) {
+      await atualizarStatusQuarto(reserva.quartoid, 'A_LIMPAR');
+    }
+    
+    await recarregarDados();
+    return { sucesso: true, mensagem: `Check-out de ${reserva.hospedenome || 'Hóspede'} realizado com sucesso!` };
   };
 
   const criarConsumoExtra = async (consumo: {

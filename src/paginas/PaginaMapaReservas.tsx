@@ -1,28 +1,30 @@
-import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Bed,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleDashed,
   Clock3,
   LoaderCircle,
-  RefreshCw,
-  Search,
-  Sun,
-  Wrench,
+  LogIn,
+  LogOut,
   PauseCircle,
   Phone,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Sun,
   User,
-  Bed,
+  Wrench,
 } from 'lucide-react';
-import { useHotel } from '../contextos/ContextoHotel';
-import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ModalAcoesReserva } from '../componentes/mapa-reservas/ModalAcoesReserva';
+import { ModalReservaRapida } from '../componentes/mapa-reservas/ModalReservaRapida';
 import { ModalTrocaQuartoEAdicional } from '../componentes/mapa-reservas/ModalTrocaQuartoEAdicional';
-import { Quarto, Hospede, Reserva } from '../tipos';
-import { formatarData, formatarMoeda } from '../utilitarios/formatadores';
+import { useHotel } from '../contextos/ContextoHotel';
+import { Hospede, Quarto, Reserva } from '../tipos';
+import { formatarMoeda } from '../utilitarios/formatadores';
 
 const hoje = new Date();
 const periodoInicialPadrao = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
@@ -43,7 +45,7 @@ const formatarDiaSemana = (date: Date) =>
 const formatarMesCurto = (date: Date) =>
   new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(date).toUpperCase();
 
-// Helper para ler campos compatíveis entre camelCase (.NET) e lowercase (Supabase/PostgreSQL)
+// Helper para ler campos compatíveis entre camelCase (.NET) e lowercase (PostgreSQL)
 const getReservaVal = (reserva: any, campoMin: string, campoCamel: string): any => {
   if (!reserva) return undefined;
   return reserva[campoMin] !== undefined ? reserva[campoMin] : reserva[campoCamel];
@@ -84,7 +86,7 @@ const nomesStatusReserva: Record<string, string> = {
 };
 
 export const PaginaMapaReservas: React.FC = () => {
-  const { quartos, reservas, hospedes, recarregarDados } = useHotel();
+  const { quartos, reservas, hospedes, recarregarDados, navegarPara } = useHotel();
 
   const quartosFisicos = useMemo(() => {
     return quartos.filter((q: any) => {
@@ -203,18 +205,15 @@ export const PaginaMapaReservas: React.FC = () => {
   // DATA ATUAL DO SISTEMA
   const dataAtual = new Date().toISOString().slice(0, 10);
 
-  // CALCULAR CHECK-INS DE HOJE
+  // CALCULAR CHECK-INS (Mesma regra da tela de Recepção: dataentrada <= dataAtual e pendentes de entrada)
   const checkinsHoje = useMemo(() => {
     return reservas
       .filter((reserva: any) => {
         const dEntrada = extrairDataIso(getReservaVal(reserva, 'dataentrada', 'dataEntrada'));
         const status = getReservaVal(reserva, 'statusreserva', 'statusReserva');
-        return (
-          dEntrada === dataAtual &&
-          status !== 'CANCELADA' &&
-          status !== 'CREDITO' &&
-          status !== 'CONCLUIDA'
-        );
+        const statusValido = status === 'PRE_RESERVA' || status === 'RESERVADO';
+        const dataValida = Boolean(dEntrada && dEntrada <= dataAtual);
+        return statusValido && dataValida;
       })
       .map((reserva: any) => {
         const hospedeId = Number(getReservaVal(reserva, 'hospedeid', 'hospedeId'));
@@ -243,14 +242,6 @@ export const PaginaMapaReservas: React.FC = () => {
         };
       });
   }, [reservas, dataAtual, hospedeMap]);
-
-  // CALCULAR QUARTOS EM LIMPEZA
-  const quartosEmLimpeza = useMemo(() => {
-    const checkoutsHojeIds = checkoutsHoje.map((r: any) => Number(getReservaVal(r, 'quartoid', 'quartoId')));
-    return quartosFisicos.filter(
-      (q: any) => checkoutsHojeIds.includes(Number(q.quartoid ?? q.quartoId)) && q.status === 'OCUPADO'
-    );
-  }, [quartosFisicos, checkoutsHoje]);
 
   // CALCULAR QUARTOS PRONTOS
   const quartosProntos = useMemo(() => {
@@ -363,6 +354,11 @@ export const PaginaMapaReservas: React.FC = () => {
       });
   }, [reservas, busca, hospedeMap, quartos]);
 
+  // Total monetário das reservas suspensas em crédito
+  const totalValorCredito = useMemo(() => {
+    return reservasCredito.reduce((acc, r: any) => acc + Number(r.valorpago || 0), 0);
+  }, [reservasCredito]);
+
   const ocupacao = useMemo(() => {
     if (reservasVisiveis.length === 0 || quartosFisicos.length === 0) return 0;
     const totalDias = numeroDias * quartosFisicos.length;
@@ -404,17 +400,15 @@ export const PaginaMapaReservas: React.FC = () => {
     return (
       <div
         key={idAtualQuarto}
-        className={`relative col-span-full h-12 border-b ${
-          quartoBloqueado ? 'border-[#d1d5db] bg-[#f3f4f6]' : 'border-[#e5e7eb] bg-white'
-        }`}
+        className={`relative col-span-full h-12 border-b ${quartoBloqueado ? 'border-[#d1d5db] bg-[#f3f4f6]' : 'border-[#e5e7eb] bg-white'
+          }`}
       >
         <div className="grid h-full" style={{ gridTemplateColumns: `180px repeat(${datasVisiveis.length}, 80px)` }}>
           <div
-            className={`sticky left-0 z-10 flex items-center justify-between gap-2 border-r px-3 ${
-              quartoBloqueado
-                ? 'border-[#d1d5db] bg-[#f3f4f6] text-[#1f2937] shadow-[2px_0_4px_rgba(0,0,0,0.05)]'
-                : 'border-[#e5e7eb] bg-white'
-            }`}
+            className={`sticky left-0 z-10 flex items-center justify-between gap-2 border-r px-3 ${quartoBloqueado
+              ? 'border-[#d1d5db] bg-[#f3f4f6] text-[#1f2937] shadow-[2px_0_4px_rgba(0,0,0,0.05)]'
+              : 'border-[#e5e7eb] bg-white'
+              }`}
           >
             <div className="flex items-center gap-2">
               {quartoBloqueado ? (
@@ -427,17 +421,15 @@ export const PaginaMapaReservas: React.FC = () => {
               </span>
             </div>
             <span
-              className={`text-[10px] font-semibold ${
-                quartoBloqueado
-                  ? 'rounded bg-[#e5e7eb] px-1.5 py-0.5 font-bold uppercase tracking-wider text-[#374151] border border-[#d1d5db]'
-                  : 'text-[#717971]'
-              }`}
+              className={`text-[10px] font-semibold ${quartoBloqueado
+                ? 'rounded bg-[#e5e7eb] px-1.5 py-0.5 font-bold uppercase tracking-wider text-[#374151] border border-[#d1d5db]'
+                : 'text-[#717971]'
+                }`}
             >
               {quartoBloqueado
                 ? 'Manutenção'
-                : `${quarto.quantidadecamascasal ?? (quarto as any).quantidadeCamasCasal ?? 0} casal, ${
-                    quarto.quantidadecamassolteiro ?? (quarto as any).quantidadeCamasSolteiro ?? 0
-                  } solteiro`}
+                : `${quarto.quantidadecamascasal ?? (quarto as any).quantidadeCamasCasal ?? 0} casal, ${quarto.quantidadecamassolteiro ?? (quarto as any).quantidadeCamasSolteiro ?? 0
+                } solteiro`}
             </span>
           </div>
 
@@ -465,13 +457,12 @@ export const PaginaMapaReservas: React.FC = () => {
                     ? `Quarto ${quarto.numero || (quarto as any).codigoidentificador} em manutenção`
                     : undefined
                 }
-                className={`transition-colors ${
-                  quartoBloqueado
-                    ? 'border-r border-[#d1d5db] bg-[#e5e7eb]/80 text-[#6b7280] cursor-not-allowed'
-                    : isDataPassada(dataIso)
+                className={`transition-colors ${quartoBloqueado
+                  ? 'border-r border-[#d1d5db] bg-[#e5e7eb]/80 text-[#6b7280] cursor-not-allowed'
+                  : isDataPassada(dataIso)
                     ? 'border-r border-[#e5e7eb] bg-[#f8f9fa] opacity-30 cursor-not-allowed hover:bg-[#f8f9fa]'
                     : 'border-r border-[#e5e7eb] bg-[#f8f9fa] hover:bg-[#e6f4ea]'
-                }`}
+                  }`}
               />
             );
           })}
@@ -507,12 +498,10 @@ export const PaginaMapaReservas: React.FC = () => {
                   setReservaSelecionadaAcoes(reserva);
                   setModalAcoesAberto(true);
                 }}
-                aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${
-                  (quarto as any).codigoidentificador || (quarto as any).codigoIdentificador || quarto.numero
-                }`}
-                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm cursor-pointer hover:brightness-105 transition-all ${
-                  coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'
-                }`}
+                aria-label={`Reserva ${reserva.codigo || ''} ocupando o quarto ${(quarto as any).codigoidentificador || (quarto as any).codigoIdentificador || quarto.numero
+                  }`}
+                className={`pointer-events-auto absolute top-1.5 flex h-8 items-center justify-between overflow-hidden rounded-md border border-white/70 px-2 text-[10px] font-semibold shadow-sm cursor-pointer hover:brightness-105 transition-all ${coresStatusReserva[reserva.statusreserva] || 'bg-[#9CA3AF] text-white'
+                  }`}
                 style={{
                   left: `${startOffset * 80}px`,
                   width: `${Math.max(duration * 80 - 4, 32)}px`,
@@ -649,13 +638,16 @@ export const PaginaMapaReservas: React.FC = () => {
                   key={status}
                   type="button"
                   onClick={() => setFiltroStatus(status)}
-                  className={`rounded-full px-3 py-1 text-xs font-bold transition-all cursor-pointer ${
-                    filtroStatus === status
-                      ? 'bg-[#053d1e] text-white'
-                      : 'bg-[#f8f9fa] text-[#414941] border border-[#c1c9bf] hover:bg-[#e6f4ea]'
-                  }`}
+                  className={`rounded-full px-3 py-1 text-xs font-bold transition-all cursor-pointer ${filtroStatus === status
+                    ? 'bg-[#053d1e] text-white shadow-xs'
+                    : 'bg-[#f8f9fa] text-[#414941] border border-[#c1c9bf] hover:bg-[#e6f4ea]'
+                    }`}
                 >
-                  {status === 'TODOS' ? 'Todos' : nomesStatusReserva[status] || status}
+                  {status === 'TODOS'
+                    ? 'Todos'
+                    : status === 'CREDITO'
+                      ? `Crédito (${reservasCredito.length})`
+                      : nomesStatusReserva[status] || status}
                 </button>
               )
             )}
@@ -683,7 +675,7 @@ export const PaginaMapaReservas: React.FC = () => {
             <div className="text-left sm:text-right">
               <span className="text-[11px] font-semibold text-amber-900 block">Total de Créditos Retidos:</span>
               <span className="font-['Manrope'] text-lg font-extrabold text-amber-950">
-                {formatarMoeda(reservasCredito.reduce((acc, r: any) => acc + Number(r.valorpago || 0), 0))}
+                {formatarMoeda(totalValorCredito)}
               </span>
             </div>
           </div>
@@ -788,9 +780,8 @@ export const PaginaMapaReservas: React.FC = () => {
                 return (
                   <div
                     key={iso}
-                    className={`flex flex-col items-center justify-center border-r border-[#e5e7eb] py-2 ${
-                      ehHoje ? 'bg-[#e6f4ea] text-[#053d1e] font-extrabold' : 'text-[#414941]'
-                    }`}
+                    className={`flex flex-col items-center justify-center border-r border-[#e5e7eb] py-2 ${ehHoje ? 'bg-[#e6f4ea] text-[#053d1e] font-extrabold' : 'text-[#414941]'
+                      }`}
                   >
                     <span className="text-[10px] font-semibold">{formatarDiaSemana(data)}</span>
                     <span className="text-sm font-bold">{data.getDate()}</span>
@@ -818,15 +809,18 @@ export const PaginaMapaReservas: React.FC = () => {
         </div>
       )}
 
-      {/* Cards com Métricas do Hotel */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold text-[#717971]">Ocupação Geral</span>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{ocupacao}%</span>
-            <span className="text-xs font-semibold text-[#053d1e]">do período</span>
+      {/* Cards com Métricas do Hotel (5 Indicadores de Ação Rápida com Alertas Coloridos) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Card 1: Ocupação Geral */}
+        <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <span className="text-xs font-semibold text-[#717971]">Ocupação Geral</span>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{ocupacao}%</span>
+              <span className="text-xs font-semibold text-[#053d1e]">do período</span>
+            </div>
           </div>
-          <div className="mt-2 h-2 w-full rounded-full bg-[#f3f4f6]">
+          <div className="mt-3 h-2 w-full rounded-full bg-[#f3f4f6]">
             <div
               className="h-2 rounded-full bg-[#053d1e] transition-all duration-300"
               style={{ width: `${ocupacao}%` }}
@@ -834,28 +828,78 @@ export const PaginaMapaReservas: React.FC = () => {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold text-[#717971]">Check-ins de Hoje</span>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{checkinsHoje.length}</span>
-            <span className="text-xs text-[#717971]">previstos</span>
+        {/* Card 2: Check-ins de Hoje (Alerta Azul / Clicável para Página Check-in via Contexto) */}
+        <div
+          onClick={() => (navegarPara as any)('checkin')}
+          className="group rounded-2xl border border-blue-200 bg-blue-50/40 p-4 shadow-sm hover:shadow-md hover:border-blue-400 hover:bg-blue-50/80 transition-all cursor-pointer flex flex-col justify-between"
+          title="Clique para ir para a página de Check-ins"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-blue-900">Check-ins de Hoje</span>
+            <LogIn className="w-4 h-4 text-blue-600 group-hover:translate-x-0.5 transition-transform" />
           </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-black text-blue-950">{checkinsHoje.length}</span>
+            <span className="text-xs font-semibold text-blue-800">previstos</span>
+          </div>
+          <span className="text-[10px] font-medium text-blue-700/80 mt-2 block">
+            Acessar tela de check-ins &rarr;
+          </span>
         </div>
 
-        <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold text-[#717971]">Check-outs de Hoje</span>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-['Manrope'] text-2xl font-bold text-[#191c1d]">{checkoutsHoje.length}</span>
-            <span className="text-xs text-[#717971]">previstos</span>
+        {/* Card 3: Check-outs de Hoje (Alerta Vermelho/Coral / Clicável para Página Check-out via Contexto) */}
+        <div
+          onClick={() => (navegarPara as any)('checkout')}
+          className="group rounded-2xl border border-rose-200 bg-rose-50/40 p-4 shadow-sm hover:shadow-md hover:border-rose-400 hover:bg-rose-50/80 transition-all cursor-pointer flex flex-col justify-between"
+          title="Clique para ir para a página de Check-outs"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-rose-900">Check-outs de Hoje</span>
+            <LogOut className="w-4 h-4 text-rose-600 group-hover:translate-x-0.5 transition-transform" />
           </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-black text-rose-950">{checkoutsHoje.length}</span>
+            <span className="text-xs font-semibold text-rose-800">previstos</span>
+          </div>
+          <span className="text-[10px] font-medium text-rose-700/80 mt-2 block">
+            Acessar tela de check-outs &rarr;
+          </span>
         </div>
 
-        <div className="rounded-2xl border border-[#c1c9bf] bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold text-[#717971]">Governança & Prontos</span>
-          <div className="mt-1 flex items-baseline gap-2">
-            <span className="font-['Manrope'] text-2xl font-bold text-[#053d1e]">{quartosProntos.length}</span>
-            <span className="text-xs text-[#717971]">de {quartosFisicos.length} quartos</span>
+        {/* Card 4: Governança & Prontos */}
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/30 p-4 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-900">Governança & Prontos</span>
+            <Sparkles className="w-4 h-4 text-emerald-600" />
           </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-black text-[#053d1e]">{quartosProntos.length}</span>
+            <span className="text-xs font-semibold text-emerald-800">de {quartosFisicos.length} quartos</span>
+          </div>
+          <span className="text-[10px] font-medium text-emerald-700/80 mt-2 block">
+            Quartos liberados para uso
+          </span>
+        </div>
+
+        {/* Card 5: Reservas Suspensas em Crédito (Alerta Âmbar / Filtra na hora) */}
+        <div
+          onClick={() => setFiltroStatus('CREDITO')}
+          className="group rounded-2xl border border-amber-300 bg-amber-50/60 p-4 shadow-sm hover:shadow-md hover:border-amber-500 hover:bg-amber-100/70 transition-all cursor-pointer flex flex-col justify-between"
+          title="Clique para abrir e gerenciar os créditos suspensos"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-950">Créditos Suspensos</span>
+            <PauseCircle className="w-4 h-4 text-amber-700 group-hover:scale-110 transition-transform" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="font-['Manrope'] text-2xl font-black text-amber-950">{reservasCredito.length}</span>
+            <span className="text-xs font-bold text-amber-800">
+              {formatarMoeda(totalValorCredito)}
+            </span>
+          </div>
+          <span className="text-[10px] font-bold text-amber-900 mt-2 block">
+            Filtrar e gerenciar créditos &rarr;
+          </span>
         </div>
       </div>
 
