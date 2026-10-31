@@ -50,8 +50,13 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     if (pacoteSugerido?.valor && Number(pacoteSugerido.valor) > 0) {
       return Number(pacoteSugerido.valor);
     }
-    return 750;
-  }, [pacoteSugerido]);
+    // Se o valor total sugerido foi informado e temos a contagem, calcula o unitário
+    if (valorTotalSugerido && valorTotalSugerido > 0) {
+      const qtdAd = Math.max(1, Number(cadastro?.adultos || 1) + Number(cadastro?.acompanhantes?.length || 0));
+      return valorTotalSugerido / qtdAd;
+    }
+    return 550; // Fallback correto para 2 dias / Final de semana
+  }, [pacoteSugerido, valorTotalSugerido, cadastro]);
 
   // Classificação dos acompanhantes e tarifas
   const acompanhantesETarifas = useMemo(() => {
@@ -71,7 +76,7 @@ export const ModalConfirmarSinalFnrh: React.FC<ModalConfirmarSinalFnrhProps> = (
     lista.push({
       nome: cadastro.nomecompleto || 'Titular da Reserva',
       tipoHospede: 'Titular (Adulto)',
-      idade: 30,
+      idade: cadastro.datanascimento ? calcularIdadeNumerica(cadastro.datanascimento) : 30,
       tarifaTexto: 'Inteira (100%)',
       percentual: 100,
       valor: valorBasePacote,

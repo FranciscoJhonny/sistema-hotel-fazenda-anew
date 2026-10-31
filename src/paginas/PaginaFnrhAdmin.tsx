@@ -70,11 +70,11 @@ export const calcularValoresReserva = (
   const dataEntradaStr = extrairDataIso(dEntrada).trim();
   const dataSaidaStr = extrairDataIso(dSaida).trim();
 
-  let dias = 2; // Padrão se não informado: 2 dias (Final de Semana)
+  let dias = 2; // Padrão: 2 dias (Final de semana de sábado a domingo)
 
   if (dataEntradaStr && dataSaidaStr) {
     if (dataEntradaStr === dataSaidaStr) {
-      dias = 1; // Day Use (1 dia, sem pernoite)
+      dias = 1; // Day Use (1 dia)
     } else {
       let d1: Date;
       let d2: Date;
@@ -94,56 +94,54 @@ export const calcularValoresReserva = (
       }
       const diffTime = d2.getTime() - d1.getTime();
       const pernoites = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      // Entrada dia 31 e saída dia 01 = 1 pernoite = 2 dias de pacote (Final de Semana)
       dias = pernoites > 0 ? pernoites + 1 : 1;
     }
   }
 
-  // Identificação do pacote e preço oficial por pessoa (adulto)
+  // Identificação correta e estrita do pacote cadastrado
   let nomePacote = '';
   let valorPorPessoa = 0;
   let pacoteObjeto: Pacote | null = null;
 
   if (dias === 1) {
     nomePacote = 'Day Use';
-    valorPorPessoa = 200;
     pacoteObjeto =
-      pacotes.find(
-        (p: any) =>
-          String(getVal(p, 'tipopacote', 'tipoPacote') || '').toUpperCase() === 'DAY_USE' ||
-          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 1 ||
-          (p.nome || '').toLowerCase().includes('day use')
-      ) || null;
-    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+      pacotes.find((p: any) => {
+        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
+        const pTipo = String(getVal(p, 'tipopacote', 'tipoPacote') || '').toUpperCase();
+        const pNome = (p.nome || '').toLowerCase();
+        return pDias === 1 || pTipo === 'DAY_USE' || pNome.includes('day use');
+      }) || null;
+    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 200;
   } else if (dias === 2) {
     nomePacote = 'Final de Semana';
-    valorPorPessoa = 550;
     pacoteObjeto =
-      pacotes.find(
-        (p: any) =>
-          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 2 ||
-          (p.nome || '').toLowerCase().includes('final de semana')
-      ) || null;
-    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+      pacotes.find((p: any) => {
+        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
+        const pNome = (p.nome || '').toLowerCase();
+        // Não pode ser estendido
+        return pDias === 2 || (pNome.includes('final de semana') && !pNome.includes('estendido'));
+      }) || null;
+    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 550;
   } else if (dias === 3) {
     nomePacote = 'Final de Semana Estendido';
-    valorPorPessoa = 750;
     pacoteObjeto =
-      pacotes.find(
-        (p: any) =>
-          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 3 ||
-          (p.nome || '').toLowerCase().includes('estendido')
-      ) || null;
-    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+      pacotes.find((p: any) => {
+        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
+        const pNome = (p.nome || '').toLowerCase();
+        return pDias === 3 || pNome.includes('estendido');
+      }) || null;
+    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 750;
   } else if (dias === 4) {
     nomePacote = 'Feriado Prolongado';
-    valorPorPessoa = 950;
     pacoteObjeto =
-      pacotes.find(
-        (p: any) =>
-          Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === 4 ||
-          (p.nome || '').toLowerCase().includes('feriado')
-      ) || null;
-    if (pacoteObjeto?.valor) valorPorPessoa = Number(pacoteObjeto.valor);
+      pacotes.find((p: any) => {
+        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
+        const pNome = (p.nome || '').toLowerCase();
+        return pDias === 4 || pNome.includes('feriado') || pNome.includes('réveillon') || pNome.includes('natal');
+      }) || null;
+    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 950;
   } else {
     pacoteObjeto =
       pacotes.find((p: any) => Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === dias) || null;
@@ -154,6 +152,10 @@ export const calcularValoresReserva = (
       nomePacote = `${dias} Dias`;
       valorPorPessoa = 950 + (dias - 4) * 200;
     }
+  }
+
+  if (pacoteObjeto?.nome) {
+    nomePacote = pacoteObjeto.nome;
   }
 
   const idadeLimiteGratis = 5;
@@ -223,7 +225,6 @@ export const calcularValoresReserva = (
     totalHospedesFisicos,
   };
 };
-
 const ITENS_POR_PAGINA = 15;
 
 export const PaginaFnrhAdmin: React.FC = () => {
