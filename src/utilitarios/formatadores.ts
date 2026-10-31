@@ -81,7 +81,7 @@ export function formatarData(dataString: string): string {
 export function formatarDataExtenso(data: Date | string): string {
   const d = typeof data === 'string' ? new Date(data + 'T12:00:00') : data;
   if (isNaN(d.getTime())) return '31 de agosto de 2026';
-  
+
   return new Intl.DateTimeFormat('pt-BR', {
     day: 'numeric',
     month: 'long',
@@ -266,3 +266,26 @@ export function calcularIdadeNaData(dataNascimento?: string, dataReferencia?: st
   }
   return Math.max(0, idade);
 }
+
+/**
+ * Converte strings de horário para o formato TimeSpan aceito pela Web API (hh:mm:ss).
+ * "09:00" -> "09:00:00"
+ */
+export const formatarHorarioParaTimeSpan = (horario?: string | null): string | undefined => {
+  if (!horario || !horario.trim()) return undefined;
+
+  const limpo = horario.trim();
+  if (/^\d{2}:\d{2}$/.test(limpo)) {
+    return `${limpo}:00`;
+  }
+
+  return limpo;
+};
+
+/**
+ * Converte horários vindos da API (ex: "09:00:00") para o formato esperado pelo <input type="time" /> (hh:mm).
+ */
+export const formatarHorarioParaInput = (horario?: string | null): string => {
+  if (!horario) return '';
+  return String(horario).slice(0, 5); // Pega apenas "HH:mm"
+};

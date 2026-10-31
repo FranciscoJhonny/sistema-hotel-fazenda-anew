@@ -8,6 +8,7 @@ import {
   calcularIdadeNumerica,
   aplicarMascaraMoeda,
   desformatarMoeda,
+  formatarHorarioParaTimeSpan,
 } from '../../utilitarios/formatadores';
 import { FnrhService } from '../../servicos/api/FnrhService';
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
@@ -68,19 +69,16 @@ const calcularValorReserva = (
 
   if (criancas > 0) {
     for (let i = 0; i < criancas; i++) {
-      // Idade limitada estritamente de 0 a 11 anos
       const idade = Math.min(11, Math.max(0, idadesCriancas[i] ?? 0));
       let valorCrianca = 0;
       let tipoStr = '';
 
       if (idade <= 5) {
-        // 0 a 5 anos: Grátis (0%)
         valorCrianca = 0;
         qtdCriancasGratis++;
         tipoStr = 'Grátis (0%)';
         detalhes.push(`Criança ${i + 1} (${idade} anos): GRÁTIS`);
       } else {
-        // 6 a 11 anos: Meia (50%)
         valorCrianca = valorPorPessoa * 0.5;
         valorCriancasTotal += valorCrianca;
         qtdCriancasMeia++;
@@ -142,10 +140,10 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const [dataSaida, setDataSaida] = useState<string>(somarDias(dataSelecionada || hoje, 2));
   const [hospedeId, setHospedeId] = useState<string>('');
   const [cadastroidFnrh, setCadastroidFnrh] = useState<number | null>(null);
-  
+
   const [adultos, setAdultos] = useState<number>(modoDayUse ? 1 : 2);
   const [criancas, setCriancas] = useState<number>(0);
-  
+
   const [idadesCriancas, setIdadesCriancas] = useState<number[]>([]);
   const [pacoteId, setPacoteId] = useState<string>('');
   const [tipoAtendimento, setTipoAtendimento] = useState<'HOSPEDAGEM' | 'DAY_USE'>(modoDayUse ? 'DAY_USE' : 'HOSPEDAGEM');
@@ -173,7 +171,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     );
   }, [modoDayUse, tipoAtendimento, pacoteSelecionado]);
 
-  // Se o tipo deixar de ser Day Use, desmarca o café da manhã automaticamente
   useEffect(() => {
     if (!eDayUse && incluirCafeManha) {
       setIncluirCafeManha(false);
@@ -189,7 +186,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
   const capacidadeMaxCriancas = 10;
 
-  // Limpa a mensagem de erro vermelha automaticamente após 3.5 segundos
   useEffect(() => {
     if (!erro) return;
     const timer = setTimeout(() => {
@@ -198,7 +194,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     return () => clearTimeout(timer);
   }, [erro]);
 
-  // Carrega parâmetros pré-configurados da FNRH via sessionStorage
   useEffect(() => {
     if (aberto && (dataSelecionada || modoDayUse)) {
       let hospedePre = '';
@@ -226,7 +221,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               if (parsed.adultos) adultosPre = Number(parsed.adultos);
               if (parsed.criancas !== undefined) criancasPre = Number(parsed.criancas);
               if (parsed.idades_criancas && Array.isArray(parsed.idades_criancas)) {
-                // Filtra estritamente crianças entre 0 e 11 anos
                 idadesCriancasPre = parsed.idades_criancas
                   .map(Number)
                   .filter((id: number) => id >= 0 && id <= 11);
@@ -308,8 +302,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
     }
   }, [modoDayUse, pacotesAtivos, pacoteId]);
 
-  // Sincroniza e classifica acompanhantes do banco de dados (FNRH ou cadastro de acompanhantes)
-  // REGRA: >= 12 anos é somado em Adultos; 0 a 11 anos conta em Crianças
   useEffect(() => {
     const carregarOcupantesDoBanco = async () => {
       if (!aberto || (!hospedeId && !cadastroidFnrh)) return;
@@ -326,7 +318,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         let qtdAdultosAcomps = 0;
         let idadesCriancasCalc: number[] = [];
 
-        // 1. Busca acompanhantes do cadastro FNRH se houver cadastroidFnrh
         if (cadastroidFnrh) {
           const { data: acompsFnrh } = await cliente
             .from('cadastro_fnrh_acompanhante')
@@ -348,7 +339,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             });
           }
         } else if (hospedeId) {
-          // 2. Se não veio de FNRH mas selecionou hóspede cadastrado, busca na tabela acompanhante
           const { data: acompsOficial } = await cliente
             .from('acompanhante')
             .select('datanascimento')
@@ -370,7 +360,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           }
         }
 
-        // Sincroniza: Titular (1) + acompanhantes com idade >= 12 anos
         if (cadastroidFnrh || (hospedeId && (qtdAdultosAcomps > 0 || idadesCriancasCalc.length > 0))) {
           const totalAdultos = Math.max(1, 1 + qtdAdultosAcomps);
           setAdultos(totalAdultos);
@@ -460,7 +449,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   const saldoHotel = Math.max(0, valorCalculado.total - valorPagamento);
   const statusPagamento = valorPagamento === 0 ? 'PENDENTE' : saldoHotel === 0 ? 'PAGO' : 'PARCIAL';
 
-  // Atualiza automaticamente o valor sugerido da entrada (50%) sempre que alterar pacote, adultos ou idades das crianças
   useEffect(() => {
     if (!preReserva) {
       setValorPago(valorMinimoEntrada);
@@ -572,8 +560,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         criancas: modoDayUse ? 0 : criancas,
         dataentrada: dataEntrada,
         datasaida: modoDayUse ? dataEntrada : dataSaida,
-        horarioprevistochegada: configuracoes.checkintime || '09:00',
-        horarioprevistosaida: modoDayUse ? '17:00' : (configuracoes.checkouttime || '12:00'),
+        // Aplicação do formatador para compatibilidade com System.TimeSpan do C#
+        horarioprevistochegada: formatarHorarioParaTimeSpan(configuracoes.checkintime || '09:00'),
+        horarioprevistosaida: formatarHorarioParaTimeSpan(modoDayUse ? '17:00' : (configuracoes.checkouttime || '12:00')),
         tipoatendimento: modoDayUse ? 'DAY_USE' : tipoAtendimento,
         pacoteid: pacoteSelecionado.pacoteid,
         valortotal: valorCalculado.total,
@@ -586,7 +575,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
           if (eDayUse && incluirCafeManha) {
             const tagCafe = '[Day Use com Café da Manhã (+R$ 50,00)]';
             if (!obs.includes(tagCafe)) {
-              obs = obs ? `${obs} • ${tagCafe}` : tagCafe;
+              obs = obs ? `${obs}\n${tagCafe}` : tagCafe;
             }
           }
           return obs;
@@ -599,7 +588,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         return;
       }
 
-      // Garante a vinculação da FNRH caso haja reservaId gerado
       if (resultado.reserva?.reservaid) {
         await FnrhService.vincularReservaAoCadastroFnrh({
           cadastroid: cadastroidFnrh || undefined,
@@ -608,7 +596,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         });
       }
 
-      // Limpa os dados temporários de pré-preenchimento FNRH
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('fnrh_reserva_preenchimento');
       }
@@ -638,7 +625,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
       <div className="relative w-full max-w-4xl rounded-2xl border border-[#c1c9bf] bg-white shadow-2xl max-h-[90vh] overflow-y-auto">
-        
         <div className="flex items-center justify-between border-b border-[#c1c9bf] bg-[#053d1e] px-6 py-4 text-white">
           <div>
             <h3 className="font-['Manrope'] text-xl font-bold flex items-center gap-2">
@@ -649,7 +635,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
               {modoDayUse
                 ? 'Reserva individual de Day Use (sem hospedagem)'
                 : quarto
-                ? `Quarto ${quarto.numero} • ${quarto.quantidadecamascasal ?? 0} Cama(s) Casal, ${quarto.quantidadecamassolteiro ?? 0} Cama(s) Solteiro`
+                ? `Quarto ${quarto.numero} - ${quarto.quantidadecamascasal ?? 0} Cama(s) Casal, ${quarto.quantidadecamassolteiro ?? 0} Cama(s) Solteiro`
                 : ''}
             </p>
           </div>
@@ -749,7 +735,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 {!pacoteId && <option value="">Selecione</option>}
                 {pacotesAtivos.map((pacote) => (
                   <option key={String(pacote.pacoteid)} value={String(pacote.pacoteid)}>
-                    {pacote.nome} • {formatarMoeda(Number(pacote.valor || 0))}/pessoa • {pacote.quantidadedias} dia(s)
+                    {pacote.nome} - {formatarMoeda(Number(pacote.valor || 0))}/pessoa • {pacote.quantidadedias} dia(s)
                   </option>
                 ))}
               </select>
@@ -833,7 +819,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
 
             {/* Opção Adicional: Café da Manhã (Exclusivo para Day Use) */}
             {eDayUse && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 text-xs text-amber-950 animate-in fade-in">
+              <div className="rounded-xl border border-amber-300 bg-amber-50/80 p-3 text-xs text-amber-950">
                 <label className="flex items-start gap-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -949,12 +935,12 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                       />
                     </div>
                     <span className="text-[10px] text-[#717971] block">
-                      Padrão (50%): {formatarMoeda(valorMinimoEntrada)} • Saldo no hotel: {formatarMoeda(saldoHotel)}
+                      Padrão (50%): {formatarMoeda(valorMinimoEntrada)} | Saldo no hotel: {formatarMoeda(saldoHotel)}
                     </span>
                   </label>
 
                   {valorPagamento < valorMinimoEntrada && (
-                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2.5 animate-in fade-in">
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 flex items-start gap-2.5">
                       <input
                         type="checkbox"
                         id="chkExcecaoSinalRapida"
@@ -998,7 +984,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 <option value="">Selecione um hóspede</option>
                 {hospedesOrdenados.map((hospede) => (
                   <option key={String(hospede.hospedeid)} value={String(hospede.hospedeid)}>
-                    {hospede.nomecompleto} • {hospede.telefone}
+                    {hospede.nomecompleto} - {hospede.telefone}
                   </option>
                 ))}
               </select>
