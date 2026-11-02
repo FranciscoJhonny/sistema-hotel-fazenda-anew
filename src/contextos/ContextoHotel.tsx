@@ -87,7 +87,7 @@ interface ContextoHotelType {
   suspenderReservaComCredito: (id: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   trocarQuartoReserva: (reservaId: number | string, novoQuartoId: number | string, motivo?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
   realizarCheckin: (reservaId: number | string, dadosCheckin?: any) => Promise<{ sucesso: boolean; mensagem: string }>;
-  realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>, observacoesCheckout?: string) => Promise<{ sucesso: boolean; mensagem: string }>;
+  realizarCheckout: (reservaId: number | string, pagamentos?: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>>, observacoesCheckout?: string, dadosCheckout?: any) => Promise<{ sucesso: boolean; mensagem: string }>;
   criarConsumoExtra: (consumo: {
     reservaid: number;
     produtoid?: number;
@@ -770,7 +770,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const realizarCheckout = async (
     reservaId: number | string,
     pagamentosInput: Array<Pick<Pagamento, 'valor' | 'formapagamento' | 'tipolancamento'>> = [],
-    observacoesCheckout?: string
+    observacoesCheckout?: string,
+    dadosCheckout?: any
   ): Promise<{ sucesso: boolean; mensagem: string }> => {
     const idNum = Number(reservaId);
     let reserva = reservas.find((r) => Number(r.reservaid ?? (r as any).reservaId) === idNum);
@@ -856,7 +857,12 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       observacoesCheckout: obsCheckoutFinal,
       horarioPrevistoChegada: horaChegada ?? '09:00:00',
       horarioPrevistoSaida: horaSaida ?? '15:00:00',
-      checkoutRealizadoEm: agora,
+      checkoutRealizadoEm: (() => {
+        let dataHoraCheckout = dadosCheckout?.checkoutrealizadoem || dadosCheckout?.checkoutRealizadoEm;
+        if (!dataHoraCheckout) return agora;
+        if (dataHoraCheckout.length === 16) return `${dataHoraCheckout}:00`;
+        return dataHoraCheckout;
+      })(),
       ativo: true,
     };
 

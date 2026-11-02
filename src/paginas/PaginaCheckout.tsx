@@ -29,6 +29,7 @@ import {
   formatarData,
   formatarHorarioParaTimeSpan,
   formatarMoeda,
+  obterDataHoraAtualLocal,
 } from '../utilitarios/formatadores';
 
 const TAXA_CARTAO_PARCELADO = 65.0; // Taxa de máquina para 2x ou 3x
@@ -85,6 +86,16 @@ export const PaginaCheckout: React.FC = () => {
   const [busca, setBusca] = useState<string>('');
   const [reservaSelecionada, setReservaSelecionada] = useState<any | null>(null);
   const [observacoesCheckout, setObservacoesCheckout] = useState<string>('');
+
+  // Estado para capturar e enviar o momento exato do Check-out
+  const [checkoutRealizadoEm, setCheckoutRealizadoEm] = useState<string>(obterDataHoraAtualLocal());
+
+  // Atualiza a data/hora local toda vez que o atendente seleciona uma reserva diferente
+  useEffect(() => {
+    if (reservaSelecionada) {
+      setCheckoutRealizadoEm(obterDataHoraAtualLocal());
+    }
+  }, [reservaSelecionada]);
   const [feedbackErro, setFeedbackErro] = useState<string | null>(null);
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
 
@@ -512,8 +523,18 @@ export const PaginaCheckout: React.FC = () => {
           };
         });
 
+      // Envia exatamente a data/hora local preenchida no input (ex: "2026-11-01T20:26:00")
+      const dataHoraLocal = checkoutRealizadoEm
+        ? (checkoutRealizadoEm.length === 16 ? `${checkoutRealizadoEm}:00` : checkoutRealizadoEm)
+        : obterDataHoraAtualLocal() + ':00';
+
       if (eLiquidacaoTotal) {
-        const res = await realizarCheckout(reservaSelecionada.reservaid, pagamentosParaSalvar, observacoesCheckout);
+        const res = await realizarCheckout(
+          reservaSelecionada.reservaid,
+          pagamentosParaSalvar,
+          observacoesCheckout,
+          { checkoutrealizadoem: dataHoraLocal }
+        );
 
         if (res.sucesso) {
           setFeedbackSucesso(res.mensagem);
@@ -521,6 +542,7 @@ export const PaginaCheckout: React.FC = () => {
             reserva: {
               ...reservaSelecionada,
               observacoes_checkout: observacoesCheckout,
+              checkoutrealizadoem: dataHoraLocal,
             },
             consumoExtra: totalConsumosDaConta,
             taxasAdicionais: totalTaxasParcelamento,
@@ -530,6 +552,7 @@ export const PaginaCheckout: React.FC = () => {
           });
           setReservaSelecionada(null);
           setObservacoesCheckout('');
+          setCheckoutRealizadoEm(obterDataHoraAtualLocal());
           setLinhasPagamento([]);
           setConsumosPendentes([]);
           setModalContaZeradaAberta(false);
@@ -970,6 +993,19 @@ export const PaginaCheckout: React.FC = () => {
                 </div>
               </div>
 
+              {/* Data e Horário Real do Check-out */}
+              <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3 space-y-1.5 text-xs">
+                <label className="block text-[11px] font-bold text-[#053d1e] flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-[#053d1e]" />
+                  Data e Horário do Check-out:
+                </label>
+                <input
+                  type="datetime-local"
+                  value={checkoutRealizadoEm}
+                  onChange={(e) => setCheckoutRealizadoEm(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
+                />               
+              </div>
               {/* SELETORES DE CENÁRIO PRONTO */}
               <div className="space-y-2">
                 <span className="text-xs font-bold text-[#191c1d] flex items-center gap-1.5">
@@ -1539,6 +1575,14 @@ export const PaginaCheckout: React.FC = () => {
                 <span className="text-[#717971]">Acomodação:</span>
                 <span className="font-bold text-[#053d1e]">
                   Quarto {comprovanteCheckout.reserva.quartocodigo || comprovanteCheckout.reserva.quartonumero}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#717971]">Realizado em:</span>
+                <span className="font-semibold text-[#053d1e]">
+                  {comprovanteCheckout.reserva.checkoutrealizadoem
+                    ? new Date(comprovanteCheckout.reserva.checkoutrealizadoem).toLocaleString('pt-BR')
+                    : new Date().toLocaleString('pt-BR')}
                 </span>
               </div>
               {comprovanteCheckout.taxasAdicionais > 0 && (

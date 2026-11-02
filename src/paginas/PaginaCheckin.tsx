@@ -16,7 +16,12 @@ import {
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
 import { Reserva } from '../tipos';
-import { formatarMoeda, formatarData, formatarTelefone } from '../utilitarios/formatadores';
+import {
+  formatarMoeda,
+  formatarData,
+  formatarTelefone,
+  obterDataHoraAtualLocal,
+} from '../utilitarios/formatadores';
 
 // Helper universal para ler tanto camelCase quanto lowercase
 const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
@@ -29,16 +34,6 @@ const extrairDataIso = (valor: any): string => {
   return String(valor).slice(0, 10);
 };
 
-// Gera o formato local aceito pelo input type="datetime-local" (YYYY-MM-DDTHH:mm)
-const obterDataHoraAtualLocal = (): string => {
-  const agora = new Date();
-  const ano = agora.getFullYear();
-  const mes = String(agora.getMonth() + 1).padStart(2, '0');
-  const dia = String(agora.getDate()).padStart(2, '0');
-  const horas = String(agora.getHours()).padStart(2, '0');
-  const minutos = String(agora.getMinutes()).padStart(2, '0');
-  return `${ano}-${mes}-${dia}T${horas}:${minutos}`;
-};
 
 export const PaginaCheckin: React.FC = () => {
   const { reservas, quartos, hospedes, dataSistema, realizarCheckin, usuarioAtual } = useHotel();
@@ -181,12 +176,9 @@ export const PaginaCheckin: React.FC = () => {
 
       const dadosParaEnvio = {
         ...reservaItem,
-        quartoid: qId,
-        quartoId: qId,
-        hospedeid: hId,
-        hospedeId: hId,
-        checkinrealizadoem: dataHoraLocal,
-        checkinRealizadoEm: dataHoraLocal,
+        quartoid: qId,        
+        hospedeid: hId,        
+        checkinrealizadoem: dataHoraLocal,        
       };
 
       const res: any = await realizarCheckin(idParaCheckin, dadosParaEnvio);
@@ -368,10 +360,7 @@ export const PaginaCheckin: React.FC = () => {
                   value={checkinRealizadoEm}
                   onChange={(e) => setCheckinRealizadoEm(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
-                />
-                <span className="text-[10px] text-emerald-800 block">
-                  Registrado no campo <strong>checkinrealizadoem</strong> do sistema.
-                </span>
+                />               
               </div>
 
               {/* Status do Pagamento */}
