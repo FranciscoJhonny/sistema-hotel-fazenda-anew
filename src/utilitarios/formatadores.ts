@@ -289,3 +289,25 @@ export const formatarHorarioParaInput = (horario?: string | null): string => {
   if (!horario) return '';
   return String(horario).slice(0, 5); // Pega apenas "HH:mm"
 };
+
+/**
+ * Retorna a data no fuso horário local no formato ISO (AAAA-MM-DD).
+ * Se nenhum parâmetro for passado, utiliza a data/hora atual do sistema.
+ * 
+ * @param data Data opcional (objeto Date ou string)
+ * @returns String formatada como 'AAAA-MM-DD'
+ */
+export const obterDataLocalISO = (data: Date | string = new Date()): string => {
+  const d = typeof data === 'string' 
+    ? new Date(data.includes('T') ? data : `${data}T12:00:00`) 
+    : new Date(data);
+
+  if (isNaN(d.getTime())) return '';
+
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}`;
+};
+

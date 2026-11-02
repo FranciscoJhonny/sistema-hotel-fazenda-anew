@@ -1,34 +1,35 @@
 import {
+  AlertCircle,
   CheckCircle2,
+  Clock,
   Coffee,
+  CreditCard,
+  DollarSign,
+  Layers,
   LoaderCircle,
   LogOut,
   Plus,
   Printer,
   Receipt,
   Search,
-  X,
-  Trash2,
-  CreditCard,
   Split,
-  DollarSign,
-  AlertCircle,
-  Clock,
+  Trash2,
   Users,
-  Layers,
+  X,
 } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
+import { SelectBuscaProduto } from '../componentes/comuns/SelectBuscaProduto';
 import { useHotel } from '../contextos/ContextoHotel';
-import { FormaPagamento, Reserva } from '../tipos';
+import { pagamentoService, reservaService } from '../servicos/api';
+import { FormaPagamento } from '../tipos';
 import {
   aplicarMascaraMoeda,
   desformatarMoeda,
   formatarData,
+  formatarHorarioParaTimeSpan,
   formatarMoeda,
 } from '../utilitarios/formatadores';
-import { pagamentoService, reservaService } from '../servicos/api';
-import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
-import { SelectBuscaProduto } from '../componentes/comuns/SelectBuscaProduto';
 
 const TAXA_CARTAO_PARCELADO = 65.0; // Taxa de máquina para 2x ou 3x
 
@@ -41,6 +42,15 @@ const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
 const extrairDataIso = (valor: any): string => {
   if (!valor) return '';
   return String(valor).slice(0, 10);
+};
+
+// Obtém a data local atual (YYYY-MM-DD) sem deslocamento de UTC
+const obterDataHojeLocal = (): string => {
+  const agora = new Date();
+  const ano = agora.getFullYear();
+  const mes = String(agora.getMonth() + 1).padStart(2, '0');
+  const dia = String(agora.getDate()).padStart(2, '0');
+  return `${ano}-${mes}-${dia}`;
 };
 
 export type LinhaPagamento = {
@@ -106,7 +116,8 @@ export const PaginaCheckout: React.FC = () => {
     observacoesCheckout?: string;
   } | null>(null);
 
-  const dataHojeStr = dataSistema ? extrairDataIso(dataSistema) : new Date().toISOString().slice(0, 10);
+  // Data do sistema ou data local corrigida
+  const dataHojeStr = obterDataHojeLocal();
 
   // Normalização de reservas para garantir dados preenchidos
   const reservasNormalizadas = useMemo(() => {
@@ -118,18 +129,18 @@ export const PaginaCheckout: React.FC = () => {
 
       const nomeHospede =
         getVal(r, 'hospedenome', 'hospedeNome') ||
-        hospedeObj?.nomecompleto ||        
+        hospedeObj?.nomecompleto ||
         `Hóspede #${hospedeId}`;
 
       const numQuarto =
         getVal(r, 'quartonumero', 'quartoNumero') ||
         quartoObj?.numero ||
-        quartoObj?.codigoidentificador ||        
+        quartoObj?.codigoidentificador ||
         '';
 
       const codQuarto =
         getVal(r, 'quartocodigo', 'quartoCodigo') ||
-        quartoObj?.codigoidentificador ||        
+        quartoObj?.codigoidentificador ||
         quartoObj?.numero ||
         '';
 
@@ -164,17 +175,29 @@ export const PaginaCheckout: React.FC = () => {
   }, [reservasNormalizadas]);
 
   const reservasFiltradas = useMemo(() => {
-    if (!busca.trim()) return reservasHospedadas;
-    const termo = busca.toLowerCase();
-    return reservasHospedadas.filter((r: any) => {
-      return (
-        (r.hospedenome || '').toLowerCase().includes(termo) ||
-        (r.codigo || '').toLowerCase().includes(termo) ||
-        String(r.quartonumero || '').toLowerCase().includes(termo) ||
-        String(r.quartocodigo || '').toLowerCase().includes(termo)
-      );
+    let lista = reservasHospedadas;
+    if (busca.trim()) {
+      const termo = busca.toLowerCase();
+      lista = lista.filter((r: any) => {
+        return (
+          (r.hospedenome || '').toLowerCase().includes(termo) ||
+          (r.codigo || '').toLowerCase().includes(termo) ||
+          String(r.quartonumero || '').toLowerCase().includes(termo) ||
+          String(r.quartocodigo || '').toLowerCase().includes(termo)
+        );
+      });
+    }
+
+    // Ordenação: primeiro os com saída hoje ou vencidos, depois por ordem cronológica de saída
+    return [...lista].sort((a: any, b: any) => {
+      const aPrioridade = a.datasaida <= dataHojeStr ? 0 : 1;
+      const bPrioridade = b.datasaida <= dataHojeStr ? 0 : 1;
+      if (aPrioridade !== bPrioridade) {
+        return aPrioridade - bPrioridade;
+      }
+      return String(a.datasaida).localeCompare(String(b.datasaida));
     });
-  }, [reservasHospedadas, busca]);
+  }, [reservasHospedadas, busca, dataHojeStr]);
 
   const consumosDaReserva = useMemo(() => {
     if (!reservaSelecionada) return [];
@@ -353,7 +376,6 @@ export const PaginaCheckout: React.FC = () => {
         tipoLancamento: tipoLanc,
       });
     }
-
     if (tipoAlvoDivisao === 'HOSPEDAGEM' && totalConsumosDaConta > 0) {
       linhasGeradas.push({
         id: `pag-cons-restante-${Date.now()}`,
@@ -549,16 +571,40 @@ export const PaginaCheckout: React.FC = () => {
         const novoValorPago = Number((Number(reservaSelecionada.valorpago || 0) + totalInformado).toFixed(2));
         const novoSaldo = Number(Math.max(0, Number(reservaSelecionada.saldo || 0) - totalInformado).toFixed(2));
 
+        // IDENTIFICADORES E DADOS OBRIGATÓRIOS DO RESERVAPUTDTO DA API C#
+        const idQuarto = Number(getVal(reservaSelecionada, 'quartoid', 'quartoId') || 0);
+        const idHospede = Number(getVal(reservaSelecionada, 'hospedeid', 'hospedeId') || 0);
+        const codReserva = String(getVal(reservaSelecionada, 'codigo', 'codigo') || `RES-${reservaSelecionada.reservaid}`).trim();
+
+        const horaChegada = formatarHorarioParaTimeSpan(getVal(reservaSelecionada, 'horarioprevistochegada', 'horarioPrevistoChegada') || '09:00');
+        const horaSaida = formatarHorarioParaTimeSpan(getVal(reservaSelecionada, 'horarioprevistosaida', 'horarioPrevistoSaida') || '15:00');
+
         const updatePayload: any = {
-          valorpago: novoValorPago,
+          reservaId: Number(reservaSelecionada.reservaid),
+          codigo: codReserva,
+          quartoId: idQuarto,
+          hospedeId: idHospede,
+          cadastroId: getVal(reservaSelecionada, 'cadastroid', 'cadastroId') ? Number(getVal(reservaSelecionada, 'cadastroid', 'cadastroId')) : null,
+          pacoteId: getVal(reservaSelecionada, 'pacoteid', 'pacoteId') ? Number(getVal(reservaSelecionada, 'pacoteid', 'pacoteId')) : null,
+          dataEntrada: getVal(reservaSelecionada, 'dataentrada', 'dataEntrada'),
+          dataSaida: getVal(reservaSelecionada, 'datasaida', 'dataSaida'),
+          dataReserva: getVal(reservaSelecionada, 'datareserva', 'dataReserva') || getVal(reservaSelecionada, 'dataentrada', 'dataEntrada'),
+          statusReserva: 'HOSPEDADO',
+          tipoAtendimento: getVal(reservaSelecionada, 'tipoatendimento', 'tipoAtendimento') || 'HOSPEDAGEM',
+          adultos: Number(getVal(reservaSelecionada, 'adultos', 'adultos') || 1),
+          criancas: Number(getVal(reservaSelecionada, 'criancas', 'criancas') || 0),
+          valorDiaria: Number(getVal(reservaSelecionada, 'valordiaria', 'valorDiaria') || 0),
+          valorTotal: Number(reservaSelecionada.valortotal || 0),
+          valorPago: novoValorPago,
           saldo: novoSaldo,
-          statuspagamento: 'PARCIAL',
-          dataoperacao: agora,
-          naturezaoperacao: 'UPDATE',
+          formaPagamento: getVal(reservaSelecionada, 'formapagamento', 'formaPagamento') || 'PIX',
+          statusPagamento: 'PARCIAL',
+          observacoes: getVal(reservaSelecionada, 'observacoes', 'observacoes') || '',
+          observacoesCheckout: observacoesCheckout || (getVal(reservaSelecionada, 'observacoes_checkout', 'observacoesCheckout') || ''),
+          horarioPrevistoChegada: horaChegada ?? '09:00:00',
+          horarioPrevistoSaida: horaSaida ?? '15:00:00',
+          ativo: true,
         };
-        if (observacoesCheckout) {
-          updatePayload.observacoes_checkout = observacoesCheckout;
-        }
 
         const resUpdate = await reservaService.atualizar(reservaSelecionada.reservaid, updatePayload);
 
@@ -749,6 +795,7 @@ export const PaginaCheckout: React.FC = () => {
             ) : (
               reservasFiltradas.map((res: any) => {
                 const ehHoje = res.datasaida === dataHojeStr;
+                const estaAtrasado = res.datasaida < dataHojeStr;
                 const selecionado = reservaSelecionada?.reservaid === res.reservaid;
 
                 return (
@@ -760,11 +807,10 @@ export const PaginaCheckout: React.FC = () => {
                       setConsumosPendentes([]);
                       setFeedbackErro(null);
                     }}
-                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
-                      selecionado
-                        ? 'border-2 border-[#053d1e] bg-[#e6f4ea]/30 ring-2 ring-[#053d1e]/20 shadow-md'
-                        : 'border-[#c1c9bf] hover:border-[#053d1e] hover:shadow-xs'
-                    }`}
+                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
+                      ? 'border-2 border-[#053d1e] bg-[#e6f4ea]/30 ring-2 ring-[#053d1e]/20 shadow-md'
+                      : 'border-[#c1c9bf] hover:border-[#053d1e] hover:shadow-xs'
+                      }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
@@ -776,6 +822,10 @@ export const PaginaCheckout: React.FC = () => {
                       {ehHoje ? (
                         <span className="text-xs font-bold text-[#ba1a1a] bg-[#ffdad6] px-2.5 py-0.5 rounded-full border border-[#f1a9a3] w-fit">
                           Saída Prevista para Hoje
+                        </span>
+                      ) : estaAtrasado ? (
+                        <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-full border border-amber-300 w-fit">
+                          Saída Vencida ({formatarData(res.datasaida)})
                         </span>
                       ) : (
                         <span className="text-xs font-medium text-[#414941] bg-[#f3f4f5] px-2.5 py-0.5 rounded-full w-fit">
@@ -1015,8 +1065,8 @@ export const PaginaCheckout: React.FC = () => {
                               Number(linha.valor) > 0
                                 ? aplicarMascaraMoeda(String(Math.round(Number(linha.valor) * 100)))
                                 : linha.valor === 0 && totalAcobrar <= 0.01
-                                ? 'R$ 0,00'
-                                : ''
+                                  ? 'R$ 0,00'
+                                  : ''
                             }
                             onChange={(e) => {
                               const valorComMascara = aplicarMascaraMoeda(e.target.value);
@@ -1221,33 +1271,30 @@ export const PaginaCheckout: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setTipoAlvoDivisao('TUDO')}
-                  className={`p-2 rounded-lg font-bold border transition-colors ${
-                    tipoAlvoDivisao === 'TUDO'
-                      ? 'bg-[#053d1e] text-white border-[#053d1e]'
-                      : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d]'
-                  }`}
+                  className={`p-2 rounded-lg font-bold border transition-colors ${tipoAlvoDivisao === 'TUDO'
+                    ? 'bg-[#053d1e] text-white border-[#053d1e]'
+                    : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d]'
+                    }`}
                 >
                   Tudo Junto
                 </button>
                 <button
                   type="button"
                   onClick={() => setTipoAlvoDivisao('HOSPEDAGEM')}
-                  className={`p-2 rounded-lg font-bold border transition-colors ${
-                    tipoAlvoDivisao === 'HOSPEDAGEM'
-                      ? 'bg-[#053d1e] text-white border-[#053d1e]'
-                      : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d]'
-                  }`}
+                  className={`p-2 rounded-lg font-bold border transition-colors ${tipoAlvoDivisao === 'HOSPEDAGEM'
+                    ? 'bg-[#053d1e] text-white border-[#053d1e]'
+                    : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d]'
+                    }`}
                 >
                   Só Diárias
                 </button>
                 <button
                   type="button"
                   onClick={() => setTipoAlvoDivisao('CONSUMOS')}
-                  className={`p-2 rounded-lg font-bold border transition-colors ${
-                    tipoAlvoDivisao === 'CONSUMOS'
-                      ? 'bg-[#053d1e] text-white border-[#053d1e]'
-                      : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d]'
-                  }`}
+                  className={`p-2 rounded-lg font-bold border transition-colors ${tipoAlvoDivisao === 'CONSUMOS'
+                    ? 'bg-[#053d1e] text-white border-[#053d1e]'
+                    : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d]'
+                    }`}
                 >
                   Só Bar/Loja
                 </button>
@@ -1262,11 +1309,10 @@ export const PaginaCheckout: React.FC = () => {
                     key={num}
                     type="button"
                     onClick={() => setQtdPessoasDivisao(num)}
-                    className={`py-2.5 rounded-xl font-extrabold text-xs border transition-colors ${
-                      qtdPessoasDivisao === num
-                        ? 'bg-[#053d1e] text-white border-[#053d1e]'
-                        : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d] hover:bg-[#e6f4ea]'
-                    }`}
+                    className={`py-2.5 rounded-xl font-extrabold text-xs border transition-colors ${qtdPessoasDivisao === num
+                      ? 'bg-[#053d1e] text-white border-[#053d1e]'
+                      : 'border-[#c1c9bf] bg-[#f8f9fa] text-[#191c1d] hover:bg-[#e6f4ea]'
+                      }`}
                   >
                     {num}x
                   </button>
@@ -1282,8 +1328,8 @@ export const PaginaCheckout: React.FC = () => {
                     (tipoAlvoDivisao === 'TUDO'
                       ? saldoHospedagem + totalConsumosDaConta
                       : tipoAlvoDivisao === 'HOSPEDAGEM'
-                      ? saldoHospedagem
-                      : totalConsumosDaConta) / qtdPessoasDivisao
+                        ? saldoHospedagem
+                        : totalConsumosDaConta) / qtdPessoasDivisao
                   )}
                 </strong>
               </div>
@@ -1461,9 +1507,8 @@ export const PaginaCheckout: React.FC = () => {
       <ModalConfirmacao
         aberto={modalContaZeradaAberta}
         titulo="Check-out com Valor Zerado"
-        mensagem={`O valor total a cobrar desta conta é R$ 0,00, pois as diárias já foram 100% quitadas na reserva e não constam consumos em aberto para ${
-          reservaSelecionada?.hospedenome || 'o hóspede'
-        }. Deseja continuar e concluir o check-out?`}
+        mensagem={`O valor total a cobrar desta conta é R$ 0,00, pois as diárias já foram 100% quitadas na reserva e não constam consumos em aberto para ${reservaSelecionada?.hospedenome || 'o hóspede'
+          }. Deseja continuar e concluir o check-out?`}
         tipo="info"
         textoConfirmar="Sim, Concluir Check-out"
         textoCancelar="Voltar"
@@ -1508,16 +1553,16 @@ export const PaginaCheckout: React.FC = () => {
               </div>
               {(comprovanteCheckout.observacoesCheckout ||
                 comprovanteCheckout.reserva.observacoes_checkout) && (
-                <div className="pt-2 border-t border-[#e1e3e4] text-left">
-                  <span className="text-[#717971] block font-semibold mb-1 text-[11px]">
-                    Observações do Check-out:
-                  </span>
-                  <p className="text-[#191c1d] bg-white p-2.5 rounded-lg border border-[#c1c9bf] whitespace-pre-wrap leading-relaxed text-xs">
-                    {comprovanteCheckout.observacoesCheckout ||
-                      comprovanteCheckout.reserva.observacoes_checkout}
-                  </p>
-                </div>
-              )}
+                  <div className="pt-2 border-t border-[#e1e3e4] text-left">
+                    <span className="text-[#717971] block font-semibold mb-1 text-[11px]">
+                      Observações do Check-out:
+                    </span>
+                    <p className="text-[#191c1d] bg-white p-2.5 rounded-lg border border-[#c1c9bf] whitespace-pre-wrap leading-relaxed text-xs">
+                      {comprovanteCheckout.observacoesCheckout ||
+                        comprovanteCheckout.reserva.observacoes_checkout}
+                    </p>
+                  </div>
+                )}
             </div>
 
             <div className="flex gap-2 pt-2">

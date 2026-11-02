@@ -1,23 +1,41 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { calcularDisponibilidadeQuartos, StatusDisponibilidadeQuarto, verificarConflitoQuarto } from '../servicos/conflitoReservas';
 import {
-  AuthService,
   authService,
+  configuracaoService,
+  consumoExtraService,
+  FnrhService,
+  hospedeService,
   pacoteService,
+  pagamentoService,
+  produtoService,
   quartoService,
   reservaService,
-  hospedeService,
-  produtoService,
-  vendaService,
-  consumoExtraService,
-  pagamentoService,
-  configuracaoService,
   usuarioService,
-  FnrhService,
+  vendaService,
 } from '../servicos/api';
+import { calcularDisponibilidadeQuartos, StatusDisponibilidadeQuarto, verificarConflitoQuarto } from '../servicos/conflitoReservas';
 import {
-  ConfiguracaoSistema, ConsumoExtra, Hospede, Pagamento, Pacote, PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario, Venda,
+  ConfiguracaoSistema, ConsumoExtra, Hospede,
+  Pacote,
+  Pagamento,
+  PaginaNavegacao, Produto, Quarto, Reserva, StatusQuarto, StatusReserva, Usuario, Venda,
 } from '../tipos';
+import { formatarHorarioParaTimeSpan } from '../utilitarios/formatadores';
+
+// Função para obter data local ISO (AAAA-MM-DD) sem bug de fuso horário UTC
+export const obterDataLocalISO = (data: Date | string = new Date()): string => {
+  const d = typeof data === 'string'
+    ? new Date(data.includes('T') ? data : `${data}T12:00:00`)
+    : new Date(data);
+
+  if (isNaN(d.getTime())) return '';
+
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}`;
+};
 
 const usuarioPadrao: Usuario = {
   usuarioid: 0, perfilid: 0, nome: '', email: '', senha: '', perfil: 'ADMIN', ativo: true,
@@ -146,7 +164,10 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
   const [autenticado, setAutenticado] = useState<boolean>(false);
   const [paginaAtual, setPaginaAtual] = useState<PaginaNavegacao>('login');
   const [abaDashboard, setAbaDashboard] = useState<'VISAO_GERAL' | 'RELATORIO_FAZENDA'>('VISAO_GERAL');
-  const [dataSistema] = useState<string>(new Date().toISOString().slice(0, 10));
+  
+  // 1º USO DO obterDataLocalISO: Garante data do sistema correta sem UTC
+  const [dataSistema] = useState<string>(obterDataLocalISO());
+
   const [online, setOnline] = useState<boolean>(typeof window !== 'undefined' ? navigator.onLine : true);
   const [carregando, setCarregando] = useState<boolean>(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -268,8 +289,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
               (u.perfil === 'DIRETORIA' || u.perfil === 'EXECUTIVO')
                 ? 'dashboard-executivo'
                 : u.perfil === 'RECEPCAO'
-                ? 'checkin'
-                : 'dashboard';
+                  ? 'checkin'
+                  : 'dashboard';
             setPaginaAtual(paginaPadrao);
             return;
           }
@@ -309,8 +330,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           (usuario.perfil === 'DIRETORIA' || usuario.perfil === 'EXECUTIVO')
             ? 'dashboard-executivo'
             : usuario.perfil === 'RECEPCAO'
-            ? 'checkin'
-            : 'dashboard';
+              ? 'checkin'
+              : 'dashboard';
         setPaginaAtual(paginaInicial);
         return { sucesso: true, usuario };
       }
@@ -412,7 +433,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const agora = new Date().toISOString();
-    const dataReserva = (novaReserva as any).datareserva || agora.slice(0, 10);
+    // 2º USO DO obterDataLocalISO: Garante data de reserva local
+    const dataReserva = (novaReserva as any).datareserva || obterDataLocalISO();
     const valorPago = Number(novaReserva.valorpago || 0);
     const valorTotal = Number(novaReserva.valortotal || 0);
 
@@ -676,8 +698,22 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         return { sucesso: false, mensagem: 'Identificador do hóspede inválido ou não vinculado à reserva.' };
       }
 
-      const agoraIso = new Date().toISOString();
-      const dataHoraCheckin = r.checkinrealizadoem || r.checkinRealizadoEm || agoraIso;
+      let dataHoraCheckin = r.checkinrealizadoem || r.checkinRealizadoEm;
+      if (!dataHoraCheckin) {
+        const agora = new Date();
+        const ano = agora.getFullYear();
+        const mes = String(agora.getMonth() + 1).padStart(2, '0');
+        const dia = String(agora.getDate()).padStart(2, '0');
+        const hora = String(agora.getHours()).padStart(2, '0');
+        const min = String(agora.getMinutes()).padStart(2, '0');
+        const seg = String(agora.getSeconds()).padStart(2, '0');
+        dataHoraCheckin = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+      } else if (dataHoraCheckin.length === 16) {
+        dataHoraCheckin = `${dataHoraCheckin}:00`;
+      }
+
+      const horaChegada = formatarHorarioParaTimeSpan(r.horarioprevistochegada ?? r.horarioPrevistoChegada ?? '09:00');
+      const horaSaida = formatarHorarioParaTimeSpan(r.horarioprevistosaida ?? r.horarioPrevistoSaida ?? '15:00');
 
       const payloadPutDto: any = {
         reservaId: idReserva,
@@ -701,8 +737,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         statusPagamento: r.statuspagamento ?? r.statusPagamento ?? 'PAGO',
         observacoes: r.observacoes ?? '',
         observacoesCheckout: r.observacoes_checkout ?? r.observacoesCheckout ?? '',
-        horarioPrevistoChegada: r.horarioprevistochegada ?? r.horarioPrevistoChegada ?? null,
-        horarioPrevistoSaida: r.horarioprevistosaida ?? r.horarioPrevistoSaida ?? null,
+        horarioPrevistoChegada: horaChegada ?? '09:00:00',
+        horarioPrevistoSaida: horaSaida ?? '15:00:00',
         checkinRealizadoEm: dataHoraCheckin,
         ativo: true,
       };
@@ -737,8 +773,28 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     observacoesCheckout?: string
   ): Promise<{ sucesso: boolean; mensagem: string }> => {
     const idNum = Number(reservaId);
-    const reserva = reservas.find((r) => Number(r.reservaid ?? (r as any).reservaId) === idNum);
+    let reserva = reservas.find((r) => Number(r.reservaid ?? (r as any).reservaId) === idNum);
+
+    // Se a reserva não estiver em memória com todos os dados, busca na API
+    if (!reserva || !reserva.quartoid || !reserva.hospedeid) {
+      const resBusca = await reservaService.obterPorId(idNum);
+      if (resBusca.sucesso && resBusca.dados) {
+        reserva = resBusca.dados as Reserva;
+      }
+    }
+
     if (!reserva) return { sucesso: false, mensagem: 'Reserva não encontrada.' };
+
+    const idQuarto = Number(reserva.quartoid || (reserva as any).quartoId || 0);
+    const idHospede = Number(reserva.hospedeid || (reserva as any).hospedeId || 0);
+    const codigoReserva = String(reserva.codigo || (reserva as any).Codigo || `RES-${idNum}`).trim();
+
+    if (!idQuarto || idQuarto <= 0) {
+      return { sucesso: false, mensagem: 'Identificador do quarto inválido ou não vinculado à reserva.' };
+    }
+    if (!idHospede || idHospede <= 0) {
+      return { sucesso: false, mensagem: 'Identificador do hóspede inválido ou não vinculado à reserva.' };
+    }
 
     const agora = new Date().toISOString();
     const pagamentosConfirmados = pagamentosInput.filter((pagamento) => Number(pagamento.valor) > 0);
@@ -767,17 +823,20 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const totalPagoAteAgora = Number(reserva.valorpago || 0) + pagamentosConfirmados.reduce((acc, p) => acc + Number(p.valor), 0);
     const novoSaldo = Math.max(0, Number(reserva.valortotal || 0) - totalPagoAteAgora);
-    
-    const obsCheckoutFinal = observacoesCheckout !== undefined 
-      ? observacoesCheckout 
+
+    const obsCheckoutFinal = observacoesCheckout !== undefined
+      ? observacoesCheckout
       : ((reserva as any).observacoes_checkout || (reserva as any).observacoesCheckout || '');
 
-    // Payload DTO completo para passar sem erro 400 no ReservaPutDto
+    const horaChegada = formatarHorarioParaTimeSpan((reserva as any).horarioprevistochegada ?? (reserva as any).horarioPrevistoChegada ?? '09:00');
+    const horaSaida = formatarHorarioParaTimeSpan((reserva as any).horarioprevistosaida ?? (reserva as any).horarioPrevistoSaida ?? '15:00');
+
+    // DTO blindado contra erros de validação
     const payloadPutDto: any = {
       reservaId: idNum,
-      codigo: String(reserva.codigo || `RES-${idNum}`),
-      quartoId: Number(reserva.quartoid || (reserva as any).quartoId),
-      hospedeId: Number(reserva.hospedeid || (reserva as any).hospedeId),
+      codigo: codigoReserva,
+      quartoId: idQuarto,
+      hospedeId: idHospede,
       cadastroId: (reserva as any).cadastroid ?? (reserva as any).cadastroId ? Number((reserva as any).cadastroid ?? (reserva as any).cadastroId) : null,
       pacoteId: reserva.pacoteid ?? (reserva as any).pacoteId ? Number(reserva.pacoteid ?? (reserva as any).pacoteId) : null,
       dataEntrada: reserva.dataentrada || (reserva as any).dataEntrada,
@@ -795,6 +854,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       statusPagamento: novoSaldo <= 0 ? 'PAGO' : 'PARCIAL',
       observacoes: reserva.observacoes || '',
       observacoesCheckout: obsCheckoutFinal,
+      horarioPrevistoChegada: horaChegada ?? '09:00:00',
+      horarioPrevistoSaida: horaSaida ?? '15:00:00',
       checkoutRealizadoEm: agora,
       ativo: true,
     };
@@ -805,11 +866,11 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setReservas((prev) => prev.map((r) => (Number(r.reservaid ?? (r as any).reservaId) === idNum ? { ...r, ...payloadPutDto } : r)) as Reserva[]);
-    
-    if (reserva.quartoid) {
-      await atualizarStatusQuarto(reserva.quartoid, 'A_LIMPAR');
+
+    if (idQuarto > 0) {
+      await atualizarStatusQuarto(idQuarto, 'A_LIMPAR');
     }
-    
+
     await recarregarDados();
     return { sucesso: true, mensagem: `Check-out de ${reserva.hospedenome || 'Hóspede'} realizado com sucesso!` };
   };

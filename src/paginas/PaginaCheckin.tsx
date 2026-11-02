@@ -49,7 +49,7 @@ export const PaginaCheckin: React.FC = () => {
   const [feedbackErro, setFeedbackErro] = useState<string | null>(null);
   const [comprovanteCheckin, setComprovanteCheckin] = useState<any | null>(null);
   const [carregandoCheckin, setCarregandoCheckin] = useState<boolean>(false);
-  
+
   // Estado para capturar e enviar o momento exato do Check-in
   const [checkinRealizadoEm, setCheckinRealizadoEm] = useState<string>(obterDataHoraAtualLocal());
 
@@ -76,7 +76,7 @@ export const PaginaCheckin: React.FC = () => {
 
       const nomeHospede =
         getVal(r, 'hospedenome', 'hospedeNome') ||
-        hospedeObj?.nomecompleto ||        
+        hospedeObj?.nomecompleto ||
         `Hóspede #${hospedeId}`;
 
       const telHospede =
@@ -88,12 +88,12 @@ export const PaginaCheckin: React.FC = () => {
       const numQuarto =
         getVal(r, 'quartonumero', 'quartoNumero') ||
         quartoObj?.numero ||
-        quartoObj?.codigoidentificador ||        
+        quartoObj?.codigoidentificador ||
         '';
 
       const codQuarto =
         getVal(r, 'quartocodigo', 'quartoCodigo') ||
-        quartoObj?.codigoidentificador ||        
+        quartoObj?.codigoidentificador ||
         quartoObj?.numero ||
         '';
 
@@ -156,57 +156,58 @@ export const PaginaCheckin: React.FC = () => {
   }, [reservasAguardando, busca]);
 
   const handleEfetivarCheckin = async (reservaItem: any) => {
-  setFeedbackErro(null);
+    setFeedbackErro(null);
 
-  const qId = Number(reservaItem.quartoid ?? reservaItem.quartoId);
-  const hId = Number(reservaItem.hospedeid ?? reservaItem.hospedeId);
+    const qId = Number(reservaItem.quartoid ?? reservaItem.quartoId);
+    const hId = Number(reservaItem.hospedeid ?? reservaItem.hospedeId);
 
-  if (!qId || qId <= 0) {
-    setFeedbackErro('Erro: O quarto da reserva não foi identificado.');
-    return;
-  }
-  if (!hId || hId <= 0) {
-    setFeedbackErro('Erro: O hóspede da reserva não foi identificado.');
-    return;
-  }
-
-  setCarregandoCheckin(true);
-  try {
-    const idParaCheckin = Number(reservaItem.reservaid ?? reservaItem.reservaId);
-
-    const dataHoraIsoUtc = checkinRealizadoEm
-      ? new Date(checkinRealizadoEm).toISOString()
-      : new Date().toISOString();
-
-    const dadosParaEnvio = {
-      ...reservaItem,
-      quartoid: qId,
-      quartoId: qId,
-      hospedeid: hId,
-      hospedeId: hId,
-      checkinrealizadoem: dataHoraIsoUtc,
-      checkinRealizadoEm: dataHoraIsoUtc,
-    };
-
-    const res: any = await realizarCheckin(idParaCheckin, dadosParaEnvio);
-
-    if (!res.sucesso) {
-      setFeedbackErro(res.mensagem || 'Falha ao efetivar check-in.');
-    } else {
-      setFeedbackSucesso(res.mensagem);
-      setComprovanteCheckin({
-        ...reservaItem,
-        checkinrealizadoem: dataHoraIsoUtc,
-      });
-      setReservaSelecionada(null);
-      setTimeout(() => setFeedbackSucesso(null), 4000);
+    if (!qId || qId <= 0) {
+      setFeedbackErro('Erro: O quarto da reserva não foi identificado.');
+      return;
     }
-  } catch (err: any) {
-    setFeedbackErro(err?.message || 'Erro de comunicação ao efetivar check-in.');
-  } finally {
-    setCarregandoCheckin(false);
-  }
-};
+    if (!hId || hId <= 0) {
+      setFeedbackErro('Erro: O hóspede da reserva não foi identificado.');
+      return;
+    }
+
+    setCarregandoCheckin(true);
+    try {
+      const idParaCheckin = Number(reservaItem.reservaid ?? reservaItem.reservaId);
+
+      // Envia exatamente a data/hora local preenchida no input (ex: "2026-11-01T20:26:00")
+      const dataHoraLocal = checkinRealizadoEm
+        ? (checkinRealizadoEm.length === 16 ? `${checkinRealizadoEm}:00` : checkinRealizadoEm)
+        : obterDataHoraAtualLocal() + ':00';
+
+      const dadosParaEnvio = {
+        ...reservaItem,
+        quartoid: qId,
+        quartoId: qId,
+        hospedeid: hId,
+        hospedeId: hId,
+        checkinrealizadoem: dataHoraLocal,
+        checkinRealizadoEm: dataHoraLocal,
+      };
+
+      const res: any = await realizarCheckin(idParaCheckin, dadosParaEnvio);
+
+      if (!res.sucesso) {
+        setFeedbackErro(res.mensagem || 'Falha ao efetivar check-in.');
+      } else {
+        setFeedbackSucesso(res.mensagem);
+        setComprovanteCheckin({
+          ...reservaItem,
+          checkinrealizadoem: dataHoraLocal,
+        });
+        setReservaSelecionada(null);
+        setTimeout(() => setFeedbackSucesso(null), 4000);
+      }
+    } catch (err: any) {
+      setFeedbackErro(err?.message || 'Erro de comunicação ao efetivar check-in.');
+    } finally {
+      setCarregandoCheckin(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -284,11 +285,10 @@ export const PaginaCheckin: React.FC = () => {
                       setFeedbackErro(null);
                       setReservaSelecionada(res);
                     }}
-                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
-                      selecionado
+                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
                         ? 'border-2 border-[#053d1e] bg-[#b8f0c2]/10 ring-2 ring-[#053d1e]/20 shadow-md'
                         : 'border-[#c1c9bf] hover:border-[#053d1e] hover:shadow-xs'
-                    }`}
+                      }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
@@ -326,9 +326,8 @@ export const PaginaCheckin: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Saldo a Cobrar:</span>
                         <span
-                          className={`font-bold ${
-                            res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
-                          }`}
+                          className={`font-bold ${res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                            }`}
                         >
                           {formatarMoeda(res.saldo)}
                         </span>
@@ -397,11 +396,10 @@ export const PaginaCheckin: React.FC = () => {
                 <button
                   onClick={() => handleEfetivarCheckin(reservaSelecionada)}
                   disabled={carregandoCheckin}
-                  className={`w-full py-3 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${
-                    carregandoCheckin
+                  className={`w-full py-3 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${carregandoCheckin
                       ? 'bg-[#053d1e]/60 cursor-not-allowed text-white/80'
                       : 'bg-[#053d1e] hover:bg-[#225533] text-white'
-                  }`}
+                    }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {carregandoCheckin ? 'Processando...' : 'Efetivar Check-in & Entregar Chave'}

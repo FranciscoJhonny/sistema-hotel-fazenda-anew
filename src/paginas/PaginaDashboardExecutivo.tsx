@@ -348,8 +348,29 @@ export const PaginaDashboardExecutivo: React.FC = () => {
           totalHospedagem = qtdAdultos * valorBasePessoa + qtdCriancasMeia * (valorBasePessoa * 0.5);
         }
 
+        const statusAtual = String(getVal(reserva, 'statusreserva', 'statusReserva') || '').toUpperCase();
         const totalGeral = Number((valorCheckoutPago + valorBar + valorLojinha + valorReservaPago).toFixed(2));
-        const saldoDb = getVal(reserva, 'saldo', 'saldo');
+
+        // Cálculo de débitos x créditos
+        const totalDebitoHospede = Number((totalHospedagem + valorBar + valorLojinha).toFixed(2));
+        const totalJaPago = Number((valorReservaPago + valorCheckoutPago).toFixed(2));
+        const diferencaCalculada = Math.max(0, Number((totalDebitoHospede - totalJaPago).toFixed(2)));
+
+        let saldoPendenteFinal = 0;
+        if (statusAtual === 'CONCLUIDA') {
+          saldoPendenteFinal = 0;
+        } else {
+          const saldoDb = getVal(reserva, 'saldo', 'saldo');
+          if (saldoDb !== undefined && saldoDb !== null && Number(saldoDb) >= 0) {
+            saldoPendenteFinal = Number(saldoDb);
+          } else {
+            saldoPendenteFinal = diferencaCalculada;
+          }
+        }
+
+        if (saldoPendenteFinal <= 0.05) {
+          saldoPendenteFinal = 0;
+        }
 
         const quartoNum =
           (quarto as any)?.codigoidentificador ||
@@ -383,8 +404,8 @@ export const PaginaDashboardExecutivo: React.FC = () => {
           valorBar,
           valorCheckout: valorCheckoutPago,
           total: totalGeral,
-          saldoPendente: Number(saldoDb !== undefined && saldoDb !== null ? saldoDb : Math.max(0, totalHospedagem - valorReservaPago)),
-          status: getVal(reserva, 'statusreserva', 'statusReserva'),
+          saldoPendente: saldoPendenteFinal,
+          status: statusAtual,
           observacoes: getVal(reserva, 'observacoes', 'observacoes') || '',
           observacoes_checkout: getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '',
         };

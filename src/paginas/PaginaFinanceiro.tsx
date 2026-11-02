@@ -183,19 +183,23 @@ export const PaginaFinanceiro: React.FC = () => {
 
         const totalHospedagem = Number(getVal(reserva, 'valortotal', 'valorTotal') || 0);
 
-        // FÓRMULA CORRIGIDA: Check-out + Bar + Loja + Reserva (Sinal)
+        // FÓRMULA: Check-out + Bar + Loja + Reserva (Sinal)
         const totalGeralCalculado = valorCheckoutPago + valorBar + valorLojinha + valorReservaPago;
 
-        const saldoDb = getVal(reserva, 'saldo', 'saldo');
-        const saldoPendente = Number(
-          saldoDb !== undefined && saldoDb !== null
-            ? saldoDb
-            : Math.max(0, totalHospedagem - valorReservaPago)
-        );
+        const stReserva = String(getVal(reserva, 'statusreserva', 'statusReserva') || '').toUpperCase();
 
-        const stReserva = getVal(reserva, 'statusreserva', 'statusReserva');
+        // CÁLCULO AJUSTADO: Se concluída ou se o check-out já pagou a conta, saldo pendente zera imediatamente
+        let saldoPendente = 0;
+        if (stReserva === 'CONCLUIDA' || valorCheckoutPago >= (totalHospedagem - valorReservaPago + valorBar + valorLojinha)) {
+          saldoPendente = 0;
+        } else {
+          const totalContaDevida = totalHospedagem + valorBar + valorLojinha;
+          const totalPagoAteAgora = valorReservaPago + valorCheckoutPago;
+          saldoPendente = Math.max(0, Number((totalContaDevida - totalPagoAteAgora).toFixed(2)));
+        }
+
         let status = 'PENDENTE';
-        if (stReserva === 'CONCLUIDA' && saldoPendente <= 0.01) {
+        if (stReserva === 'CONCLUIDA' || saldoPendente <= 0.01) {
           status = 'PAGO';
         } else if (Number(getVal(reserva, 'valorpago', 'valorPago') || 0) > 0 || valorCheckoutPago > 0) {
           status = 'PARCIAL';
@@ -259,9 +263,7 @@ export const PaginaFinanceiro: React.FC = () => {
     const totalAdultos = resumoReservas.reduce((acc, r) => acc + Number(r.adultos || 0), 0);
     const totalCriancas = resumoReservas.reduce((acc, r) => acc + Number(r.criancas || 0), 0);
 
-    // FÓRMULA FINAL: Check-out + Bar + Loja + Reserva (Sinal)
     const totalGeralFinal = totalSaldoReserva + totalVendasBar + totalVendasLoja + totalSinalReserva;
-
     const totalSaldosPendentes = resumoReservas.reduce((acc, r) => acc + Number(r.saldoPendente || 0), 0);
 
     return {
@@ -278,7 +280,7 @@ export const PaginaFinanceiro: React.FC = () => {
     };
   }, [resumoReservas]);
 
-  // 5. EXPORTAÇÃO EXCEL (100% PRESERVADA)
+  // 5. EXPORTAÇÃO EXCEL
   const exportarParaExcel = () => {
     if (resumoReservas.length === 0) {
       alert('Não há dados para exportar. Aplique um filtro primeiro.');
@@ -697,7 +699,7 @@ export const PaginaFinanceiro: React.FC = () => {
 
         {usarFiltroData && dataInicioFiltro && dataFimFiltro && (
           <div className="px-3.5 py-2 bg-[#e6f4ea] border border-[#b8f0c2] rounded-xl text-xs text-[#053d1e] flex items-center gap-2 animate-in fade-in">
-            <Calendar className="w-4 h-4 text-[#053d1e] shrink-0" />
+            <Calendar className="w-4 h-4 text-[#053d1e]" />
             <span>
               Período filtrado: <strong>{formatarData(dataInicioFiltro)}</strong> até{' '}
               <strong>{formatarData(dataFimFiltro)}</strong>

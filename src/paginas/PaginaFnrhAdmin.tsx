@@ -1,38 +1,38 @@
-import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Link as LinkIcon,
-  Plus,
-  Search,
-  Copy,
-  Check,
-  Send,
-  Eye,
-  CreditCard,
-  Calendar,
   AlertCircle,
-  Clock,
+  Calendar,
+  Check,
   CheckCircle2,
-  RefreshCw,
-  Trash2,
-  Edit2,
-  XCircle,
-  LoaderCircle,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  Copy,
+  CreditCard,
+  Edit2,
+  Eye,
+  Link as LinkIcon,
+  LoaderCircle,
+  Plus,
+  RefreshCw,
+  Search,
+  Send,
+  Trash2,
+  XCircle,
 } from 'lucide-react';
-import { CadastroFnrh, Reserva, Pacote, Quarto } from '../tipos';
-import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/api/FnrhService';
-import { ModalGerarLinkFnrh } from '../componentes/fnrh/ModalGerarLinkFnrh';
-import { ModalDetalhesFnrh } from '../componentes/fnrh/ModalDetalhesFnrh';
-import { ModalConfirmarSinalFnrh } from '../componentes/fnrh/ModalConfirmarSinalFnrh';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ModalConfirmacao } from '../componentes/comuns/ModalConfirmacao';
+import { ModalConfirmarSinalFnrh } from '../componentes/fnrh/ModalConfirmarSinalFnrh';
+import { ModalDetalhesFnrh } from '../componentes/fnrh/ModalDetalhesFnrh';
+import { ModalGerarLinkFnrh } from '../componentes/fnrh/ModalGerarLinkFnrh';
 import { useHotel } from '../contextos/ContextoHotel';
+import { FnrhService, gerarLinkPublicoFnrh } from '../servicos/api/FnrhService';
+import { CadastroFnrh, Pacote, Quarto, Reserva } from '../tipos';
 import {
+  calcularIdadeNumerica,
   formatarCpf,
   formatarData,
   formatarMoeda,
   formatarTelefone,
-  calcularIdadeNumerica,
 } from '../utilitarios/formatadores';
 
 // Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
@@ -206,11 +206,10 @@ export const calcularValoresReserva = (
   const valorTotal = valorAdultos + valorCriancas;
   const valorSinal = valorTotal / 2;
 
-  const detalheTexto = `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${
-    valorCriancas > 0
+  const detalheTexto = `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${valorCriancas > 0
       ? ` + ${criancasMeia} cr x ${formatarMoeda((valorPorPessoa * porcentagemMeia) / 100)}`
       : ''
-  }`;
+    }`;
 
   return {
     valorTotal,
@@ -325,9 +324,9 @@ export const PaginaFnrhAdmin: React.FC = () => {
       const dataCriacaoFnrh =
         extrairDataIso(
           getVal(cadastro, 'datainclusao', 'dataInclusao') ||
-            (cadastro as any).created_at ||
-            (cadastro as any).criado_em ||
-            getVal(cadastro, 'data_declaracao', 'dataDeclaracao')
+          (cadastro as any).created_at ||
+          (cadastro as any).criado_em ||
+          getVal(cadastro, 'data_declaracao', 'dataDeclaracao')
         ) || new Date().toISOString().slice(0, 10);
 
       const vSinal = Number(getVal(cadastro, 'valor_sinal', 'valorSinal') || 0);
@@ -576,11 +575,11 @@ Qualquer dúvida, estamos à disposição!`;
         const coincideNome = nome?.toLowerCase().includes(termo);
         const coincideCpf = Boolean(
           cpf?.toLowerCase().includes(termo) ||
-            (termoNumeros && cpf?.replace(/\D/g, '').includes(termoNumeros))
+          (termoNumeros && cpf?.replace(/\D/g, '').includes(termoNumeros))
         );
         const coincideTel = Boolean(
           tel?.includes(termo) ||
-            (termoNumeros && tel?.replace(/\D/g, '').includes(termoNumeros))
+          (termoNumeros && tel?.replace(/\D/g, '').includes(termoNumeros))
         );
         const coincideToken = token?.toLowerCase().includes(termo);
         const coincideId = cId === termo;
@@ -782,8 +781,9 @@ Qualquer dúvida, estamos à disposição!`;
 
       {/* Barra de Filtros e Busca */}
       <div className="bg-white p-4 rounded-2xl border border-[#c1c9bf] shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          <div className="relative w-full sm:max-w-md">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          {/* Campo de Busca */}
+          <div className="relative w-full lg:max-w-md shrink-0">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
@@ -794,56 +794,52 @@ Qualquer dúvida, estamos à disposição!`;
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0">
+          {/* Botões de Filtros (com flex-wrap para nunca gerar scroll horizontal indesejado) */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setFiltroStatus('TODOS')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
-                filtroStatus === 'TODOS'
-                  ? 'bg-[#053d1e] text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'TODOS'
+                  ? 'bg-[#053d1e] text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
-              Todos ({cadastros.length})
+              Todos 
             </button>
             <button
               onClick={() => setFiltroStatus('AGUARDANDO_PREENCHIMENTO')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
-                filtroStatus === 'AGUARDANDO_PREENCHIMENTO'
-                  ? 'bg-orange-600 text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'AGUARDANDO_PREENCHIMENTO'
+                  ? 'bg-orange-600 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
-              Aguardando Preenchimento ({contadores.aguardandoPreenchimento})
+              Aguardando Preenchimento 
             </button>
             <button
               onClick={() => setFiltroStatus('PREENCHIDO_AGUARDANDO_SINAL')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
-                filtroStatus === 'PREENCHIDO_AGUARDANDO_SINAL'
-                  ? 'bg-amber-600 text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'PREENCHIDO_AGUARDANDO_SINAL'
+                  ? 'bg-amber-600 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
-              Aguardando Sinal ({contadores.preenchidoAguardandoSinal})
+              Aguardando Sinal 
             </button>
             <button
               onClick={() => setFiltroStatus('LIBERADA_PARA_RESERVA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
-                filtroStatus === 'LIBERADA_PARA_RESERVA'
-                  ? 'bg-blue-600 text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'LIBERADA_PARA_RESERVA'
+                  ? 'bg-blue-600 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
-              Liberadas ({contadores.liberadas})
+              Liberadas 
             </button>
             <button
               onClick={() => setFiltroStatus('RESERVA_CRIADA')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
-                filtroStatus === 'RESERVA_CRIADA'
-                  ? 'bg-emerald-600 text-white'
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'RESERVA_CRIADA'
+                  ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+                }`}
             >
-              Reserva Criada ({contadores.reservasCriadas})
+              Reserva Criada 
             </button>
           </div>
         </div>
@@ -901,8 +897,8 @@ Qualquer dúvida, estamos à disposição!`;
                     const itemResId = getVal(item, 'reservaid', 'reservaId');
                     const jaPossuiReserva = Boolean(
                       statusUpper === 'RESERVA_CRIADA' ||
-                        itemResId ||
-                        reservaVinculada
+                      itemResId ||
+                      reservaVinculada
                     );
 
                     const codigoOuIdReserva =
@@ -933,11 +929,10 @@ Qualquer dúvida, estamos à disposição!`;
                               type="button"
                               onClick={() => handleCopiarLink(item)}
                               title="Copiar Link Seguro"
-                              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                                copiadoId === cId
+                              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${copiadoId === cId
                                   ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
                                   : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                              }`}
+                                }`}
                             >
                               {copiadoId === cId ? (
                                 <Check className="w-3.5 h-3.5" />
@@ -1233,11 +1228,10 @@ Qualquer dúvida, estamos à disposição!`;
           cadastroCancelar,
           'cadastroid',
           'cadastroId'
-        )}${
-          getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')
+        )}${getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')
             ? ` (${getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')})`
             : ''
-        }? O cliente não poderá mais enviar dados através deste link.`}
+          }? O cliente não poderá mais enviar dados através deste link.`}
         tipo="perigo"
         textoConfirmar="Sim, Excluir Link"
         textoCancelar="Voltar"
