@@ -57,7 +57,7 @@ interface ModalDetalhesFnrhProps {
   onFechar: () => void;
   onConfirmarSinal?: (cadastro: CadastroFnrh) => void;
   onCriarReserva?: (cadastro: CadastroFnrh) => void;
-  onAtualizar?: () => void;
+  onAtualizar?: (cadastroAtualizado?: CadastroFnrh) => void;
 }
 
 export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
@@ -75,6 +75,7 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   const [copiado, setCopiado] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
+  const [cadastroAtual, setCadastroAtual] = useState<CadastroFnrh | null>(cadastro);
   const [dadosEditados, setDadosEditados] = useState<Partial<CadastroFnrh>>({});
   const [acompanhantesEditados, setAcompanhantesEditados] = useState<any[]>([]);
   const [salvando, setSalvando] = useState(false);
@@ -83,37 +84,49 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
 
   useEffect(() => {
     if (cadastro) {
-      setDadosEditados({ ...cadastro });
-      setAcompanhantesEditados(cadastro.acompanhantes ? cadastro.acompanhantes.map((a) => ({ ...a })) : []);
+      setCadastroAtual(cadastro);
+      setDadosEditados({
+        ...cadastro,
+        nomecompleto: cadastro.nomecompleto ? String(cadastro.nomecompleto).toUpperCase() : '',
+      });
+      setAcompanhantesEditados(
+        cadastro.acompanhantes
+          ? cadastro.acompanhantes.map((a) => ({
+              ...a,
+              nomecompleto: a.nomecompleto ? String(a.nomecompleto).toUpperCase() : '',
+            }))
+          : []
+      );
       setModoEdicao(false);
       setErroEdicao(null);
       setSucessoEdicao(null);
     }
   }, [cadastro, aberto]);
 
-  if (!aberto || !cadastro) return null;
+  const c = cadastroAtual || cadastro;
+  if (!aberto || !c) return null;
 
   const jaPossuiReserva = Boolean(
-    cadastro.status === 'RESERVA_CRIADA' ||
-    cadastro.reservaid ||
+    c.status === 'RESERVA_CRIADA' ||
+    c.reservaid ||
     reservaVinculada
   );
 
   const codigoOuIdReserva =
     reservaVinculada?.codigo ||
-    (cadastro.reservaid ? `#${cadastro.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
+    (c.reservaid ? `#${c.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
 
-  const link = gerarLinkPublicoFnrh(cadastro.token_acesso || '');
-  const estaExpirado = new Date(cadastro.token_expira_em || '').getTime() < Date.now() && cadastro.status === 'AGUARDANDO_PAGAMENTO';
-  const preenchido = Boolean(cadastro.nomecompleto && cadastro.cpf && cadastro.declaracao_aceita);
-  const podeEditar = cadastro.status === 'AGUARDANDO_PAGAMENTO';
+  const link = gerarLinkPublicoFnrh(c.token_acesso || '');
+  const estaExpirado = new Date(c.token_expira_em || '').getTime() < Date.now() && c.status === 'AGUARDANDO_PAGAMENTO';
+  const preenchido = Boolean((dadosEditados.nomecompleto || c.nomecompleto) && (dadosEditados.cpf || c.cpf) && c.declaracao_aceita);
+  const podeEditar = c.status === 'AGUARDANDO_PAGAMENTO';
 
   // Tarifa individual do Hóspede Titular
   const tarifaTitular = calcularTarifaHospede(
-    dadosEditados.datanascimento || cadastro.datanascimento,
+    dadosEditados.datanascimento || c.datanascimento,
     false,
-    dadosEditados.dataentrada || cadastro.dataentrada,
-    dadosEditados.datasaida || cadastro.datasaida,
+    dadosEditados.dataentrada || c.dataentrada,
+    dadosEditados.datasaida || c.datasaida,
     pacotes
   );
 
@@ -128,11 +141,11 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   };
 
   const handleExportarPdf = async () => {
-    if (!cadastro) return;
+    if (!c) return;
     setGerandoPdf(true);
     try {
       await exportarFichaFnrhPdf(
-        dadosEditados.cadastroid ? (dadosEditados as CadastroFnrh) : cadastro,
+        dadosEditados.cadastroid ? (dadosEditados as CadastroFnrh) : c,
         reservaVinculada,
         pacotes,
         quartos,
@@ -147,8 +160,8 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   };
 
   const handleWhatsApp = () => {
-    const telefone = (dadosEditados.telefone || cadastro.telefone || '').replace(/\D/g, '');
-    const saudacao = (dadosEditados.nomecompleto || cadastro.nomecompleto) ? `Olá ${dadosEditados.nomecompleto || cadastro.nomecompleto}!` : 'Olá!';
+    const telefone = (dadosEditados.telefone || c.telefone || '').replace(/\D/g, '');
+    const saudacao = (dadosEditados.nomecompleto || c.nomecompleto) ? `Olá ${dadosEditados.nomecompleto || c.nomecompleto}!` : 'Olá!';
     const texto = `${saudacao} Tudo bem?
 
 Entramos em contato a respeito da sua reserva no *Hotel Fazenda Anew*.
@@ -165,7 +178,7 @@ Qualquer dúvida estamos à disposição!`;
   };
 
   const badgeStatus = () => {
-    if (cadastro.status === 'CANCELADA') {
+    if (c.status === 'CANCELADA') {
       return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700 border border-red-200">Cancelado</span>;
     }
     if (jaPossuiReserva) {
@@ -175,7 +188,7 @@ Qualquer dúvida estamos à disposição!`;
         </span>
       );
     }
-    if (cadastro.status === 'LIBERADA_PARA_RESERVA') {
+    if (c.status === 'LIBERADA_PARA_RESERVA') {
       return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-800 border border-blue-300">Sinal Confirmado (Liberada)</span>;
     }
     if (estaExpirado) {
@@ -188,14 +201,29 @@ Qualquer dúvida estamos à disposição!`;
   };
 
   const handleSalvarEdicao = async () => {
+    if (!c) return;
     setSalvando(true);
     setErroEdicao(null);
     setSucessoEdicao(null);
 
+    const nomeTitularFormatado = dadosEditados.nomecompleto
+      ? String(dadosEditados.nomecompleto).trim().toUpperCase()
+      : '';
+
+    const dadosParaSalvar: Partial<CadastroFnrh> = {
+      ...dadosEditados,
+      nomecompleto: nomeTitularFormatado,
+    };
+
+    const acompanhantesParaSalvar = acompanhantesEditados.map((a) => ({
+      ...a,
+      nomecompleto: a.nomecompleto ? String(a.nomecompleto).trim().toUpperCase() : '',
+    }));
+
     const res = await FnrhService.atualizarCadastroFnrh(
-      cadastro.cadastroid,
-      dadosEditados,
-      acompanhantesEditados,
+      c.cadastroid,
+      dadosParaSalvar,
+      acompanhantesParaSalvar,
       usuarioAtual?.usuarioid
     );
 
@@ -206,12 +234,25 @@ Qualquer dúvida estamos à disposição!`;
       return;
     }
 
+    const cadastroAtualizado: CadastroFnrh = {
+      ...c,
+      ...dadosParaSalvar,
+      acompanhantes: acompanhantesParaSalvar,
+    } as CadastroFnrh;
+
+    // Atualiza imediatamente o estado da modal com os novos dados salvos
+    setCadastroAtual(cadastroAtualizado);
+    setDadosEditados({ ...cadastroAtualizado });
+    setAcompanhantesEditados(acompanhantesParaSalvar.map((a) => ({ ...a })));
     setSucessoEdicao('Ficha FNRH atualizada com sucesso!');
     setModoEdicao(false);
 
+    // Notifica o componente pai e sincroniza os dados
     try {
+      if (onAtualizar) {
+        onAtualizar(cadastroAtualizado);
+      }
       await recarregarDados();
-      if (onAtualizar) onAtualizar();
     } catch (e) {
       console.warn('Aviso ao recarregar dados do hotel:', e);
     }
@@ -237,8 +278,9 @@ Qualquer dúvida estamos à disposição!`;
   };
 
   const handleAtualizarAcompanhante = (index: number, campo: string, valor: any) => {
+    const valorTratado = campo === 'nomecompleto' ? String(valor).toUpperCase() : valor;
     setAcompanhantesEditados((lista) =>
-      lista.map((item, idx) => (idx === index ? { ...item, [campo]: valor } : item))
+      lista.map((item, idx) => (idx === index ? { ...item, [campo]: valorTratado } : item))
     );
   };
 
@@ -255,12 +297,12 @@ Qualquer dúvida estamos à disposição!`;
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold font-['Manrope']">
-                  Ficha FNRH #{cadastro.cadastroid}
+                  Ficha FNRH #{c.cadastroid}
                 </h2>
                 {badgeStatus()}
               </div>
               <p className="text-xs text-white/80">
-                Criado em: {cadastro.datainclusao ? new Date(cadastro.datainclusao).toLocaleString('pt-BR') : '-'} • Expira em: {cadastro.token_expira_em ? new Date(cadastro.token_expira_em).toLocaleDateString('pt-BR') : '-'}
+                Criado em: {c.datainclusao ? new Date(c.datainclusao).toLocaleString('pt-BR') : '-'} • Expira em: {c.token_expira_em ? new Date(c.token_expira_em).toLocaleDateString('pt-BR') : '-'}
               </p>
             </div>
           </div>
@@ -373,8 +415,8 @@ Qualquer dúvida estamos à disposição!`;
                     type="text"
                     required
                     value={dadosEditados.nomecompleto || ''}
-                    onChange={(e) => setDadosEditados({ ...dadosEditados, nomecompleto: e.target.value })}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
+                    onChange={(e) => setDadosEditados({ ...dadosEditados, nomecompleto: e.target.value.toUpperCase() })}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 uppercase outline-none focus:border-[#053d1e]"
                   />
                 </div>
                 <div>
@@ -524,41 +566,41 @@ Qualquer dúvida estamos à disposição!`;
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div>
                   <span className="text-slate-500 block">Nome Completo</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.nomecompleto || cadastro.nomecompleto || '--'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.nomecompleto ? String(dadosEditados.nomecompleto).toUpperCase() : (c.nomecompleto ? String(c.nomecompleto).toUpperCase() : '--')}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">CPF</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.cpf ? formatarCpf(String(dadosEditados.cpf)) : (cadastro.cpf ? formatarCpf(cadastro.cpf) : '--')}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.cpf ? formatarCpf(String(dadosEditados.cpf)) : (c.cpf ? formatarCpf(c.cpf) : '--')}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">RG</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.rg || cadastro.rg || '--'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.rg || c.rg || '--'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Data de Nascimento</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.datanascimento ? formatarData(String(dadosEditados.datanascimento)) : (cadastro.datanascimento ? formatarData(cadastro.datanascimento) : '--')}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.datanascimento ? formatarData(String(dadosEditados.datanascimento)) : (c.datanascimento ? formatarData(c.datanascimento) : '--')}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Nacionalidade</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.nacionalidade || cadastro.nacionalidade || 'Brasileira'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.nacionalidade || c.nacionalidade || 'Brasileira'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Sexo</span>
                   <span className="font-semibold text-slate-900">
-                    {(dadosEditados.sexo || cadastro.sexo) === 'M' ? 'Masculino' : (dadosEditados.sexo || cadastro.sexo) === 'F' ? 'Feminino' : (dadosEditados.sexo || cadastro.sexo) || '--'}
+                    {(dadosEditados.sexo || c.sexo) === 'M' ? 'Masculino' : (dadosEditados.sexo || c.sexo) === 'F' ? 'Feminino' : (dadosEditados.sexo || c.sexo) || '--'}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Telefone</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.telefone ? formatarTelefone(String(dadosEditados.telefone)) : (cadastro.telefone ? formatarTelefone(cadastro.telefone) : '--')}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.telefone ? formatarTelefone(String(dadosEditados.telefone)) : (c.telefone ? formatarTelefone(c.telefone) : '--')}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">E-mail</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.email || cadastro.email || '--'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.email || c.email || '--'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Profissão</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.profissao || cadastro.profissao || '--'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.profissao || c.profissao || '--'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Tarifa Individual (Titular)</span>
@@ -574,13 +616,13 @@ Qualquer dúvida estamos à disposição!`;
                 <div className="lg:col-span-2">
                   <span className="text-slate-500 block">Endereço Residencial</span>
                   <span className="font-semibold text-slate-900">
-                    {(dadosEditados.endereco || cadastro.endereco) ? `${dadosEditados.endereco || cadastro.endereco}${(dadosEditados.numero || cadastro.numero) ? `, Nº ${dadosEditados.numero || cadastro.numero}` : ''}, ${dadosEditados.cidade || cadastro.cidade || ''} - ${dadosEditados.estado || cadastro.estado || ''} ${dadosEditados.cep || cadastro.cep ? `(CEP: ${dadosEditados.cep || cadastro.cep})` : ''}` : '--'}
+                    {(dadosEditados.endereco || c.endereco) ? `${dadosEditados.endereco || c.endereco}${(dadosEditados.numero || c.numero) ? `, Nº ${dadosEditados.numero || c.numero}` : ''}, ${dadosEditados.cidade || c.cidade || ''} - ${dadosEditados.estado || c.estado || ''} ${dadosEditados.cep || c.cep ? `(CEP: ${dadosEditados.cep || c.cep})` : ''}` : '--'}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Última Procedência / Próximo Destino</span>
                   <span className="font-semibold text-slate-900">
-                    {dadosEditados.ultimaprocedencia || cadastro.ultimaprocedencia || '--'} ➔ {dadosEditados.proximodestino || cadastro.proximodestino || '--'}
+                    {dadosEditados.ultimaprocedencia || c.ultimaprocedencia || '--'} ➔ {dadosEditados.proximodestino || c.proximodestino || '--'}
                   </span>
                 </div>
               </div>
@@ -676,36 +718,36 @@ Qualquer dúvida estamos à disposição!`;
                 <div>
                   <span className="text-slate-500 block">Data de Entrada</span>
                   <span className="font-semibold text-slate-900">
-                    {dadosEditados.dataentrada ? formatarData(String(dadosEditados.dataentrada)) : (cadastro.dataentrada ? formatarData(cadastro.dataentrada) : '--')}
+                    {dadosEditados.dataentrada ? formatarData(String(dadosEditados.dataentrada)) : (c.dataentrada ? formatarData(c.dataentrada) : '--')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Data de Saída</span>
                   <span className="font-semibold text-slate-900">
-                    {dadosEditados.datasaida ? formatarData(String(dadosEditados.datasaida)) : (cadastro.datasaida ? formatarData(cadastro.datasaida) : '--')}
+                    {dadosEditados.datasaida ? formatarData(String(dadosEditados.datasaida)) : (c.datasaida ? formatarData(c.datasaida) : '--')}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Hóspedes Previstos</span>
                   <span className="font-semibold text-slate-900">
-                    {dadosEditados.numerohospedes ?? cadastro.numerohospedes} ({dadosEditados.adultos ?? cadastro.adultos} adulto(s), {dadosEditados.criancas ?? cadastro.criancas} criança(s))
+                    {dadosEditados.numerohospedes ?? c.numerohospedes} ({dadosEditados.adultos ?? c.adultos} adulto(s), {dadosEditados.criancas ?? c.criancas} criança(s))
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Motivo da Viagem</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.motivoviagem || cadastro.motivoviagem || 'Lazer/Turismo'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.motivoviagem || c.motivoviagem || 'Lazer/Turismo'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Meio de Transporte</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.transporte || cadastro.transporte || '--'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.transporte || c.transporte || '--'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Placa do Veículo</span>
-                  <span className="font-semibold text-slate-900 font-mono">{dadosEditados.placa || cadastro.placa || '--'}</span>
+                  <span className="font-semibold text-slate-900 font-mono">{dadosEditados.placa || c.placa || '--'}</span>
                 </div>
                 <div className="lg:col-span-2">
                   <span className="text-slate-500 block">Modelo e Cor</span>
-                  <span className="font-semibold text-slate-900">{dadosEditados.modelocor || cadastro.modelocor || '--'}</span>
+                  <span className="font-semibold text-slate-900">{dadosEditados.modelocor || c.modelocor || '--'}</span>
                 </div>
               </div>
             )}
@@ -716,7 +758,7 @@ Qualquer dúvida estamos à disposição!`;
             <h3 className="text-sm font-bold font-['Manrope'] text-[#053d1e] mb-3 flex items-center justify-between border-b border-slate-100 pb-2">
               <span className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#053d1e]" />
-                Acompanhantes & Tarifas ({modoEdicao ? acompanhantesEditados.length : (cadastro.acompanhantes?.length || 0)})
+                Acompanhantes & Tarifas ({modoEdicao ? acompanhantesEditados.length : ((c.acompanhantes || acompanhantesEditados)?.length || 0)})
               </span>
               {modoEdicao && (
                 <button
@@ -757,8 +799,8 @@ Qualquer dúvida estamos à disposição!`;
                             required
                             placeholder="Nome do acompanhante"
                             value={acomp.nomecompleto || ''}
-                            onChange={(e) => handleAtualizarAcompanhante(idx, 'nomecompleto', e.target.value)}
-                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
+                            onChange={(e) => handleAtualizarAcompanhante(idx, 'nomecompleto', e.target.value.toUpperCase())}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold uppercase text-slate-900 outline-none focus:border-[#053d1e]"
                           />
                         </div>
 
@@ -794,8 +836,8 @@ Qualquer dúvida estamos à disposição!`;
                                 const tarifaEd = calcularTarifaHospede(
                                   acomp.datanascimento,
                                   acomp.menoridade,
-                                  dadosEditados.dataentrada || cadastro.dataentrada,
-                                  dadosEditados.datasaida || cadastro.datasaida,
+                                  dadosEditados.dataentrada || c.dataentrada,
+                                  dadosEditados.datasaida || c.datasaida,
                                   pacotes
                                 );
                                 return (
@@ -843,7 +885,7 @@ Qualquer dúvida estamos à disposição!`;
             ) : (
               <div className="space-y-2.5">
                 {/* Card do Titular */}
-                {(dadosEditados.nomecompleto || cadastro.nomecompleto) && (
+                {(dadosEditados.nomecompleto || c.nomecompleto) && (
                   <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/40 text-xs grid grid-cols-1 sm:grid-cols-4 gap-3 items-center">
                     <div>
                       <div className="flex items-center gap-1.5 mb-0.5">
@@ -852,18 +894,18 @@ Qualquer dúvida estamos à disposição!`;
                         </span>
                         <span className="text-slate-500 text-[11px]">Hóspede Principal</span>
                       </div>
-                      <span className="font-bold text-slate-900 block">{dadosEditados.nomecompleto || cadastro.nomecompleto}</span>
+                      <span className="font-bold text-slate-900 block">{String(dadosEditados.nomecompleto || c.nomecompleto || '').toUpperCase()}</span>
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[11px]">Documento / Nascimento</span>
                       <span className="font-semibold text-slate-900 block">
-                        {(dadosEditados.cpf || cadastro.cpf) ? formatarCpf(String(dadosEditados.cpf || cadastro.cpf)) : 'CPF não informado'} {(dadosEditados.datanascimento || cadastro.datanascimento) ? `• ${formatarData(String(dadosEditados.datanascimento || cadastro.datanascimento))}` : ''}
+                        {(dadosEditados.cpf || c.cpf) ? formatarCpf(String(dadosEditados.cpf || c.cpf)) : 'CPF não informado'} {(dadosEditados.datanascimento || c.datanascimento) ? `• ${formatarData(String(dadosEditados.datanascimento || c.datanascimento))}` : ''}
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[11px]">Idade</span>
                       <span className="font-semibold text-slate-900 block">
-                        {(dadosEditados.datanascimento || cadastro.datanascimento) ? calcularIdade(String(dadosEditados.datanascimento || cadastro.datanascimento)) : 'Adulto'}
+                        {(dadosEditados.datanascimento || c.datanascimento) ? calcularIdade(String(dadosEditados.datanascimento || c.datanascimento)) : 'Adulto'}
                       </span>
                     </div>
                     <div className="sm:text-right">
@@ -881,13 +923,13 @@ Qualquer dúvida estamos à disposição!`;
                 )}
 
                 {/* Cards dos Acompanhantes */}
-                {cadastro.acompanhantes && cadastro.acompanhantes.length > 0 ? (
-                  cadastro.acompanhantes.map((acomp, idx) => {
+                {((c.acompanhantes && c.acompanhantes.length > 0) ? c.acompanhantes : acompanhantesEditados).length > 0 ? (
+                  ((c.acompanhantes && c.acompanhantes.length > 0) ? c.acompanhantes : acompanhantesEditados).map((acomp, idx) => {
                     const tarifa = calcularTarifaHospede(
                       acomp.datanascimento,
                       acomp.menoridade,
-                      dadosEditados.dataentrada || cadastro.dataentrada,
-                      dadosEditados.datasaida || cadastro.datasaida,
+                      dadosEditados.dataentrada || c.dataentrada,
+                      dadosEditados.datasaida || c.datasaida,
                       pacotes
                     );
                     return (
@@ -897,7 +939,7 @@ Qualquer dúvida estamos à disposição!`;
                       >
                         <div>
                           <span className="text-slate-500 block text-[11px]">Nome do Acompanhante</span>
-                          <span className="font-bold text-slate-900 block">{acomp.nomecompleto}</span>
+                          <span className="font-bold text-slate-900 block">{String(acomp.nomecompleto || '').toUpperCase()}</span>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[11px]">Documento / Nascimento</span>
@@ -968,21 +1010,21 @@ Qualquer dúvida estamos à disposição!`;
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <span className="text-slate-500 block font-semibold mb-1">Alergias / Restrições Alimentares:</span>
-                  <p className="text-slate-800">{dadosEditados.alergias_restricoes || cadastro.alergias_restricoes || 'Nenhuma informada.'}</p>
+                  <p className="text-slate-800">{dadosEditados.alergias_restricoes || c.alergias_restricoes || 'Nenhuma informada.'}</p>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <span className="text-slate-500 block font-semibold mb-1">Solicitações Especiais:</span>
-                  <p className="text-slate-800">{dadosEditados.solicitacoes_especiais || cadastro.solicitacoes_especiais || 'Nenhuma informada.'}</p>
+                  <p className="text-slate-800">{dadosEditados.solicitacoes_especiais || c.solicitacoes_especiais || 'Nenhuma informada.'}</p>
                 </div>
               </div>
             )}
 
             <div className="mt-3 flex items-center gap-2 text-xs">
-              {cadastro.declaracao_aceita ? (
+              {c.declaracao_aceita ? (
                 <div className="flex items-center gap-1.5 text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-lg w-full">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>
-                    Declaração da FNRH aceita pelo cliente {cadastro.data_declaracao ? `em ${new Date(cadastro.data_declaracao).toLocaleString('pt-BR')}` : ''}
+                    Declaração da FNRH aceita pelo cliente {c.data_declaracao ? `em ${new Date(c.data_declaracao).toLocaleString('pt-BR')}` : ''}
                   </span>
                 </div>
               ) : (
@@ -1006,7 +1048,7 @@ Qualquer dúvida estamos à disposição!`;
                 <span className="font-extrabold text-[#053d1e] text-sm font-['Manrope']">
                   {valorTotalSugerido && valorTotalSugerido > 0
                     ? formatarMoeda(valorTotalSugerido)
-                    : (cadastro.valor_total ? formatarMoeda(cadastro.valor_total) : 'A calcular')}
+                    : (c.valor_total ? formatarMoeda(c.valor_total) : 'A calcular')}
                 </span>
                 {pacoteSugerido && (
                   <span className="text-[10px] text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded font-medium border border-emerald-200 inline-flex items-center gap-1 mt-0.5">
@@ -1018,20 +1060,20 @@ Qualquer dúvida estamos à disposição!`;
               <div>
                 <span className="text-slate-500 block">Valor do Sinal (50%)</span>
                 <span className="font-bold text-slate-900 text-sm">
-                  {cadastro.valor_sinal > 0
-                    ? formatarMoeda(cadastro.valor_sinal)
+                  {c.valor_sinal > 0
+                    ? formatarMoeda(c.valor_sinal)
                     : (valorTotalSugerido && valorTotalSugerido > 0 ? formatarMoeda(valorTotalSugerido * 0.5) : 'Pendente')}
                 </span>
               </div>
               <div>
                 <span className="text-slate-500 block">Forma Prevista / Utilizada</span>
-                <span className="font-semibold text-slate-900">{cadastro.forma_pagamento || 'A definir (PIX sugerido)'}</span>
+                <span className="font-semibold text-slate-900">{c.forma_pagamento || 'A definir (PIX sugerido)'}</span>
               </div>
               <div>
                 <span className="text-slate-500 block">Status do Sinal</span>
                 <span className="font-semibold text-slate-900">
-                  {cadastro.pagamento_confirmado_em
-                    ? `Confirmado em ${new Date(cadastro.pagamento_confirmado_em).toLocaleDateString('pt-BR')}`
+                  {c.pagamento_confirmado_em
+                    ? `Confirmado em ${new Date(c.pagamento_confirmado_em).toLocaleDateString('pt-BR')}`
                     : 'Pendente de confirmação'}
                 </span>
               </div>
@@ -1056,8 +1098,8 @@ Qualquer dúvida estamos à disposição!`;
                   type="button"
                   onClick={() => {
                     setModoEdicao(false);
-                    setDadosEditados({ ...cadastro });
-                    setAcompanhantesEditados(cadastro.acompanhantes ? cadastro.acompanhantes.map((a) => ({ ...a })) : []);
+                    setDadosEditados({ ...c });
+                    setAcompanhantesEditados(c.acompanhantes ? c.acompanhantes.map((a) => ({ ...a })) : []);
                   }}
                   className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
                 >
@@ -1096,12 +1138,12 @@ Qualquer dúvida estamos à disposição!`;
                   </button>
                 )}
 
-                {cadastro.status === 'AGUARDANDO_PAGAMENTO' && onConfirmarSinal && (
+                {c.status === 'AGUARDANDO_PAGAMENTO' && onConfirmarSinal && (
                   <button
                     type="button"
                     onClick={() => {
                       onFechar();
-                      onConfirmarSinal(cadastro);
+                      onConfirmarSinal(c);
                     }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-xs font-bold text-white transition-all shadow-xs"
                   >
@@ -1142,12 +1184,12 @@ Qualquer dúvida estamos à disposição!`;
                       )}
                     </button>
                   </>
-                ) : cadastro.status === 'LIBERADA_PARA_RESERVA' && onCriarReserva ? (
+                ) : c.status === 'LIBERADA_PARA_RESERVA' && onCriarReserva ? (
                   <button
                     type="button"
                     onClick={() => {
                       onFechar();
-                      onCriarReserva(cadastro);
+                      onCriarReserva(c);
                     }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-xs"
                   >

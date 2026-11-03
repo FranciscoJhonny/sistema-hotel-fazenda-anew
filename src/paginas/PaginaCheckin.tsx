@@ -178,7 +178,10 @@ export const PaginaCheckin: React.FC = () => {
         ...reservaItem,
         quartoid: qId,        
         hospedeid: hId,        
-        checkinrealizadoem: dataHoraLocal,        
+        checkinrealizadoem: dataHoraLocal,
+        checkinRealizadoEm: dataHoraLocal,
+        checkinUsuarioId: usuarioAtual?.usuarioid ? Number(usuarioAtual.usuarioid) : null,
+        checkinusuario: usuarioAtual?.usuarioid || usuarioAtual?.nome,
       };
 
       const res: any = await realizarCheckin(idParaCheckin, dadosParaEnvio);
@@ -190,6 +193,7 @@ export const PaginaCheckin: React.FC = () => {
         setComprovanteCheckin({
           ...reservaItem,
           checkinrealizadoem: dataHoraLocal,
+          checkinRealizadoEm: dataHoraLocal,
         });
         setReservaSelecionada(null);
         setTimeout(() => setFeedbackSucesso(null), 4000);

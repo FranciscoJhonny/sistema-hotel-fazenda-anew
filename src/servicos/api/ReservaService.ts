@@ -33,6 +33,11 @@ function enriquecerReserva(r: any): Reserva {
   const telHospede = r.hospedeTelefone || r.hospedetelefone || r.hospede?.telefone || '';
   const emailHospede = r.hospedeEmail || r.hospedeemail || r.hospede?.email || '';
 
+  const checkinEm = r.checkinRealizadoEm || r.checkinrealizadoem || undefined;
+  const checkoutEm = r.checkoutRealizadoEm || r.checkoutrealizadoem || undefined;
+  const checkinUser = r.checkinUsuario || r.checkinusuario || r.checkinUsuarioId || undefined;
+  const checkoutUser = r.checkoutUsuario || r.checkoutusuario || r.checkoutUsuarioId || undefined;
+
   return {
     ...r,
     reservaid: Number(r.reservaid || r.reservaId),
@@ -60,6 +65,14 @@ function enriquecerReserva(r: any): Reserva {
     hospedeTelefone: telHospede,
     hospedeemail: emailHospede,
     hospedeEmail: emailHospede,
+    checkinrealizadoem: checkinEm,
+    checkinRealizadoEm: checkinEm,
+    checkinusuario: checkinUser,
+    checkinUsuario: checkinUser,
+    checkoutrealizadoem: checkoutEm,
+    checkoutRealizadoEm: checkoutEm,
+    checkoutusuario: checkoutUser,
+    checkoutUsuario: checkoutUser,
     quarto: {
       categoria,
       numero,
@@ -290,6 +303,26 @@ export class ReservaService implements IReservaService {
     if (dadosBanco.horarioprevistochegada !== undefined) payloadApi.horarioPrevistoChegada = dadosBanco.horarioprevistochegada;
     if (dadosBanco.horarioprevistasaida !== undefined) payloadApi.horarioPrevistoSaida = dadosBanco.horarioprevistasaida;
 
+    // Campos de Check-in e Check-out
+    if (dadosBanco.checkinrealizadoem !== undefined) payloadApi.checkinRealizadoEm = dadosBanco.checkinrealizadoem;
+    if (dadosBanco.checkinRealizadoEm !== undefined) payloadApi.checkinRealizadoEm = dadosBanco.checkinRealizadoEm;
+    if (dadosBanco.checkoutrealizadoem !== undefined) payloadApi.checkoutRealizadoEm = dadosBanco.checkoutrealizadoem;
+    if (dadosBanco.checkoutRealizadoEm !== undefined) payloadApi.checkoutRealizadoEm = dadosBanco.checkoutRealizadoEm;
+
+    if (dadosBanco.checkinusuarioid !== undefined) payloadApi.checkinUsuarioId = dadosBanco.checkinusuarioid ? Number(dadosBanco.checkinusuarioid) : null;
+    if (dadosBanco.checkinUsuarioId !== undefined) payloadApi.checkinUsuarioId = dadosBanco.checkinUsuarioId ? Number(dadosBanco.checkinUsuarioId) : null;
+    if (dadosBanco.checkinusuario !== undefined && payloadApi.checkinUsuarioId === undefined) {
+      const parsed = Number(dadosBanco.checkinusuario);
+      payloadApi.checkinUsuarioId = isNaN(parsed) ? null : parsed;
+    }
+
+    if (dadosBanco.checkoutusuarioid !== undefined) payloadApi.checkoutUsuarioId = dadosBanco.checkoutusuarioid ? Number(dadosBanco.checkoutusuarioid) : null;
+    if (dadosBanco.checkoutUsuarioId !== undefined) payloadApi.checkoutUsuarioId = dadosBanco.checkoutUsuarioId ? Number(dadosBanco.checkoutUsuarioId) : null;
+    if (dadosBanco.checkoutusuario !== undefined && payloadApi.checkoutUsuarioId === undefined) {
+      const parsed = Number(dadosBanco.checkoutusuario);
+      payloadApi.checkoutUsuarioId = isNaN(parsed) ? null : parsed;
+    }
+
     const resApi = await apiCliente.put<any>('/api/reserva/put-reserva', payloadApi);
     if (resApi.sucesso && resApi.dados) {
       return {
@@ -323,7 +356,7 @@ export class ReservaService implements IReservaService {
     }
     return this.atualizar(id, {
       statusreserva: 'HOSPEDADO',
-      checkoutrealizadoem: new Date().toISOString(),
+      checkinrealizadoem: new Date().toISOString(),
       checkinusuario: usuario,
     });
   }

@@ -374,6 +374,12 @@ export const PaginaFnrhAdmin: React.FC = () => {
       setErro(res.erro || 'Não foi possível carregar a lista de links FNRH.');
     } else {
       setCadastros(res.dados);
+      setCadastroDetalhes((prev) => {
+        if (!prev) return null;
+        const id = Number(getVal(prev, 'cadastroid', 'cadastroId'));
+        const atualizado = res.dados.find((c: any) => Number(getVal(c, 'cadastroid', 'cadastroId')) === id);
+        return atualizado ? { ...atualizado } : prev;
+      });
     }
   };
 
@@ -1196,7 +1202,12 @@ Qualquer dúvida, estamos à disposição!`;
           setCadastroDetalhes(null);
           handleIrParaReserva(c);
         }}
-        onAtualizar={carregarDados}
+        onAtualizar={(cadastroAtualizado) => {
+          if (cadastroAtualizado) {
+            setCadastroDetalhes(cadastroAtualizado);
+          }
+          carregarDados();
+        }}
       />
 
       {/* Modal de Confirmação do Sinal (50%) */}

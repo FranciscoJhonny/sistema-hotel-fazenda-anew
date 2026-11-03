@@ -626,6 +626,8 @@ export const PaginaCheckout: React.FC = () => {
           observacoesCheckout: observacoesCheckout || (getVal(reservaSelecionada, 'observacoes_checkout', 'observacoesCheckout') || ''),
           horarioPrevistoChegada: horaChegada ?? '09:00:00',
           horarioPrevistoSaida: horaSaida ?? '15:00:00',
+          checkinRealizadoEm: getVal(reservaSelecionada, 'checkinrealizadoem', 'checkinRealizadoEm') || null,
+          checkinUsuarioId: getVal(reservaSelecionada, 'checkinusuarioid', 'checkinUsuarioId') || null,
           ativo: true,
         };
 

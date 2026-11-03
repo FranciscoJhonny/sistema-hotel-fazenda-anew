@@ -505,7 +505,7 @@ export class FnrhService {
     try {
       const payloadApi: Record<string, any> = {
         cadastroId: Number(cadastroid),
-        nomeCompleto: dados.nomecompleto !== undefined ? String(dados.nomecompleto).trim() : null,
+        nomeCompleto: dados.nomecompleto !== undefined ? String(dados.nomecompleto).trim().toUpperCase() : null,
         cpf: dados.cpf !== undefined ? String(dados.cpf).trim() : null,
         rg: dados.rg !== undefined ? String(dados.rg).trim() : null,
         passaporte: dados.passaporte !== undefined ? String(dados.passaporte).trim() : null,
@@ -554,7 +554,7 @@ export class FnrhService {
           return {
             cadastroId: Number(cadastroid),
             reservaId: a.reservaid ? Number(a.reservaid) : null,
-            nomeCompleto: a.nomecompleto?.trim() || '',
+            nomeCompleto: a.nomecompleto?.trim() ? String(a.nomecompleto).trim().toUpperCase() : '',
             documento: a.documento?.trim() || null,
             dataNascimento: a.datanascimento || null,
             menoridade,

@@ -715,6 +715,8 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       const horaChegada = formatarHorarioParaTimeSpan(r.horarioprevistochegada ?? r.horarioPrevistoChegada ?? '09:00');
       const horaSaida = formatarHorarioParaTimeSpan(r.horarioprevistosaida ?? r.horarioPrevistoSaida ?? '15:00');
 
+      const idUsuario = usuarioAtual?.usuarioid ? Number(usuarioAtual.usuarioid) : (r.checkinusuarioid || r.checkinUsuarioId || null);
+
       const payloadPutDto: any = {
         reservaId: idReserva,
         codigo: codigo,
@@ -740,6 +742,9 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
         horarioPrevistoChegada: horaChegada ?? '09:00:00',
         horarioPrevistoSaida: horaSaida ?? '15:00:00',
         checkinRealizadoEm: dataHoraCheckin,
+        checkinrealizadoem: dataHoraCheckin,
+        checkinUsuarioId: idUsuario,
+        checkinusuario: idUsuario,
         ativo: true,
       };
 
@@ -751,6 +756,21 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
           mensagem: resposta.erro || resposta.mensagem || 'Erro ao atualizar reserva na API.',
         };
       }
+
+      setReservas((prev) =>
+        prev.map((res: any) =>
+          Number(res.reservaid ?? res.reservaId) === idReserva
+            ? {
+                ...res,
+                ...payloadPutDto,
+                checkinrealizadoem: dataHoraCheckin,
+                checkinRealizadoEm: dataHoraCheckin,
+                statusreserva: 'HOSPEDADO',
+                statusReserva: 'HOSPEDADO',
+              }
+            : res
+        )
+      );
 
       if (idQuarto > 0) {
         await atualizarStatusQuarto(idQuarto, 'OCUPADO');
@@ -857,12 +877,15 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
       observacoesCheckout: obsCheckoutFinal,
       horarioPrevistoChegada: horaChegada ?? '09:00:00',
       horarioPrevistoSaida: horaSaida ?? '15:00:00',
+      checkinRealizadoEm: (reserva as any).checkinrealizadoem || (reserva as any).checkinRealizadoEm || null,
+      checkinUsuarioId: (reserva as any).checkinusuarioid || (reserva as any).checkinUsuarioId || (reserva as any).checkinusuario || null,
       checkoutRealizadoEm: (() => {
         let dataHoraCheckout = dadosCheckout?.checkoutrealizadoem || dadosCheckout?.checkoutRealizadoEm;
         if (!dataHoraCheckout) return agora;
         if (dataHoraCheckout.length === 16) return `${dataHoraCheckout}:00`;
         return dataHoraCheckout;
       })(),
+      checkoutUsuarioId: usuarioAtual?.usuarioid ? Number(usuarioAtual.usuarioid) : null,
       ativo: true,
     };
 
