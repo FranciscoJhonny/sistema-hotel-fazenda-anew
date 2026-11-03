@@ -323,6 +323,83 @@ export class ReservaService implements IReservaService {
       payloadApi.checkoutUsuarioId = isNaN(parsed) ? null : parsed;
     }
 
+    if (dadosBanco.codigo !== undefined) payloadApi.codigo = dadosBanco.codigo;
+    if (dadosBanco.adultos !== undefined) payloadApi.adultos = Number(dadosBanco.adultos);
+    if (dadosBanco.criancas !== undefined) payloadApi.criancas = Number(dadosBanco.criancas);
+    if (dadosBanco.valordiaria !== undefined) payloadApi.valorDiaria = Number(dadosBanco.valordiaria);
+    if (dadosBanco.saldo !== undefined) payloadApi.saldo = Number(dadosBanco.saldo);
+    if (dadosBanco.observacoes !== undefined) payloadApi.observacoes = dadosBanco.observacoes;
+    if (dadosBanco.observacoescheckout !== undefined) payloadApi.observacoesCheckout = dadosBanco.observacoescheckout;
+    if (dadosBanco.observacoes_checkout !== undefined) payloadApi.observacoesCheckout = dadosBanco.observacoes_checkout;
+    if (dadosBanco.observacoesCheckout !== undefined) payloadApi.observacoesCheckout = dadosBanco.observacoesCheckout;
+    if (dadosBanco.datareserva !== undefined) payloadApi.dataReserva = dadosBanco.datareserva;
+
+    // Se faltarem campos obrigatórios exigidos pelo backend C# ReservaPutDto, busca a reserva atual no banco
+    const camposObrigatoriosFaltando =
+      !payloadApi.codigo ||
+      !payloadApi.quartoId ||
+      !payloadApi.hospedeId ||
+      !payloadApi.dataEntrada;
+
+    if (camposObrigatoriosFaltando) {
+      const resAtual = await this.obterPorId(id);
+      if (resAtual.sucesso && resAtual.dados) {
+        const atual = resAtual.dados as any;
+        if (!payloadApi.codigo) payloadApi.codigo = atual.codigo;
+        if (!payloadApi.quartoId) payloadApi.quartoId = Number(atual.quartoid ?? atual.quartoId);
+        if (!payloadApi.hospedeId) payloadApi.hospedeId = Number(atual.hospedeid ?? atual.hospedeId);
+        if (payloadApi.cadastroId === undefined) {
+          const cid = atual.cadastroid ?? atual.cadastroId;
+          payloadApi.cadastroId = cid ? Number(cid) : null;
+        }
+        if (payloadApi.pacoteId === undefined) {
+          const pid = atual.pacoteid ?? atual.pacoteId;
+          payloadApi.pacoteId = pid ? Number(pid) : null;
+        }
+        if (!payloadApi.dataEntrada) payloadApi.dataEntrada = atual.dataentrada ?? atual.dataEntrada;
+        if (!payloadApi.dataSaida) payloadApi.dataSaida = atual.datasaida ?? atual.dataSaida;
+        if (!payloadApi.dataReserva) payloadApi.dataReserva = atual.datareserva ?? atual.dataReserva ?? atual.dataentrada ?? atual.dataEntrada;
+        if (!payloadApi.statusReserva) payloadApi.statusReserva = atual.statusreserva ?? atual.statusReserva ?? 'RESERVADO';
+        if (!payloadApi.tipoAtendimento) payloadApi.tipoAtendimento = atual.tipoatendimento ?? atual.tipoAtendimento ?? 'HOSPEDAGEM';
+        if (payloadApi.adultos === undefined) payloadApi.adultos = Number(atual.adultos ?? 1);
+        if (payloadApi.criancas === undefined) payloadApi.criancas = Number(atual.criancas ?? 0);
+        if (payloadApi.valorDiaria === undefined) payloadApi.valorDiaria = Number(atual.valordiaria ?? atual.valorDiaria ?? 0);
+        if (payloadApi.valorTotal === undefined) payloadApi.valorTotal = Number(atual.valortotal ?? atual.valorTotal ?? 0);
+        if (payloadApi.valorPago === undefined) payloadApi.valorPago = Number(atual.valorpago ?? atual.valorPago ?? 0);
+        if (payloadApi.saldo === undefined) payloadApi.saldo = Number(atual.saldo ?? 0);
+        if (payloadApi.formaPagamento === undefined) payloadApi.formaPagamento = atual.formapagamento ?? atual.formaPagamento ?? 'PIX';
+        if (payloadApi.statusPagamento === undefined) payloadApi.statusPagamento = atual.statuspagamento ?? atual.statusPagamento ?? 'PENDENTE';
+        if (payloadApi.observacoes === undefined) payloadApi.observacoes = atual.observacoes ?? '';
+        if (payloadApi.observacoesCheckout === undefined) payloadApi.observacoesCheckout = atual.observacoes_checkout ?? atual.observacoesCheckout ?? '';
+        if (payloadApi.horarioPrevistoChegada === undefined) payloadApi.horarioPrevistoChegada = atual.horarioprevistochegada ?? atual.horarioPrevistoChegada ?? null;
+        if (payloadApi.horarioPrevistoSaida === undefined) payloadApi.horarioPrevistoSaida = atual.horarioprevistosaida ?? atual.horarioPrevistoSaida ?? null;
+        if (payloadApi.checkinRealizadoEm === undefined) payloadApi.checkinRealizadoEm = atual.checkinrealizadoem ?? atual.checkinRealizadoEm ?? null;
+        if (payloadApi.checkinUsuarioId === undefined) payloadApi.checkinUsuarioId = atual.checkinusuarioid ?? atual.checkinUsuarioId ?? null;
+        if (payloadApi.checkoutRealizadoEm === undefined) payloadApi.checkoutRealizadoEm = atual.checkoutrealizadoem ?? atual.checkoutRealizadoEm ?? null;
+        if (payloadApi.checkoutUsuarioId === undefined) payloadApi.checkoutUsuarioId = atual.checkoutusuarioid ?? atual.checkoutUsuarioId ?? null;
+        if (payloadApi.ativo === undefined) payloadApi.ativo = atual.ativo ?? true;
+      }
+    }
+
+    // Normalização das datas para formato ISO com meio-dia UTC
+    if (payloadApi.dataEntrada && String(payloadApi.dataEntrada).length === 10) {
+      payloadApi.dataEntrada = `${payloadApi.dataEntrada}T12:00:00Z`;
+    }
+    if (payloadApi.dataSaida && String(payloadApi.dataSaida).length === 10) {
+      payloadApi.dataSaida = `${payloadApi.dataSaida}T12:00:00Z`;
+    }
+    if (payloadApi.dataReserva && String(payloadApi.dataReserva).length === 10) {
+      payloadApi.dataReserva = `${payloadApi.dataReserva}T12:00:00Z`;
+    }
+
+    // Normalização de horários TimeSpan ("HH:mm" -> "HH:mm:ss")
+    if (typeof payloadApi.horarioPrevistoChegada === 'string' && payloadApi.horarioPrevistoChegada.trim().length === 5) {
+      payloadApi.horarioPrevistoChegada = `${payloadApi.horarioPrevistoChegada.trim()}:00`;
+    }
+    if (typeof payloadApi.horarioPrevistoSaida === 'string' && payloadApi.horarioPrevistoSaida.trim().length === 5) {
+      payloadApi.horarioPrevistoSaida = `${payloadApi.horarioPrevistoSaida.trim()}:00`;
+    }
+
     const resApi = await apiCliente.put<any>('/api/reserva/put-reserva', payloadApi);
     if (resApi.sucesso && resApi.dados) {
       return {

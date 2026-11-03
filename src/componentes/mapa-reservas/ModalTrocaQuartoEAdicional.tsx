@@ -128,8 +128,9 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
   // Inicializar dados quando o modal abre
   useEffect(() => {
     if (aberto && reserva) {
-      setNovoQuartoId(reserva.quartoid || '');
-      setNovaDataSaida(reserva.datasaida || '');
+      setNovoQuartoId(reserva.quartoid ?? (reserva as any).quartoId ?? '');
+      const saidaInicial = reserva.datasaida || (reserva as any).dataSaida || '';
+      setNovaDataSaida(saidaInicial ? String(saidaInicial).slice(0, 10) : '');
 
       // Ocupantes originais
       setAdultosOriginais(Number(reserva.adultos || 1));
@@ -256,7 +257,7 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
   // Objetos do quarto atual e novo quarto
   const quartoAtualObj = useMemo(() => {
     if (!reserva) return undefined;
-    return quartos.find((q) => Number(q.quartoid) === Number(reserva.quartoid));
+    return quartos.find((q) => Number(q.quartoid) === Number(reserva.quartoid ?? (reserva as any).quartoId));
   }, [quartos, reserva]);
 
   const novoQuartoObj = useMemo(() => {
@@ -685,14 +686,80 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       const observacoesAtualizadas = reserva.observacoes ? `${reserva.observacoes} | ${notaAjuste}` : notaAjuste;
 
       // 1. Atualizar a reserva via API REST C# .NET 8
+      const getVal = (obj: any, min: string, camel: string): any => {
+        if (!obj) return undefined;
+        return obj[min] !== undefined ? obj[min] : obj[camel];
+      };
+
+      const resId = Number(getVal(reserva, 'reservaid', 'reservaId'));
+      const codigoReserva = String(getVal(reserva, 'codigo', 'codigo') || '');
+      const quartoDestinoId = quartoMudou && novoQuartoObj
+        ? Number(novoQuartoObj.quartoid)
+        : Number(getVal(reserva, 'quartoid', 'quartoId'));
+      const hospedeFinalId = Number(getVal(reserva, 'hospedeid', 'hospedeId'));
+      const cadastroFinalId = getVal(reserva, 'cadastroid', 'cadastroId')
+        ? Number(getVal(reserva, 'cadastroid', 'cadastroId'))
+        : null;
+      const pacoteFinalId = infoPacote.pacoteId
+        ? Number(infoPacote.pacoteId)
+        : (getVal(reserva, 'pacoteid', 'pacoteId') ? Number(getVal(reserva, 'pacoteid', 'pacoteId')) : null);
+
+      const dataEntradaRaw = String(getVal(reserva, 'dataentrada', 'dataEntrada') || '').slice(0, 10);
+      const dataSaidaRaw = String(novaDataSaida || getVal(reserva, 'datasaida', 'dataSaida') || '').slice(0, 10);
+      const dataReservaRaw = String(getVal(reserva, 'datareserva', 'dataReserva') || dataEntradaRaw).slice(0, 10);
+
+      const statusReservaFinal = getVal(reserva, 'statusreserva', 'statusReserva') || 'RESERVADO';
+      const tipoAtendimentoFinal = getVal(reserva, 'tipoatendimento', 'tipoAtendimento') || 'HOSPEDAGEM';
+      const valorDiariaCalculado = qtdDias > 0 ? Number((novoTotal / qtdDias).toFixed(2)) : Number(getVal(reserva, 'valordiaria', 'valorDiaria') || 0);
+
+      const formatarHorarioTimeSpan = (h?: string | null): string | null => {
+        if (!h) return null;
+        const limpo = String(h).trim();
+        if (limpo.length === 5 && limpo.includes(':')) return `${limpo}:00`;
+        return limpo;
+      };
+
       const payloadBanco: any = {
-        datasaida: novaDataSaida,
+        reservaId: resId,
+        codigo: codigoReserva,
+        quartoId: quartoDestinoId,
+        quartoid: quartoDestinoId,
+        hospedeId: hospedeFinalId,
+        hospedeid: hospedeFinalId,
+        cadastroId: cadastroFinalId,
+        cadastroid: cadastroFinalId,
+        pacoteId: pacoteFinalId,
+        pacoteid: pacoteFinalId,
+        dataEntrada: dataEntradaRaw ? `${dataEntradaRaw}T12:00:00Z` : '',
+        dataentrada: dataEntradaRaw,
+        dataReserva: dataReservaRaw ? `${dataReservaRaw}T12:00:00Z` : (dataEntradaRaw ? `${dataEntradaRaw}T12:00:00Z` : ''),
+        datareserva: dataReservaRaw,
+        statusReserva: statusReservaFinal,
+        statusreserva: statusReservaFinal,
+        tipoAtendimento: tipoAtendimentoFinal,
+        tipoatendimento: tipoAtendimentoFinal,
+        valorDiaria: valorDiariaCalculado,
+        valordiaria: valorDiariaCalculado,
+        valorPago: valorPagoOriginal,
+        valorpago: valorPagoOriginal,
+        formaPagamento: getVal(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
+        formapagamento: getVal(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
+        observacoesCheckout: (getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '').slice(0, 1000),
+        horarioPrevistoChegada: formatarHorarioTimeSpan(getVal(reserva, 'horarioprevistochegada', 'horarioPrevistoChegada')),
+        horarioPrevistoSaida: formatarHorarioTimeSpan(getVal(reserva, 'horarioprevistosaida', 'horarioPrevistoSaida')),
+        checkinRealizadoEm: getVal(reserva, 'checkinrealizadoem', 'checkinRealizadoEm') || null,
+        checkinUsuarioId: getVal(reserva, 'checkinusuarioid', 'checkinUsuarioId') || null,
+        checkoutRealizadoEm: getVal(reserva, 'checkoutrealizadoem', 'checkoutRealizadoEm') || null,
+        checkoutUsuarioId: getVal(reserva, 'checkoutusuarioid', 'checkoutUsuarioId') || null,
+        ativo: true,
+        datasaida: dataSaidaRaw,
+        dataSaida: dataSaidaRaw ? `${dataSaidaRaw}T12:00:00Z` : '',
         adultos: adultosFinal,
         criancas: criancasFinal,
         valortotal: novoTotal,
         saldo: novoSaldo,
         statuspagamento: novoStatusPagamento,
-        observacoes: observacoesAtualizadas,
+        observacoes: observacoesAtualizadas.slice(0, 1000),
         dataoperacao: new Date().toISOString(),
         naturezaoperacao: 'UPDATE',
       };
@@ -707,7 +774,7 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
 
       const resUpdate = await reservaService.atualizar(reserva.reservaid, payloadBanco);
       if (!resUpdate.sucesso) {
-        throw new Error(`Falha ao gravar na API: ${resUpdate.erro}`);
+        throw new Error(resUpdate.erro || 'Falha ao gravar na API.');
       }
 
       // 2. Se o quarto físico mudou, atualizar o status dos quartos envolvidos (apenas se for estadia em andamento hoje)

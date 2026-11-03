@@ -632,6 +632,7 @@ export const ProvedorHotel: React.FC<{ children: React.ReactNode }> = ({ childre
     const obsNova = `${reserva.observacoes || ''} [Troca de Quarto em ${dataHoraStr}: Quarto #${nomeQuartoAnt} -> Quarto #${nomeQuartoNovo}${motivo ? ' (' + motivo + ')' : ''}]`;
 
     const dadosAtualizacaoBanco = {
+      ...reserva,
       quartoid: novoQuarto.quartoid,
       observacoes: obsNova,
       dataoperacao: agora,

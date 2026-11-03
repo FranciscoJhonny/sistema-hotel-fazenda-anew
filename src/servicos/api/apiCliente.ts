@@ -190,7 +190,15 @@ class ApiCliente {
 
     // Resposta padrão sem invólucro ApiResponse
     if (!res.ok) {
-      const msgErro = corpoJson?.message || corpoJson?.erro || corpoJson?.error || `Erro HTTP ${statusHttp}: ${res.statusText}`;
+      let msgErro = corpoJson?.message || corpoJson?.erro || corpoJson?.error;
+      if (!msgErro && corpoJson?.errors && typeof corpoJson.errors === 'object') {
+        const errorEntries = Object.entries(corpoJson.errors)
+          .map(([k, v]) => `• ${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
+        msgErro = errorEntries.join('\n') || corpoJson.title;
+      }
+      if (!msgErro) {
+        msgErro = corpoJson?.title || `Erro HTTP ${statusHttp}: ${res.statusText}`;
+      }
       return {
         sucesso: false,
         erro: msgErro,
