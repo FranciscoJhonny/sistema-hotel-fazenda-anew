@@ -87,15 +87,18 @@ export function normalizarDadosApi<T = any>(dado: any): T {
 }
 
 /**
- * Obtém a URL base da API .NET 8 a partir das variáveis de ambiente ou fallback de produção.
+ * Obtém a URL base da API .NET 8 a partir das variáveis de ambiente (VITE_API_URL)
+ * ou do domínio de produção oficial.
  */
 export const obterApiBaseUrl = (): string => {
-  let url = 'https://api-hotelfazendaanew.onrender.com';
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) {
-    url = (import.meta as any).env.VITE_API_URL;
+  let url = 'https://api.hotelfazendaanew.io';
+
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+    url = import.meta.env.VITE_API_URL;
   } else if (typeof process !== 'undefined' && process.env?.VITE_API_URL) {
     url = process.env.VITE_API_URL;
   }
+
   return url.replace(/\/+$/, '');
 };
 
