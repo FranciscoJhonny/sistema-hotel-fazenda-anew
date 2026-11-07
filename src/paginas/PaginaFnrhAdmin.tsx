@@ -70,116 +70,122 @@ export const calcularValoresReserva = (
   const dataEntradaStr = extrairDataIso(dEntrada).trim();
   const dataSaidaStr = extrairDataIso(dSaida).trim();
 
-  let dias = 2; // Padrão: 2 dias (Final de semana de sábado a domingo)
+  // 1. Calcula os dias de uso (Pernoites + 1)
+  let dias = 2; // Padrão 2 dias (1 pernoite de fds)
 
   if (dataEntradaStr && dataSaidaStr) {
     if (dataEntradaStr === dataSaidaStr) {
-      dias = 1; // Day Use (1 dia)
+      dias = 1;
     } else {
-      let d1: Date;
-      let d2: Date;
-      if (dataEntradaStr.includes('/')) {
-        const p1 = dataEntradaStr.split('/');
-        d1 = new Date(Number(p1[2]), Number(p1[1]) - 1, Number(p1[0]));
-      } else {
-        const p1 = dataEntradaStr.split('-');
-        d1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
-      }
-      if (dataSaidaStr.includes('/')) {
-        const p2 = dataSaidaStr.split('/');
-        d2 = new Date(Number(p2[2]), Number(p2[1]) - 1, Number(p2[0]));
-      } else {
-        const p2 = dataSaidaStr.split('-');
-        d2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
-      }
-      const diffTime = d2.getTime() - d1.getTime();
-      const pernoites = Math.round(diffTime / (1000 * 60 * 60 * 24));
-      // Entrada dia 31 e saída dia 01 = 1 pernoite = 2 dias de pacote (Final de Semana)
+      const parseData = (str: string) => {
+        if (str.includes('/')) {
+          const [d, m, y] = str.split('/');
+          return new Date(Number(y), Number(m) - 1, Number(d));
+        }
+        const [y, m, d] = str.split('-');
+        return new Date(Number(y), Number(m) - 1, Number(d));
+      };
+
+      const d1 = parseData(dataEntradaStr);
+      const d2 = parseData(dataSaidaStr);
+      const diffMs = d2.getTime() - d1.getTime();
+      const pernoites = Math.round(diffMs / (1000 * 60 * 60 * 24));
       dias = pernoites > 0 ? pernoites + 1 : 1;
     }
   }
 
-  // Identificação correta e estrita do pacote cadastrado
-  let nomePacote = '';
-  let valorPorPessoa = 0;
+  // Helper para limpar campos de data
+  const limparData = (val: any): string => {
+    if (!val) return '';
+    const s = String(val).trim();
+    if (s === '' || s.includes('infinity')) return '';
+    return s.slice(0, 10);
+  };
+
+  const hojeIso = new Date().toISOString().slice(0, 10);
   let pacoteObjeto: Pacote | null = null;
 
-  if (dias === 1) {
-    nomePacote = 'Day Use';
-    pacoteObjeto =
-      pacotes.find((p: any) => {
-        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
-        const pTipo = String(getVal(p, 'tipopacote', 'tipoPacote') || '').toUpperCase();
-        const pNome = (p.nome || '').toLowerCase();
-        return pDias === 1 || pTipo === 'DAY_USE' || pNome.includes('day use');
-      }) || null;
-    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 200;
-  } else if (dias === 2) {
-    nomePacote = 'Final de Semana';
-    pacoteObjeto =
-      pacotes.find((p: any) => {
-        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
-        const pNome = (p.nome || '').toLowerCase();
-        // Não pode ser estendido
-        return pDias === 2 || (pNome.includes('final de semana') && !pNome.includes('estendido'));
-      }) || null;
-    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 550;
-  } else if (dias === 3) {
-    nomePacote = 'Final de Semana Estendido';
-    pacoteObjeto =
-      pacotes.find((p: any) => {
-        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
-        const pNome = (p.nome || '').toLowerCase();
-        return pDias === 3 || pNome.includes('estendido');
-      }) || null;
-    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 750;
-  } else if (dias === 4) {
-    nomePacote = 'Feriado Prolongado';
-    pacoteObjeto =
-      pacotes.find((p: any) => {
-        const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias'));
-        const pNome = (p.nome || '').toLowerCase();
-        return pDias === 4 || pNome.includes('feriado') || pNome.includes('réveillon') || pNome.includes('natal');
-      }) || null;
-    valorPorPessoa = pacoteObjeto?.valor ? Number(pacoteObjeto.valor) : 950;
+  // 2. ETAPA 1: Tenta casar com pacote do tipo FERIADO que tenha data
+  if (dataEntradaStr && dataSaidaStr) {
+    pacoteObjeto = pacotes.find((p: any) => {
+      const tipo = String(getVal(p, 'tipopacote', 'tipoPacote') || '').toUpperCase().trim();
+      const dtIni = limparData(getVal(p, 'datainicio', 'dataInicio'));
+      const dtFim = limparData(getVal(p, 'datafim', 'dataFim'));
+
+      // Se for FERIADO com data válida
+      if (tipo === 'FERIADO' && dtIni && dtFim) {
+        // Se já venceu, ignora
+        if (dtFim < hojeIso) return false;
+        // Bate as datas
+        return (dataEntradaStr === dtIni && dataSaidaStr === dtFim) ||
+          (dataEntradaStr >= dtIni && dataSaidaStr <= dtFim);
+      }
+      return false;
+    }) || null;
+  }
+
+  // 3. ETAPA 2: Se NÃO for feriado, busca por quantidade de dias nos pacotes de HOSPEDAGEM
+  if (!pacoteObjeto) {
+    pacoteObjeto = pacotes.find((p: any) => {
+      const tipo = String(getVal(p, 'tipopacote', 'tipoPacote') || '').toUpperCase().trim();
+      const dtIni = limparData(getVal(p, 'datainicio', 'dataInicio'));
+      const dtFim = limparData(getVal(p, 'datafim', 'dataFim'));
+      const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias') || 0);
+
+      // Pacote de hospedagem comum: tipo HOSPEDAGEM OU sem datas definidas
+      const ehHospedagemComum = tipo === 'HOSPEDAGEM' || (!dtIni && !dtFim);
+      return ehHospedagemComum && pDias === dias;
+    }) || null;
+  }
+
+  // 4. Se ainda não achou, faz a busca mais tolerante possível (apenas por quantidadedias sem data)
+  if (!pacoteObjeto) {
+    pacoteObjeto = pacotes.find((p: any) => {
+      const dtIni = limparData(getVal(p, 'datainicio', 'dataInicio'));
+      const dtFim = limparData(getVal(p, 'datafim', 'dataFim'));
+      const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias') || 0);
+      return !dtIni && !dtFim && pDias === dias;
+    }) || null;
+  }
+
+  // 5. Nome e Valor vêm do Pacote encontrado no banco (com fallback de segurança)
+  let nomePacote = '';
+  let valorPorPessoa = 0;
+
+  if (pacoteObjeto) {
+    nomePacote = String(pacoteObjeto.nome || '');
+    valorPorPessoa = Number(pacoteObjeto.valor || 0);
   } else {
-    pacoteObjeto =
-      pacotes.find((p: any) => Number(getVal(p, 'quantidadedias', 'quantidadeDias')) === dias) || null;
-    if (pacoteObjeto?.valor) {
-      valorPorPessoa = Number(pacoteObjeto.valor);
-      nomePacote = pacoteObjeto.nome;
+    // Fallback caso não exista o pacote cadastrado no banco para esses dias
+    if (dias === 1) {
+      nomePacote = 'Day Use';
+      valorPorPessoa = 200;
+    } else if (dias === 2) {
+      nomePacote = 'Final de Semana';
+      valorPorPessoa = 550;
+    } else if (dias === 3) {
+      nomePacote = 'Final de Semana Estendido';
+      valorPorPessoa = 750;
     } else {
       nomePacote = `${dias} Dias`;
-      valorPorPessoa = 950 + (dias - 4) * 200;
+      valorPorPessoa = 950 + Math.max(0, dias - 4) * 200;
     }
   }
 
-  if (pacoteObjeto?.nome) {
-    nomePacote = pacoteObjeto.nome;
-  }
-
-  const idadeLimiteGratis = 5;
-  const idadeLimiteMeia = 11;
-  const porcentagemMeia = 50;
-
+  // 6. Contagem de Hóspedes (Titular + Acompanhantes)
+  const listaAcomp = getVal(cadastro, 'acompanhantes', 'acompanhantes') || [];
   let acompAdultos = 0;
   let criancasGratis = 0;
   let criancasMeia = 0;
-
-  const listaAcomp = getVal(cadastro, 'acompanhantes', 'acompanhantes') || [];
 
   if (listaAcomp && listaAcomp.length > 0) {
     listaAcomp.forEach((a: any) => {
       const dtNasc = getVal(a, 'datanascimento', 'dataNascimento');
       if (dtNasc) {
-        const idadeNum = Number(calcularIdadeNumerica(dtNasc));
-        if (idadeNum <= idadeLimiteGratis) {
-          criancasGratis++;
-        } else if (idadeNum <= idadeLimiteMeia) {
-          criancasMeia++;
-        } else {
-          acompAdultos++;
-        }
+        const idade = Number(calcularIdadeNumerica(dtNasc));
+        if (idade <= 5) criancasGratis++;
+        else if (idade <= 11) criancasMeia++;
+        else acompAdultos++;
       } else if (getVal(a, 'menoridade', 'menoridade')) {
         criancasMeia++;
       } else {
@@ -192,6 +198,7 @@ export const calcularValoresReserva = (
   let qtdCriancasMeia = criancasMeia;
   let qtdCriancasGratis = criancasGratis;
 
+  // Se não houver lista de acompanhantes preenchida, usa os campos do cadastro
   if (!listaAcomp || listaAcomp.length === 0) {
     qtdAdultos = Math.max(1, Number(getVal(cadastro, 'adultos', 'adultos') || 1));
     qtdCriancasMeia = Number(getVal(cadastro, 'criancas', 'criancas') || 0);
@@ -200,15 +207,13 @@ export const calcularValoresReserva = (
 
   const totalHospedesFisicos = qtdAdultos + qtdCriancasMeia + qtdCriancasGratis;
 
+  // 7. Cálculo dos Valores
   const valorAdultos = qtdAdultos * valorPorPessoa;
-  const valorCriancas = criancasMeia * ((valorPorPessoa * porcentagemMeia) / 100);
-
+  const valorCriancas = criancasMeia * (valorPorPessoa * 0.5);
   const valorTotal = valorAdultos + valorCriancas;
   const valorSinal = valorTotal / 2;
 
-  const detalheTexto = `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${valorCriancas > 0
-      ? ` + ${criancasMeia} cr x ${formatarMoeda((valorPorPessoa * porcentagemMeia) / 100)}`
-      : ''
+  const detalhe = `${nomePacote}: ${qtdAdultos} ad x ${formatarMoeda(valorPorPessoa)}${criancasMeia > 0 ? ` + ${criancasMeia} cr x ${formatarMoeda(valorPorPessoa * 0.5)}` : ''
     }`;
 
   return {
@@ -217,10 +222,10 @@ export const calcularValoresReserva = (
     dias,
     pacote: pacoteObjeto,
     nomePacote,
-    detalhe: detalheTexto,
+    detalhe,
     qtdAdultos,
-    qtdCriancasMeia: criancasMeia,
-    qtdCriancasGratis: criancasGratis,
+    qtdCriancasMeia,
+    qtdCriancasGratis,
     totalHospedesFisicos,
   };
 };
@@ -391,6 +396,21 @@ export const PaginaFnrhAdmin: React.FC = () => {
     setFeedback(msg);
     setTimeout(() => setFeedback(null), 4000);
   };
+
+  // Controle do card de detalhes do pacote aberto por clique
+  const [tooltipAbertoId, setTooltipAbertoId] = useState<number | null>(null);
+
+  // Fecha o tooltip se o usuário clicar em qualquer outro lugar da tela
+  useEffect(() => {
+    const fecharAoClicarFora = (e: MouseEvent) => {
+      const alvo = e.target as HTMLElement;
+      if (!alvo.closest('[data-tooltip-pacote]')) {
+        setTooltipAbertoId(null);
+      }
+    };
+    document.addEventListener('click', fecharAoClicarFora);
+    return () => document.removeEventListener('click', fecharAoClicarFora);
+  }, []);
 
   const handleCopiarLink = async (cadastro: any) => {
     const token = getVal(cadastro, 'token_acesso', 'tokenAcesso') || '';
@@ -805,47 +825,47 @@ Qualquer dúvida, estamos à disposição!`;
             <button
               onClick={() => setFiltroStatus('TODOS')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'TODOS'
-                  ? 'bg-[#053d1e] text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-[#053d1e] text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
-              Todos 
+              Todos
             </button>
             <button
               onClick={() => setFiltroStatus('AGUARDANDO_PREENCHIMENTO')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'AGUARDANDO_PREENCHIMENTO'
-                  ? 'bg-orange-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-orange-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
-              Aguardando Preenchimento 
+              Aguardando Preenchimento
             </button>
             <button
               onClick={() => setFiltroStatus('PREENCHIDO_AGUARDANDO_SINAL')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'PREENCHIDO_AGUARDANDO_SINAL'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
-              Aguardando Sinal 
+              Aguardando Sinal
             </button>
             <button
               onClick={() => setFiltroStatus('LIBERADA_PARA_RESERVA')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'LIBERADA_PARA_RESERVA'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
-              Liberadas 
+              Liberadas
             </button>
             <button
               onClick={() => setFiltroStatus('RESERVA_CRIADA')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${filtroStatus === 'RESERVA_CRIADA'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
             >
-              Reserva Criada 
+              Reserva Criada
             </button>
           </div>
         </div>
@@ -936,8 +956,8 @@ Qualquer dúvida, estamos à disposição!`;
                               onClick={() => handleCopiarLink(item)}
                               title="Copiar Link Seguro"
                               className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${copiadoId === cId
-                                  ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
-                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                                ? 'bg-emerald-100 border-emerald-300 text-emerald-800'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
                                 }`}
                             >
                               {copiadoId === cId ? (
@@ -1020,11 +1040,53 @@ Qualquer dúvida, estamos à disposição!`;
                           )}
                         </td>
 
-                        {/* Total Previsto */}
-                        <td className="py-3 px-4">
-                          <span className="font-extrabold text-[#053d1e] block font-['Manrope'] text-sm tracking-tight">
-                            {formatarMoeda(valoresCalculados.valorTotal)}
-                          </span>
+                        {/* Total Previsto com Abertura por Clique */}
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="relative inline-flex items-center" data-tooltip-pacote>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTooltipAbertoId((prev) => (prev === cId ? null : cId));
+                              }}
+                              title="Clique para ver o pacote e detalhes do cálculo"
+                              className="inline-flex items-center gap-1.5 py-1 px-1.5 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer text-left"
+                            >
+                              <span className="font-extrabold text-[#053d1e] font-['Manrope'] text-sm tracking-tight underline decoration-dotted decoration-emerald-600 underline-offset-4">
+                                {formatarMoeda(valoresCalculados.valorTotal)}
+                              </span>
+                              <span className="text-[11px] text-emerald-700 select-none">✨</span>
+                            </button>
+
+                            {/* Popover/Tooltip aberto apenas no clique */}
+                            {tooltipAbertoId === cId && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute z-50 left-0 top-full mt-1.5 w-[340px] p-3.5 bg-[#191c1d] text-white text-xs rounded-xl shadow-2xl border border-slate-700 whitespace-pre-wrap break-words text-left leading-relaxed animate-in fade-in zoom-in-95 duration-150 cursor-default"
+                              >
+                                <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-700/80">
+                                  <span className="text-[10px] font-bold text-[#86efac] uppercase tracking-wider">
+                                    Pacote Identificado
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTooltipAbertoId(null)}
+                                    className="text-slate-400 hover:text-white text-xs px-1 rounded transition-colors cursor-pointer"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+
+                                <span className="text-white font-bold block text-[13px] mb-1.5">
+                                  {valoresCalculados.nomePacote}
+                                </span>
+
+                                <div className="pt-1.5 border-t border-slate-700/60 text-slate-300 text-[11px]">
+                                  <span>{valoresCalculados.detalhe}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         {/* Sinal 50% */}
@@ -1240,8 +1302,8 @@ Qualquer dúvida, estamos à disposição!`;
           'cadastroid',
           'cadastroId'
         )}${getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')
-            ? ` (${getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')})`
-            : ''
+          ? ` (${getVal(cadastroCancelar, 'nomecompleto', 'nomeCompleto')})`
+          : ''
           }? O cliente não poderá mais enviar dados através deste link.`}
         tipo="perigo"
         textoConfirmar="Sim, Excluir Link"
