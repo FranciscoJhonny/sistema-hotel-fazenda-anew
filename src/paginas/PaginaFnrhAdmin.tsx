@@ -1066,7 +1066,7 @@ Qualquer dúvida, estamos à disposição!`;
                               >
                                 <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-700/80">
                                   <span className="text-[10px] font-bold text-[#86efac] uppercase tracking-wider">
-                                    Pacote Identificado
+                                    Pacote  
                                   </span>
                                   <button
                                     type="button"
