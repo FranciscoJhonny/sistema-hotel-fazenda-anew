@@ -1,52 +1,48 @@
-import React, { useEffect, useState } from 'react';
 import {
-  X,
-  User,
-  Calendar,
-  Phone,
-  Mail,
-  MapPin,
-  Car,
-  Users,
-  ShieldCheck,
-  CreditCard,
+  AlertCircle,
   AlertTriangle,
-  FileText,
-  Copy,
-  Send,
+  Calendar,
   CheckCircle2,
   Clock,
+  Copy,
+  CreditCard,
   Edit2,
-  Save,
-  Plus,
-  Trash2,
+  FileDown,
+  FileText,
   LoaderCircle,
-  AlertCircle,
+  Plus,
+  Save,
+  Send,
+  ShieldCheck,
   Sparkles,
-  FileDown
+  Trash2,
+  User,
+  Users,
+  X
 } from 'lucide-react';
-import { CadastroFnrh, Reserva, Pacote } from '../../tipos';
+import React, { useEffect, useState } from 'react';
+import { useHotel } from '../../contextos/ContextoHotel';
 import { FnrhService, gerarLinkPublicoFnrh } from '../../servicos/api/FnrhService';
+import { CadastroFnrh, Pacote, Reserva } from '../../tipos';
 import {
   aplicarMascaraCpf,
   aplicarMascaraTelefone,
   calcularIdade,
-  calcularIdadeNumerica,
   formatarCep,
   formatarCpf,
   formatarData,
   formatarMoeda,
+  formatarParaInputDate,
   formatarTelefone
 } from '../../utilitarios/formatadores';
-import { useHotel } from '../../contextos/ContextoHotel';
 import {
-  exportarFichaFnrhPdf,
   calcularTarifaHospede,
+  exportarFichaFnrhPdf,
   TarifaIndividual
 } from '../../utilitarios/geradorPdfFnrh';
 
-export type { TarifaIndividual };
 export { calcularTarifaHospede };
+export type { TarifaIndividual };
 
 interface ModalDetalhesFnrhProps {
   aberto: boolean;
@@ -84,17 +80,26 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
 
   useEffect(() => {
     if (cadastro) {
+      const dEntrada = (cadastro as any).dataentrada || (cadastro as any).dataEntrada;
+      const dSaida = (cadastro as any).datasaida || (cadastro as any).dataSaida;
+      const dNasc = (cadastro as any).datanascimento || (cadastro as any).dataNascimento;
+
       setCadastroAtual(cadastro);
       setDadosEditados({
         ...cadastro,
         nomecompleto: cadastro.nomecompleto ? String(cadastro.nomecompleto).toUpperCase() : '',
+        dataentrada: formatarParaInputDate(dEntrada),
+        datasaida: formatarParaInputDate(dSaida),
+        datanascimento: formatarParaInputDate(dNasc),
       });
+
       setAcompanhantesEditados(
         cadastro.acompanhantes
-          ? cadastro.acompanhantes.map((a) => ({
-              ...a,
-              nomecompleto: a.nomecompleto ? String(a.nomecompleto).toUpperCase() : '',
-            }))
+          ? cadastro.acompanhantes.map((a: any) => ({
+            ...a,
+            nomecompleto: a.nomecompleto ? String(a.nomecompleto).toUpperCase() : '',
+            datanascimento: formatarParaInputDate(a.datanascimento || a.dataNascimento),
+          }))
           : []
       );
       setModoEdicao(false);
@@ -287,7 +292,7 @@ Qualquer dúvida estamos à disposição!`;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs overflow-y-auto">
       <div className="relative w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-[#c1c9bf] overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-        
+
         {/* Topo do Modal */}
         <div className="bg-[#053d1e] px-6 py-4 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -442,7 +447,7 @@ Qualquer dúvida estamos à disposição!`;
                   <label className="text-slate-600 block font-semibold mb-1">Data de Nascimento</label>
                   <input
                     type="date"
-                    value={dadosEditados.datanascimento || ''}
+                    value={formatarParaInputDate(dadosEditados.datanascimento || (c as any).datanascimento || (c as any).dataNascimento)}
                     onChange={(e) => setDadosEditados({ ...dadosEditados, datanascimento: e.target.value })}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
                   />
@@ -642,7 +647,7 @@ Qualquer dúvida estamos à disposição!`;
                   <label className="text-slate-600 block font-semibold mb-1">Data de Entrada</label>
                   <input
                     type="date"
-                    value={dadosEditados.dataentrada || ''}
+                    value={formatarParaInputDate(dadosEditados.dataentrada || (c as any).dataentrada || (c as any).dataEntrada)}
                     onChange={(e) => setDadosEditados({ ...dadosEditados, dataentrada: e.target.value })}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
                   />
@@ -651,7 +656,7 @@ Qualquer dúvida estamos à disposição!`;
                   <label className="text-slate-600 block font-semibold mb-1">Data de Saída</label>
                   <input
                     type="date"
-                    value={dadosEditados.datasaida || ''}
+                    value={formatarParaInputDate(dadosEditados.datasaida || (c as any).datasaida || (c as any).dataSaida)}
                     onChange={(e) => setDadosEditados({ ...dadosEditados, datasaida: e.target.value })}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
                   />
@@ -819,7 +824,7 @@ Qualquer dúvida estamos à disposição!`;
                           <label className="text-slate-600 block font-semibold mb-1">Data de Nascimento</label>
                           <input
                             type="date"
-                            value={acomp.datanascimento || ''}
+                            value={formatarParaInputDate(acomp.datanascimento || acomp.dataNascimento)}
                             onChange={(e) => handleAtualizarAcompanhante(idx, 'datanascimento', e.target.value)}
                             className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
                           />

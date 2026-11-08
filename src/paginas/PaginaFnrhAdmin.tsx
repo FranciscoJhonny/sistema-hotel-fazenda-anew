@@ -32,7 +32,7 @@ import {
   formatarCpf,
   formatarData,
   formatarMoeda,
-  formatarTelefone,
+  formatarTelefone,  
 } from '../utilitarios/formatadores';
 
 // Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)

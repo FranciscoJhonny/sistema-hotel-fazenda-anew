@@ -67,15 +67,18 @@ export function converterValorMonetario(valor: string): number {
   return Number.isFinite(numero) ? Math.max(0, numero) : 0;
 }
 
-export function formatarData(dataString: string): string {
+/**
+ * Formata qualquer formato de data válido para o padrão brasileiro (DD/MM/AAAA).
+ */
+export function formatarData(dataString?: string | Date | null): string {
   if (!dataString) return '--';
-  // If format is YYYY-MM-DD
-  const partes = dataString.split('T')[0].split('-');
-  if (partes.length === 3) {
-    const [ano, mes, dia] = partes;
-    return `${dia}/${mes}/${ano}`;
-  }
-  return dataString;
+  const d = dataString instanceof Date ? dataString : parseDataSegura(String(dataString));
+  if (!d || isNaN(d.getTime())) return String(dataString);
+
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const ano = d.getFullYear();
+  return `${dia}/${mes}/${ano}`;
 }
 
 export function formatarDataExtenso(data: Date | string): string {
@@ -103,31 +106,39 @@ export function formatarDataHora(dataString: string): string {
 }
 
 /**
- * Converte qualquer formato de data (ISO 8601 com 'T', YYYY-MM-DD ou DD/MM/YYYY) para o formato YYYY-MM-DD,
- * estritamente exigido pelo atributo value do elemento HTML <input type="date">.
+ * Converte qualquer formato de data (ISO, Date, string com espaço, DD/MM/YYYY) 
+ * estritamente para o formato YYYY-MM-DD exigido pelo <input type="date">.
+ * Preserva o fuso horário local sem retroceder 1 dia.
  */
 export function formatarParaInputDate(data?: string | Date | null): string {
   if (!data) return '';
-  if (data instanceof Date) {
-    if (isNaN(data.getTime())) return '';
-    return data.toISOString().split('T')[0];
-  }
-  const str = String(data).trim();
-  if (!str) return '';
-  if (str.includes('T')) {
-    return str.split('T')[0];
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    return str;
-  }
-  const partes = str.split('/');
-  if (partes.length === 3) {
-    const [dia, mes, ano] = partes;
-    if (ano.length === 4) {
+
+  // Se já for uma string YYYY-MM-DD pura
+  if (typeof data === 'string') {
+    const limpo = data.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(limpo)) {
+      return limpo;
+    }
+    // Se vier DD/MM/YYYY
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(limpo)) {
+      const [dia, mes, ano] = limpo.split(' ')[0].split('/');
       return `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`;
     }
+    // Se vier YYYY-MM-DDTHH:mm ou YYYY-MM-DD HH:mm
+    if (/^\d{4}-\d{2}-\d{2}[T\s]/.test(limpo)) {
+      return limpo.slice(0, 10);
+    }
   }
-  return '';
+
+  // Se for Date ou outra string de data
+  const d = data instanceof Date ? data : parseDataSegura(String(data));
+  if (!d || isNaN(d.getTime())) return '';
+
+  const ano = d.getFullYear();
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+
+  return `${ano}-${mes}-${dia}`;
 }
 
 /**
@@ -179,12 +190,18 @@ export function formatarCep(cep: string): string {
   return `${apenasDigitos.slice(0, 5)}-${apenasDigitos.slice(5)}`;
 }
 
-export function calcularDiarias(dataEntrada: string, dataSaida: string): number {
+/**
+ * Calcula a quantidade de diárias de forma segura entre duas datas.
+ */
+export function calcularDiarias(dataEntrada?: string | Date | null, dataSaida?: string | Date | null): number {
   if (!dataEntrada || !dataSaida) return 1;
-  const d1 = new Date(dataEntrada + 'T00:00:00');
-  const d2 = new Date(dataSaida + 'T00:00:00');
+  const d1 = dataEntrada instanceof Date ? dataEntrada : parseDataSegura(String(dataEntrada));
+  const d2 = dataSaida instanceof Date ? dataSaida : parseDataSegura(String(dataSaida));
+
+  if (!d1 || !d2) return 1;
+
   const diffTime = d2.getTime() - d1.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
   return diffDays > 0 ? diffDays : 1;
 }
 
@@ -298,8 +315,8 @@ export const formatarHorarioParaInput = (horario?: string | null): string => {
  * @returns String formatada como 'AAAA-MM-DD'
  */
 export const obterDataLocalISO = (data: Date | string = new Date()): string => {
-  const d = typeof data === 'string' 
-    ? new Date(data.includes('T') ? data : `${data}T12:00:00`) 
+  const d = typeof data === 'string'
+    ? new Date(data.includes('T') ? data : `${data}T12:00:00`)
     : new Date(data);
 
   if (isNaN(d.getTime())) return '';
