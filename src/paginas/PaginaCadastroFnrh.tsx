@@ -51,7 +51,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
     ultimaprocedencia: '',
     cpfresponsavelmenor: '',
     dataentrada: '',
-    horarioprevistochegada: '07:00',
+    horarioprevistochegada: '09:00',
     datasaida: '',
     horarioprevistasaida: '15:00',
     motivoviagem: '',
@@ -143,7 +143,7 @@ export const PaginaCadastroFnrh: React.FC<{ token: string }> = ({ token }) => {
             String(getVal(cadastro, 'cpfresponsavelmenor', 'cpfResponsavelMenor') || '')
           ),
           dataentrada: formatarParaInputDate(dtEntrada),
-          horarioprevistochegada: formatarParaInputTime(hrChegada, '07:00'),
+          horarioprevistochegada: formatarParaInputTime(hrChegada, '09:00'),
           datasaida: formatarParaInputDate(dtSaida),
           horarioprevistasaida: formatarParaInputTime(hrSaida, '15:00'),
           motivoviagem: String(getVal(cadastro, 'motivoviagem', 'motivoViagem') || ''),
