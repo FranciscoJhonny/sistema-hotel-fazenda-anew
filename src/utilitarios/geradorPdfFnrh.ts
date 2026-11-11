@@ -21,8 +21,26 @@ export interface TarifaIndividual {
   badgeClasse: string;
 }
 
+// Helper universal para compatibilidade de propriedades (camelCase ou minúsculo)
+const obterProp = (obj: any, propMin: string, propCamel: string): any => {
+  if (!obj) return undefined;
+  return obj[propMin] !== undefined ? obj[propMin] : obj[propCamel];
+};
+
+// Limpa strings de datas do banco (remove horas, espaços e valores inválidos/infinity)
+const limparDataIso = (val: any): string => {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (s === '' || s.includes('infinity') || s.toLowerCase().includes('null')) return '';
+  return s.slice(0, 10);
+};
+
 /**
- * Calcula a tarifa individual com base na idade atual da pessoa e na tabela oficial:
+ * Calcula a tarifa individual com base na idade do hóspede e nos pacotes cadastrados:
+ * 1º Tenta casar com pacote com datas fixas (ex: Virada Expressa, Natal Reduzido, Réveillon Completo)
+ * 2º Se não bater nenhuma data de feriado/evento, usa o pacote padrão de hospedagem (sem datas)
+ * 
+ * Regra de Idades:
  * - 0 a 5 anos: Grátis (0%)
  * - 6 a 11 anos: Meia (50%)
  * - 12 anos ou mais: Inteira (100%)
@@ -34,70 +52,100 @@ export const calcularTarifaHospede = (
   dataSaidaStr?: string,
   pacotesLista: Pacote[] = []
 ): TarifaIndividual => {
-  const dEntrada = (dataEntradaStr || '').slice(0, 10).trim();
-  const dSaida = (dataSaidaStr || '').slice(0, 10).trim();
+  const dEntrada = limparDataIso(dataEntradaStr);
+  const dSaida = limparDataIso(dataSaidaStr);
 
-  let dias = 2; // Padrão se não informado: 2 dias (Final de Semana)
+  // 1. Calcula a quantidade de dias
+  let dias = 2; // Padrão se não informado: 2 dias
+
   if (dEntrada && dSaida) {
     if (dEntrada === dSaida) {
       dias = 1; // Day Use
     } else {
-      let d1: Date;
-      let d2: Date;
-      if (dEntrada.includes('/')) {
-        const p1 = dEntrada.split('/');
-        d1 = new Date(Number(p1[2]), Number(p1[1]) - 1, Number(p1[0]));
-      } else {
-        const p1 = dEntrada.split('-');
-        d1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
-      }
-      if (dSaida.includes('/')) {
-        const p2 = dSaida.split('/');
-        d2 = new Date(Number(p2[2]), Number(p2[1]) - 1, Number(p2[0]));
-      } else {
-        const p2 = dSaida.split('-');
-        d2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
-      }
-      const diff = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
-      dias = diff > 0 ? diff + 1 : 1;
+      const parseDt = (str: string) => {
+        if (str.includes('/')) {
+          const [d, m, y] = str.split('/');
+          return new Date(Number(y), Number(m) - 1, Number(d));
+        }
+        const [y, m, d] = str.split('-');
+        return new Date(Number(y), Number(m) - 1, Number(d));
+      };
+
+      const d1 = parseDt(dEntrada);
+      const d2 = parseDt(dSaida);
+      const diffPernoites = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+      dias = diffPernoites > 0 ? diffPernoites + 1 : 1;
     }
   }
 
-  // Preço oficial do pacote por pessoa/adulto
-  let valorBasePorPessoa = 550;
-  if (dias === 1) {
-    valorBasePorPessoa = 200;
-  } else if (dias === 2) {
-    valorBasePorPessoa = 550;
-  } else if (dias === 3) {
-    valorBasePorPessoa = 750;
-  } else if (dias === 4) {
-    valorBasePorPessoa = 950;
+  let pacoteMatch: any = null;
+
+  // 2. ETAPA 1: Tenta casar primeiro com Pacotes com Datas Específicas (Feriado, Réveillon, Natal)
+  if (dEntrada && dSaida && pacotesLista && pacotesLista.length > 0) {
+    pacoteMatch = pacotesLista.find((p: any) => {
+      const dtIni = limparDataIso(obterProp(p, 'datainicio', 'dataInicio'));
+      const dtFim = limparDataIso(obterProp(p, 'datafim', 'dataFim'));
+      const pDias = Number(obterProp(p, 'quantidadedias', 'quantidadeDias') || 0);
+
+      // Se possui datas fixas de vigência no banco
+      if (dtIni && dtFim) {
+        const bateDataExata = (dEntrada === dtIni && dSaida === dtFim);
+        const estaNoPeriodo = (dEntrada >= dtIni && dSaida <= dtFim);
+        const bateDias = pDias === 0 || pDias === dias;
+
+        return (bateDataExata || estaNoPeriodo) && bateDias;
+      }
+      return false;
+    });
+  }
+
+  // 3. ETAPA 2: Se NÃO for feriado ou data específica, busca pacote padrão comum (datainicio e datafim vazias/null)
+  if (!pacoteMatch && pacotesLista && pacotesLista.length > 0) {
+    // 3.1. Primeiro procura pacote com quantidadedias exata e SEM datas fixas
+    pacoteMatch = pacotesLista.find((p: any) => {
+      const dtIni = limparDataIso(obterProp(p, 'datainicio', 'dataInicio'));
+      const dtFim = limparDataIso(obterProp(p, 'datafim', 'dataFim'));
+      const pDias = Number(obterProp(p, 'quantidadedias', 'quantidadeDias') || 0);
+
+      return !dtIni && !dtFim && pDias === dias;
+    });
+
+    // 3.2. Fallback caso o pacote padrão tenha tipoPacote = HOSPEDAGEM
+    if (!pacoteMatch) {
+      pacoteMatch = pacotesLista.find((p: any) => {
+        const tipo = String(obterProp(p, 'tipopacote', 'tipoPacote') || '').toUpperCase().trim();
+        const pDias = Number(obterProp(p, 'quantidadedias', 'quantidadeDias') || 0);
+        return tipo === 'HOSPEDAGEM' && pDias === dias;
+      });
+    }
+  }
+
+  // 4. Define o valor base do adulto
+  let valorBasePorPessoa = 550; // Padrão
+
+  if (pacoteMatch && Number(obterProp(pacoteMatch, 'valor', 'valor')) > 0) {
+    valorBasePorPessoa = Number(obterProp(pacoteMatch, 'valor', 'valor'));
   } else {
-    const pEncontrado = pacotesLista.find((p) => Number(p.quantidadedias) === dias);
-    if (pEncontrado?.valor) {
-      valorBasePorPessoa = Number(pEncontrado.valor);
-    } else {
-      valorBasePorPessoa = 950 + (dias - 4) * 200;
-    }
+    // Tabela padrão oficial do hotel
+    if (dias === 1) valorBasePorPessoa = 200;
+    else if (dias === 2) valorBasePorPessoa = 550;
+    else if (dias === 3) valorBasePorPessoa = 750;
+    else if (dias === 4) valorBasePorPessoa = 950;
+    else valorBasePorPessoa = 950 + (dias - 4) * 200;
   }
 
-  // Se houver pacote correspondente cadastrado no banco com valor ativo
-  const pacoteMatch = pacotesLista.find((p) => Number(p.quantidadedias) === dias);
-  if (pacoteMatch?.valor && Number(pacoteMatch.valor) > 0) {
-    valorBasePorPessoa = Number(pacoteMatch.valor);
-  }
-
-  // Idade calculada com base na data de nascimento
-  let idade = 30; // Padrão adulto se não informada e não menor
+  // 5. Calcula a idade
+  let idade = 30; // Padrão adulto
   if (dataNascimento) {
     idade = calcularIdadeNumerica(dataNascimento);
   } else if (menoridade) {
     idade = 8;
   }
 
+  const idadeNum = Number(idade);
+
+  // 6. Retorna a composição da tarifa
   if (dataNascimento) {
-    const idadeNum = Number(idade);
     if (idadeNum <= 5) {
       return {
         tipo: 'GRATIS',
@@ -285,7 +333,7 @@ export async function exportarFichaFnrhPdf(
         { content: 'Nascimento / Idade:', styles: { fontStyle: 'bold', textColor: [65, 73, 65] } },
         { content: `${cadastro.datanascimento ? formatarData(cadastro.datanascimento) : '--'} (${calcularIdade(cadastro.datanascimento)})` },
         { content: 'Nacionalidade / Sexo:', styles: { fontStyle: 'bold', textColor: [65, 73, 65] } },
-        { content: `${cadastro.nacionalidade || 'Brasileira'} • ${cadastro.sexo || '--'}` }
+        { content: `${cadastro.nacionalidade || 'Brasileira'} / ${cadastro.sexo || '--'}` }
       ],
       [
         { content: 'Telefone / WhatsApp:', styles: { fontStyle: 'bold', textColor: [65, 73, 65] } },
@@ -371,7 +419,7 @@ export async function exportarFichaFnrhPdf(
   });
 
   // =========================================================================
-  // BLOCO 3: ACOMPANHANTES & TARIFAS (Tabela Estruturada)
+  // BLOCO 3: ACOMPANHANTES & TARIFAS
   // =========================================================================
   const tarifaTitular = calcularTarifaHospede(
     cadastro.datanascimento,
@@ -411,10 +459,10 @@ export async function exportarFichaFnrhPdf(
 
       const corTarifa: [number, number, number] =
         tarifa.tipo === 'MEIA'
-          ? [180, 83, 9] // Âmbar
+          ? [180, 83, 9]
           : tarifa.tipo === 'GRATIS'
-          ? [29, 78, 216] // Azul
-          : [5, 61, 30]; // Verde
+          ? [29, 78, 216]
+          : [5, 61, 30];
 
       bodyAcomps.push([
         { content: `Acomp. #${idx + 1}`, styles: { halign: 'center', textColor: [113, 121, 113] } },
@@ -619,7 +667,6 @@ export async function exportarFichaFnrhPdf(
     doc.text(`Página ${i} de ${totalPaginas}`, 200, 292, { align: 'right' });
   }
 
-  // Nome do arquivo padronizado
   const codIdentificador = codReservaRaw || `FNRH-${cadastro.cadastroid}`;
   const nomeSanitizado = (cadastro.nomecompleto || 'Hospede').trim().replace(/[^a-zA-Z0-9]/g, '_');
   const nomeArquivo = `FNRH_${cadastro.cadastroid}_${codIdentificador}_${nomeSanitizado}.pdf`;
