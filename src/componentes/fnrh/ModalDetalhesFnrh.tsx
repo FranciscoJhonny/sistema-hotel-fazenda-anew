@@ -40,6 +40,7 @@ import {
   exportarFichaFnrhPdf,
   TarifaIndividual
 } from '../../utilitarios/geradorPdfFnrh';
+import { Validate } from '../../utilitarios/validate';
 
 export { calcularTarifaHospede };
 export type { TarifaIndividual };
@@ -96,10 +97,10 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
       setAcompanhantesEditados(
         cadastro.acompanhantes
           ? cadastro.acompanhantes.map((a: any) => ({
-            ...a,
-            nomecompleto: a.nomecompleto ? String(a.nomecompleto).toUpperCase() : '',
-            datanascimento: formatarParaInputDate(a.datanascimento || a.dataNascimento),
-          }))
+              ...a,
+              nomecompleto: a.nomecompleto ? String(a.nomecompleto).toUpperCase() : '',
+              datanascimento: formatarParaInputDate(a.datanascimento || a.dataNascimento),
+            }))
           : []
       );
       setModoEdicao(false);
@@ -205,8 +206,70 @@ Qualquer dúvida estamos à disposição!`;
     return <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-orange-50 text-orange-700 border border-orange-200">Aguardando Preenchimento do Hóspede</span>;
   };
 
+  // Handlers de data integrados com a classe Validate
+  const handleAlterarDataEntrada = (novaEntrada: string) => {
+    const dataSaidaAtual = formatarParaInputDate(dadosEditados.datasaida || (c as any).datasaida || (c as any).dataSaida);
+    const dataSaidaAjustada = Validate.ajustarDataFimSeNecessario(novaEntrada, dataSaidaAtual);
+
+    setDadosEditados({
+      ...dadosEditados,
+      dataentrada: novaEntrada,
+      datasaida: dataSaidaAjustada || dadosEditados.datasaida,
+    });
+    setErroEdicao(null);
+  };
+
+  const handleAlterarDataSaida = (novaSaida: string) => {
+    const dataEntradaAtual = formatarParaInputDate(dadosEditados.dataentrada || (c as any).dataentrada || (c as any).dataEntrada);
+
+    setDadosEditados({
+      ...dadosEditados,
+      datasaida: novaSaida,
+    });
+
+    if (dataEntradaAtual && novaSaida) {
+      const check = Validate.periodoDatas(dataEntradaAtual, novaSaida, {
+        nomeCampoInicio: 'Data de Entrada',
+        nomeCampoFim: 'Data de Saída',
+      });
+      setErroEdicao(check.valido ? null : (check.mensagem || 'Período inválido.'));
+    } else {
+      setErroEdicao(null);
+    }
+  };
+
   const handleSalvarEdicao = async () => {
     if (!c) return;
+
+    const dEntradaValidar = formatarParaInputDate(dadosEditados.dataentrada || (c as any).dataentrada || (c as any).dataEntrada);
+    const dSaidaValidar = formatarParaInputDate(dadosEditados.datasaida || (c as any).datasaida || (c as any).dataSaida);
+
+    // 1. Valida o período usando Validate
+    const validacaoDatas = Validate.periodoDatas(dEntradaValidar, dSaidaValidar, {
+      permitirMesmoDia: true,
+      exigirAmbas: false,
+      nomeCampoInicio: 'Data de Entrada',
+      nomeCampoFim: 'Data de Saída',
+    });
+
+    if (!validacaoDatas.valido) {
+      setErroEdicao(validacaoDatas.mensagem || 'A Data de Entrada não pode ser maior que a Data de Saída.');
+      return;
+    }
+
+    // 2. Valida e-mail e telefone se informados
+    const validacaoEmail = Validate.email(dadosEditados.email);
+    if (!validacaoEmail.valido) {
+      setErroEdicao(validacaoEmail.mensagem || 'E-mail inválido.');
+      return;
+    }
+
+    const validacaoTel = Validate.telefone(dadosEditados.telefone);
+    if (!validacaoTel.valido) {
+      setErroEdicao(validacaoTel.mensagem || 'Telefone inválido.');
+      return;
+    }
+
     setSalvando(true);
     setErroEdicao(null);
     setSucessoEdicao(null);
@@ -245,14 +308,12 @@ Qualquer dúvida estamos à disposição!`;
       acompanhantes: acompanhantesParaSalvar,
     } as CadastroFnrh;
 
-    // Atualiza imediatamente o estado da modal com os novos dados salvos
     setCadastroAtual(cadastroAtualizado);
     setDadosEditados({ ...cadastroAtualizado });
     setAcompanhantesEditados(acompanhantesParaSalvar.map((a) => ({ ...a })));
     setSucessoEdicao('Ficha FNRH atualizada com sucesso!');
     setModoEdicao(false);
 
-    // Notifica o componente pai e sincroniza os dados
     try {
       if (onAtualizar) {
         onAtualizar(cadastroAtualizado);
@@ -288,6 +349,10 @@ Qualquer dúvida estamos à disposição!`;
       lista.map((item, idx) => (idx === index ? { ...item, [campo]: valorTratado } : item))
     );
   };
+
+  const dataEntradaInput = formatarParaInputDate(dadosEditados.dataentrada || (c as any).dataentrada || (c as any).dataEntrada);
+  const dataSaidaInput = formatarParaInputDate(dadosEditados.datasaida || (c as any).datasaida || (c as any).dataSaida);
+  const periodoInvalido = Boolean(dataEntradaInput && dataSaidaInput && !Validate.periodoDatas(dataEntradaInput, dataSaidaInput).valido);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs overflow-y-auto">
@@ -379,7 +444,7 @@ Qualquer dúvida estamos à disposição!`;
         {/* Corpo com Scroll */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-800">
           {erroEdicao && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700 flex items-center gap-2">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700 flex items-center gap-2 animate-in fade-in">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{erroEdicao}</span>
             </div>
@@ -647,8 +712,8 @@ Qualquer dúvida estamos à disposição!`;
                   <label className="text-slate-600 block font-semibold mb-1">Data de Entrada</label>
                   <input
                     type="date"
-                    value={formatarParaInputDate(dadosEditados.dataentrada || (c as any).dataentrada || (c as any).dataEntrada)}
-                    onChange={(e) => setDadosEditados({ ...dadosEditados, dataentrada: e.target.value })}
+                    value={dataEntradaInput}
+                    onChange={(e) => handleAlterarDataEntrada(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
                   />
                 </div>
@@ -656,9 +721,14 @@ Qualquer dúvida estamos à disposição!`;
                   <label className="text-slate-600 block font-semibold mb-1">Data de Saída</label>
                   <input
                     type="date"
-                    value={formatarParaInputDate(dadosEditados.datasaida || (c as any).datasaida || (c as any).dataSaida)}
-                    onChange={(e) => setDadosEditados({ ...dadosEditados, datasaida: e.target.value })}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-[#c1c9bf] text-xs font-semibold text-slate-900 outline-none focus:border-[#053d1e]"
+                    min={dataEntradaInput || undefined}
+                    value={dataSaidaInput}
+                    onChange={(e) => handleAlterarDataSaida(e.target.value)}
+                    className={`w-full px-2.5 py-1.5 rounded-lg border text-xs font-semibold text-slate-900 outline-none ${
+                      periodoInvalido
+                        ? 'border-red-400 focus:border-red-600 bg-red-50/40'
+                        : 'border-[#c1c9bf] focus:border-[#053d1e]'
+                    }`}
                   />
                 </div>
                 <div>
@@ -1103,6 +1173,7 @@ Qualquer dúvida estamos à disposição!`;
                   type="button"
                   onClick={() => {
                     setModoEdicao(false);
+                    setErroEdicao(null);
                     setDadosEditados({ ...c });
                     setAcompanhantesEditados(c.acompanhantes ? c.acompanhantes.map((a) => ({ ...a })) : []);
                   }}
@@ -1113,7 +1184,7 @@ Qualquer dúvida estamos à disposição!`;
 
                 <button
                   type="button"
-                  disabled={salvando}
+                  disabled={salvando || periodoInvalido}
                   onClick={handleSalvarEdicao}
                   className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#053d1e] hover:bg-[#043017] text-xs font-bold text-white transition-all shadow-xs disabled:opacity-50"
                 >

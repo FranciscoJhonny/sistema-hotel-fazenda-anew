@@ -8,7 +8,6 @@ import {
   Calendar,
   User,
   Phone,
-  Mail,
   Clock,
   Sparkles,
   LoaderCircle,
@@ -19,6 +18,7 @@ import { CadastroFnrh } from '../../tipos';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { aplicarMascaraTelefone } from '../../utilitarios/formatadores';
 import { montarUrlPublicaFnrh, montarMensagemWhatsappFnrh } from '../../utilitarios/urls';
+import { Validate } from '../../utilitarios/validate';
 
 interface ModalGerarLinkFnrhProps {
   aberto: boolean;
@@ -47,7 +47,6 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [linkGerado, setLinkGerado] = useState<string | null>(null);
-  const [tokenGerado, setTokenGerado] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
 
   if (!aberto) return null;
@@ -63,7 +62,6 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
     setObservacoes('');
     setErro(null);
     setLinkGerado(null);
-    setTokenGerado(null);
     setCopiado(false);
   };
 
@@ -72,8 +70,59 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
     onFechar();
   };
 
+  const handleAlterarDataEntrada = (novaEntrada: string) => {
+    setDataEntrada(novaEntrada);
+    setErro(null);
+
+    if (novaEntrada && dataSaida) {
+      const dataSaidaAjustada = Validate.ajustarDataFimSeNecessario(novaEntrada, dataSaida);
+      if (dataSaidaAjustada !== dataSaida) {
+        setDataSaida(dataSaidaAjustada);
+      }
+    }
+  };
+
+  const handleAlterarDataSaida = (novaSaida: string) => {
+    setDataSaida(novaSaida);
+    if (dataEntrada && novaSaida) {
+      const check = Validate.periodoDatas(dataEntrada, novaSaida, {
+        nomeCampoInicio: 'Previsão de Entrada',
+        nomeCampoFim: 'Previsão de Saída',
+      });
+      setErro(check.valido ? null : (check.mensagem || 'Período inválido.'));
+    } else {
+      setErro(null);
+    }
+  };
+
   const handleGerarLink = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+
+    // Valida período usando a classe centralizada Validate
+    const validacaoDatas = Validate.periodoDatas(dataEntrada, dataSaida, {
+      permitirMesmoDia: true,
+      exigirAmbas: false,
+      nomeCampoInicio: 'Previsão de Entrada',
+      nomeCampoFim: 'Previsão de Saída',
+    });
+
+    if (!validacaoDatas.valido) {
+      setErro(validacaoDatas.mensagem || 'A data de entrada não pode ser maior que a data de saída.');
+      return;
+    }
+
+    const validacaoEmail = Validate.email(email);
+    if (!validacaoEmail.valido) {
+      setErro(validacaoEmail.mensagem || 'E-mail inválido.');
+      return;
+    }
+
+    const validacaoTel = Validate.telefone(telefone);
+    if (!validacaoTel.valido) {
+      setErro(validacaoTel.mensagem || 'Telefone inválido.');
+      return;
+    }
+
     setCarregando(true);
     setErro(null);
 
@@ -100,7 +149,6 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
 
     const urlCompleta = montarUrlPublicaFnrh(res.linkPublico || res.cadastro.token_acesso);
     setLinkGerado(urlCompleta);
-    setTokenGerado(res.cadastro.token_acesso || null);
     onLinkCriado(res.cadastro);
   };
 
@@ -111,7 +159,6 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
       setCopiado(true);
       setTimeout(() => setCopiado(false), 3000);
     } catch {
-      // Fallback
       const textArea = document.createElement('textarea');
       textArea.value = linkGerado;
       document.body.appendChild(textArea);
@@ -167,7 +214,7 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
         {/* Conteúdo */}
         <div className="p-6">
           {erro && (
-            <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700">
+            <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700 animate-in fade-in">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{erro}</span>
             </div>
@@ -324,7 +371,7 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
                     <input
                       type="date"
                       value={dataEntrada}
-                      onChange={(e) => setDataEntrada(e.target.value)}
+                      onChange={(e) => handleAlterarDataEntrada(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e]"
                     />
                   </div>
@@ -338,9 +385,14 @@ export const ModalGerarLinkFnrh: React.FC<ModalGerarLinkFnrhProps> = ({
                     <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input
                       type="date"
+                      min={dataEntrada || undefined}
                       value={dataSaida}
-                      onChange={(e) => setDataSaida(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-[#c1c9bf] text-xs outline-none focus:border-[#053d1e]"
+                      onChange={(e) => handleAlterarDataSaida(e.target.value)}
+                      className={`w-full pl-9 pr-3 py-2 rounded-xl border text-xs outline-none ${
+                        erro && dataEntrada && dataSaida && dataEntrada > dataSaida
+                          ? 'border-red-400 focus:border-red-600 bg-red-50/30'
+                          : 'border-[#c1c9bf] focus:border-[#053d1e]'
+                      }`}
                     />
                   </div>
                 </div>
