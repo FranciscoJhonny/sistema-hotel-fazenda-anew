@@ -1,35 +1,31 @@
-import React, { useState, useEffect, useMemo } from 'react';
 import {
-  X,
-  RefreshCw,
-  PauseCircle,
+  AlertTriangle,
+  Ban,
+  Bed,
+  Calculator,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  Coins,
+  Copy,
+  LoaderCircle,
   LogIn,
   LogOut,
-  Ban,
-  User,
-  Calendar,
-  Bed,
-  CreditCard,
-  AlertTriangle,
-  LoaderCircle,
-  CheckCircle2,
-  CalendarDays,
-  Users,
-  Plus,
   Minus,
+  PauseCircle,
+  Plus,
+  RefreshCw,
   Trash2,
-  Coins,
-  Info,
-  Calculator,
-  Tag,
-  Copy,
-  Check,
+  User,
+  Users,
+  X
 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useHotel } from '../../contextos/ContextoHotel';
-import { Reserva, Pacote, StatusPagamento } from '../../tipos';
-import { formatarData, formatarMoeda, calcularIdadeNumerica } from '../../utilitarios/formatadores';
-import { reservaService } from '../../servicos/api';
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
+import { reservaService } from '../../servicos/api';
+import { Pacote, Reserva, StatusPagamento } from '../../tipos';
+import { calcularIdadeNumerica, formatarData, formatarMoeda } from '../../utilitarios/formatadores';
 
 // Helper universal para compatibilidade camelCase (.NET) e lowercase
 const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
@@ -612,18 +608,17 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         novoSaldo > 0
           ? `Saldo a pagar: ${formatarMoeda(novoSaldo)}`
           : novoSaldo < 0
-          ? `Crédito excedente para consumo ou devolução: ${formatarMoeda(Math.abs(novoSaldo))}`
-          : 'Reserva 100% quitada com crédito';
+            ? `Crédito excedente para consumo ou devolução: ${formatarMoeda(Math.abs(novoSaldo))}`
+            : 'Reserva 100% quitada com crédito';
 
       const codQuartoEscolhido = getVal(quartoEscolhido, 'codigoidentificador', 'codigoIdentificador') || getVal(quartoEscolhido, 'numero', 'numero') || quartoDestinoId;
 
-      const notaAutomatica = `[Remarcação em ${new Date().toLocaleDateString('pt-BR')}: ${novoAdultos} adulto(s)${
-        novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
-      } no Quarto #${codQuartoEscolhido} (${formatarData(
-        novaDataEntrada
-      )} a ${formatarData(novaDataSaida)}). Pacote: ${infoTarifa.nomePacote || 'Padrão'}. Novo Total: ${formatarMoeda(
-        novoValorTotal
-      )} | Crédito aproveitado: ${formatarMoeda(valorPagoNum)} | ${resumoSaldoTexto}]`;
+      const notaAutomatica = `[Remarcação em ${new Date().toLocaleDateString('pt-BR')}: ${novoAdultos} adulto(s)${novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
+        } no Quarto #${codQuartoEscolhido} (${formatarData(
+          novaDataEntrada
+        )} a ${formatarData(novaDataSaida)}). Pacote: ${infoTarifa.nomePacote || 'Padrão'}. Novo Total: ${formatarMoeda(
+          novoValorTotal
+        )} | Crédito aproveitado: ${formatarMoeda(valorPagoNum)} | ${resumoSaldoTexto}]`;
 
       let observacoesFinal = novasObservacoes.trim();
       if (!observacoesFinal.includes(notaAutomatica)) {
@@ -711,10 +706,8 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         onSucesso(
           `Reserva ${codigoReserva}${statusMsg} remarcada com sucesso para ${formatarData(
             novaDataEntrada
-          )} até ${formatarData(novaDataSaida)} (${novoAdultos} adulto(s)${
-            novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
-          }) no Quarto #${codQuartoEscolhido}! Novo Saldo: ${
-            novoSaldo >= 0 ? formatarMoeda(novoSaldo) : `Crédito de ${formatarMoeda(Math.abs(novoSaldo))}`
+          )} até ${formatarData(novaDataSaida)} (${novoAdultos} adulto(s)${novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
+          }) no Quarto #${codQuartoEscolhido}! Novo Saldo: ${novoSaldo >= 0 ? formatarMoeda(novoSaldo) : `Crédito de ${formatarMoeda(Math.abs(novoSaldo))}`
           }.`
         );
       }
@@ -854,11 +847,10 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   {hospedeNome}
                 </span>
                 <span
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                    statusAtual === 'CREDITO'
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${statusAtual === 'CREDITO'
                       ? 'bg-amber-100 text-amber-800 border border-amber-300'
                       : 'bg-[#e6f4ea] text-[#053d1e]'
-                  }`}
+                    }`}
                 >
                   {statusAtual === 'CREDITO' ? 'CRÉDITO RETIDO' : statusAtual}
                 </span>
@@ -897,9 +889,8 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                 <div>
                   <span className="text-slate-400 block">Saldo Restante:</span>
                   <span
-                    className={`font-bold ${
-                      Number(getVal(reserva, 'saldo', 'saldo') || 0) > 0 ? 'text-red-700' : 'text-emerald-700'
-                    }`}
+                    className={`font-bold ${Number(getVal(reserva, 'saldo', 'saldo') || 0) > 0 ? 'text-red-700' : 'text-emerald-700'
+                      }`}
                   >
                     {formatarMoeda(getVal(reserva, 'saldo', 'saldo'))}
                   </span>
@@ -1114,9 +1105,8 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                                 ))}
                               </select>
                               <span
-                                className={`text-[10px] font-bold ${
-                                  eGratis ? 'text-emerald-700' : 'text-amber-700'
-                                }`}
+                                className={`text-[10px] font-bold ${eGratis ? 'text-emerald-700' : 'text-amber-700'
+                                  }`}
                               >
                                 {eGratis ? 'Grátis' : 'Meia (50%)'}
                               </span>
@@ -1237,27 +1227,26 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     </div>
 
                     <div
-                      className={`p-2 rounded-lg border ${
-                        saldoRestante > 0
+                      className={`p-2 rounded-lg border ${saldoRestante > 0
                           ? 'bg-amber-50 border-amber-300 text-amber-900'
                           : saldoRestante < 0
-                          ? 'bg-purple-50 border-purple-300 text-purple-900'
-                          : 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                      }`}
+                            ? 'bg-purple-50 border-purple-300 text-purple-900'
+                            : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                        }`}
                     >
                       <span className="text-[10px] block font-semibold">
                         {saldoRestante > 0
                           ? 'Saldo a Pagar'
                           : saldoRestante < 0
-                          ? 'Crédito Excedente'
-                          : 'Saldo Restante'}
+                            ? 'Crédito Excedente'
+                            : 'Saldo Restante'}
                       </span>
                       <span className="font-['Manrope'] font-extrabold text-xs block mt-0.5">
                         {saldoRestante > 0
                           ? formatarMoeda(saldoRestante)
                           : saldoRestante < 0
-                          ? formatarMoeda(Math.abs(saldoRestante))
-                          : 'R$ 0,00'}
+                            ? formatarMoeda(Math.abs(saldoRestante))
+                            : 'R$ 0,00'}
                       </span>
                     </div>
                   </div>

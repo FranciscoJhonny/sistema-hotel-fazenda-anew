@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useHotel } from '../../contextos/ContextoHotel';
 import { reservaService, hospedeService } from '../../servicos/api';
+import { FnrhService } from '../../servicos/api/FnrhService';
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
 import { Reserva, Quarto, Pacote, Hospede } from '../../tipos';
 import { verificarSobreposicaoDatas } from '../../servicos/conflitoReservas';
@@ -38,7 +39,7 @@ interface ModalTrocaQuartoEAdicionalProps {
 }
 
 export interface HospedeCandidato {
-  id: string; // ex: "titular-92" ou "acomp-98"
+  id: string;
   nome: string;
   cpf?: string;
   datanascimento?: string;
@@ -65,9 +66,22 @@ export interface HospedeTransferidoItem {
   editadoManualmente?: boolean;
 }
 
+const getProp = (obj: any, min: string, camel: string): any => {
+  if (!obj) return undefined;
+  return obj[min] !== undefined ? obj[min] : obj[camel];
+};
+
+const limparDataPacote = (val: any): string => {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (s === '' || s.includes('infinity') || s.toLowerCase().includes('null')) return '';
+  return s.slice(0, 10);
+};
+
 const calcularIdade = (dataNascStr?: string): number | null => {
   if (!dataNascStr) return null;
-  const nasc = new Date(dataNascStr + 'T12:00:00');
+  const limpa = String(dataNascStr).slice(0, 10);
+  const nasc = new Date(limpa + 'T12:00:00');
   if (isNaN(nasc.getTime())) return null;
   const hoje = new Date();
   let idade = hoje.getFullYear() - nasc.getFullYear();
@@ -93,11 +107,10 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
 }) => {
   const { quartos, reservas, pacotes, hospedes, atualizarStatusQuarto, recarregarDados } = useHotel();
 
-  // Estados dos campos editáveis da reserva
   const [novoQuartoId, setNovoQuartoId] = useState<string | number>('');
   const [novaDataSaida, setNovaDataSaida] = useState<string>('');
 
-  // Ocupantes originais do quarto (Thiago, esposa, filha)
+  // Ocupantes originais do quarto
   const [adultosOriginais, setAdultosOriginais] = useState<number>(1);
   const [criancasMeiaOriginais, setCriancasMeiaOriginais] = useState<number>(0);
   const [criancasGratisOriginais, setCriancasGratisOriginais] = useState<number>(0);
@@ -107,7 +120,7 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
   const [hospedesTransferidos, setHospedesTransferidos] = useState<HospedeTransferidoItem[]>([]);
   const [candidatoSelecionadoId, setCandidatoSelecionadoId] = useState<string>('');
 
-  // Dados carregados diretamente do banco para garantir precisão e tempo real
+  // Dados carregados diretamente do banco/API
   const [reservasLive, setReservasLive] = useState<any[]>([]);
   const [hospedesLive, setHospedesLive] = useState<any[]>([]);
   const [acompanhantesDb, setAcompanhantesDb] = useState<any[]>([]);
@@ -125,6 +138,79 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
   const [carregando, setCarregando] = useState<boolean>(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  // Calcula quantas crianças são Meia vs Grátis baseado no valorTotal original da reserva ou nos acompanhantes
+  const deduzirComposicaoCriancas = useCallback(
+    (resObj: any, listaAcomps: any[] = []) => {
+      const ad = Math.max(1, Number(getProp(resObj, 'adultos', 'adultos') || 1));
+      const totalCr = Math.max(0, Number(getProp(resObj, 'criancas', 'criancas') || 0));
+
+      if (totalCr === 0) {
+        return { meia: 0, gratis: 0 };
+      }
+
+      // 1. Tenta contar pelas datas de nascimento dos acompanhantes se existirem
+      if (listaAcomps && listaAcomps.length > 0) {
+        let countMeia = 0;
+        let countGratis = 0;
+        listaAcomps.forEach((a: any) => {
+          const dtNasc = getProp(a, 'datanascimento', 'dataNascimento');
+          const idade = calcularIdade(dtNasc);
+          if (idade !== null) {
+            if (idade <= 5) countGratis++;
+            else if (idade <= 11) countMeia++;
+          } else if (a.menoridade) {
+            countMeia++;
+          }
+        });
+
+        if (countMeia + countGratis === totalCr) {
+          return { meia: countMeia, gratis: countGratis };
+        }
+      }
+
+      // 2. Dedução matemática exata pelo valorTotal original da reserva (ex: 1375 - (2 * 550) = 275 -> 1 meia e 1 grátis)
+      const valorTotalOrig = Number(getProp(resObj, 'valortotal', 'valorTotal') || 0);
+      const dEnt = limparDataPacote(getProp(resObj, 'dataentrada', 'dataEntrada'));
+      const dSai = limparDataPacote(getProp(resObj, 'datasaida', 'dataSaida'));
+
+      let diasOrig = 2;
+      if (dEnt && dSai) {
+        if (dEnt === dSai) diasOrig = 1;
+        else {
+          const [aE, mE, diaE] = dEnt.split('-').map(Number);
+          const [aS, mS, diaS] = dSai.split('-').map(Number);
+          const diff = Math.round((new Date(aS, mS - 1, diaS).getTime() - new Date(aE, mE - 1, diaE).getTime()) / (1000 * 60 * 60 * 24));
+          diasOrig = Math.max(1, diff + 1);
+        }
+      }
+
+      // Descobre o valor unitário do adulto na reserva original
+      let valorAdultoOrig = diasOrig === 1 ? 200 : diasOrig === 2 ? 550 : diasOrig === 3 ? 750 : diasOrig === 4 ? 950 : 950 + (diasOrig - 4) * 200;
+      const pctIdOrig = getProp(resObj, 'pacoteid', 'pacoteId');
+      if (pctIdOrig && pacotes.length > 0) {
+        const pctFound = pacotes.find((p: any) => Number(getProp(p, 'pacoteid', 'pacoteId')) === Number(pctIdOrig));
+        if (pctFound && Number(getProp(pctFound, 'valor', 'valor')) > 0) {
+          valorAdultoOrig = Number(getProp(pctFound, 'valor', 'valor'));
+        }
+      }
+
+      if (valorTotalOrig > 0 && valorAdultoOrig > 0) {
+        const valorAdultos = ad * valorAdultoOrig;
+        const sobraCriancas = Math.max(0, valorTotalOrig - valorAdultos);
+        const valorMeiaUnitario = valorAdultoOrig * 0.5;
+
+        if (valorMeiaUnitario > 0) {
+          const qtdMeiaCalculada = Math.min(totalCr, Math.round(sobraCriancas / valorMeiaUnitario));
+          const qtdGratisCalculada = Math.max(0, totalCr - qtdMeiaCalculada);
+          return { meia: qtdMeiaCalculada, gratis: qtdGratisCalculada };
+        }
+      }
+
+      return { meia: totalCr, gratis: 0 };
+    },
+    [pacotes]
+  );
+
   // Inicializar dados quando o modal abre
   useEffect(() => {
     if (aberto && reserva) {
@@ -132,12 +218,14 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       const saidaInicial = reserva.datasaida || (reserva as any).dataSaida || '';
       setNovaDataSaida(saidaInicial ? String(saidaInicial).slice(0, 10) : '');
 
-      // Ocupantes originais
-      setAdultosOriginais(Number(reserva.adultos || 1));
-      setCriancasMeiaOriginais(Number(reserva.criancas || 0));
-      setCriancasGratisOriginais(0);
+      const ad = Math.max(1, Number(getProp(reserva, 'adultos', 'adultos') || 1));
+      setAdultosOriginais(ad);
 
-      // Reset transferência
+      const acompsEmbutidos = getProp(reserva, 'acompanhantes', 'acompanhantes') || [];
+      const { meia, gratis } = deduzirComposicaoCriancas(reserva, acompsEmbutidos);
+      setCriancasMeiaOriginais(meia);
+      setCriancasGratisOriginais(gratis);
+
       setHabilitarTransferencia(false);
       setHospedesTransferidos([]);
       setCandidatoSelecionadoId('');
@@ -151,43 +239,77 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       setErro(null);
       setCarregando(false);
     }
-  }, [aberto, reserva]);
+  }, [aberto, reserva, deduzirComposicaoCriancas]);
 
-  // Carregar dados de reservas, acompanhantes e hóspedes diretamente do Supabase em tempo real
+  // Carregar dados de reservas, acompanhantes e hóspedes via API e Supabase
   const carregarDadosCompletosLive = useCallback(async () => {
-    const supabase = obterClienteSupabase();
-    if (!supabase) return;
-
     setCarregandoDadosLive(true);
     try {
-      const [resRes, resHosp, resAcomp, resFnrhAcomp] = await Promise.all([
+      const supabase = obterClienteSupabase();
+      const [resRes, resHosp, resFnrh] = await Promise.all([
         reservaService.listar({ apenasAtivos: true }),
         hospedeService.listar({ apenasAtivos: true }),
-        supabase ? supabase.from('acompanhante').select('*') : Promise.resolve({ data: [] }),
-        supabase ? supabase.from('cadastro_fnrh_acompanhante').select('*') : Promise.resolve({ data: [] }),
+        FnrhService.listarCadastrosFnrh().catch(() => ({ sucesso: false, dados: [] })),
       ]);
 
       if (resRes.dados) setReservasLive(resRes.dados);
       if (resHosp.dados) setHospedesLive(resHosp.dados);
 
       const mapAcomp = new Map<string, any>();
-      ((resAcomp as any).data || []).forEach((item: any) => {
-        const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
-        mapAcomp.set(chave, item);
-      });
-      ((resFnrhAcomp as any).data || []).forEach((item: any) => {
-        const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
-        if (!mapAcomp.has(chave)) {
-          mapAcomp.set(chave, item);
+
+      // 1. Extrai acompanhantes vindos das fichas FNRH via API .NET
+      if (resFnrh && resFnrh.dados && Array.isArray(resFnrh.dados)) {
+        resFnrh.dados.forEach((cad: any) => {
+          const cId = getProp(cad, 'cadastroid', 'cadastroId');
+          const rId = getProp(cad, 'reservaid', 'reservaId');
+          const lista = getProp(cad, 'acompanhantes', 'acompanhantes') || [];
+          lista.forEach((a: any) => {
+            const chave = `${(a.nomecompleto || '').trim().toLowerCase()}_${rId || cId}`;
+            mapAcomp.set(chave, { ...a, reservaid: rId, cadastroid: cId });
+          });
+        });
+      }
+
+      // 2. Complementa com Supabase caso configurado
+      if (supabase) {
+        const [resAcomp, resFnrhAcomp] = await Promise.all([
+          supabase.from('acompanhante').select('*'),
+          supabase.from('cadastro_fnrh_acompanhante').select('*'),
+        ]);
+        ((resAcomp as any).data || []).forEach((item: any) => {
+          const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
+          if (!mapAcomp.has(chave)) mapAcomp.set(chave, item);
+        });
+        ((resFnrhAcomp as any).data || []).forEach((item: any) => {
+          const chave = `${(item.nomecompleto || '').trim().toLowerCase()}_${item.reservaid || item.cadastroid}`;
+          if (!mapAcomp.has(chave)) mapAcomp.set(chave, item);
+        });
+      }
+
+      const listaConsolidada = Array.from(mapAcomp.values());
+      setAcompanhantesDb(listaConsolidada);
+
+      // Revalida a composição exata das crianças da reserva atual caso novos acompanhantes tenham sido carregados
+      if (reserva) {
+        const resId = Number(getProp(reserva, 'reservaid', 'reservaId'));
+        const cadId = Number(getProp(reserva, 'cadastroid', 'cadastroId') || 0);
+        const acompsDaReserva = listaConsolidada.filter(
+          (a) =>
+            (a.reservaid && Number(a.reservaid) === resId) ||
+            (cadId > 0 && a.cadastroid && Number(a.cadastroid) === cadId)
+        );
+        if (acompsDaReserva.length > 0) {
+          const { meia, gratis } = deduzirComposicaoCriancas(reserva, acompsDaReserva);
+          setCriancasMeiaOriginais(meia);
+          setCriancasGratisOriginais(gratis);
         }
-      });
-      setAcompanhantesDb(Array.from(mapAcomp.values()));
+      }
     } catch (e) {
       console.warn('[ModalTrocaQuartoEAdicional] Erro ao carregar dados live:', e);
     } finally {
       setCarregandoDadosLive(false);
     }
-  }, []);
+  }, [reserva, deduzirComposicaoCriancas]);
 
   useEffect(() => {
     if (aberto) {
@@ -199,8 +321,8 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
   const quartosDisponibilidade = useMemo(() => {
     if (!reserva) return [];
 
-    const dataEntrada = reserva.dataentrada;
-    const dataSaida = novaDataSaida || reserva.datasaida;
+    const dataEntrada = String(reserva.dataentrada || (reserva as any).dataEntrada || '').slice(0, 10);
+    const dataSaida = String(novaDataSaida || reserva.datasaida || (reserva as any).dataSaida || '').slice(0, 10);
     const listaReservas = reservasLive && reservasLive.length > 0 ? reservasLive : reservas;
 
     return quartos
@@ -214,7 +336,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       .map((q) => {
         const emManutencao = String(q.status || '').toUpperCase() === 'MANUTENCAO';
 
-        // Procura colisão de datas com OUTRAS reservas ativas (status diferente de 'CANCELADA' e 'CREDITO')
         const reservaConflitante = listaReservas.find((r) => {
           if (Number(r.quartoid) !== Number(q.quartoid)) return false;
           if (String(r.reservaid) === String(reserva.reservaid)) return false;
@@ -222,11 +343,10 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
           const st = String(r.statusreserva || r.status || '').toUpperCase();
           if (st === 'CANCELADA' || st === 'CREDITO' || !st) return false;
 
-          const rEntrada = r.dataentrada;
-          const rSaida = r.datasaida;
+          const rEntrada = String(r.dataentrada || r.dataEntrada || '').slice(0, 10);
+          const rSaida = String(r.datasaida || r.dataSaida || '').slice(0, 10);
           if (!rEntrada || !rSaida) return false;
 
-          // Verifica se há sobreposição no período selecionado
           return verificarSobreposicaoDatas(dataEntrada, dataSaida, rEntrada, rSaida);
         });
 
@@ -249,12 +369,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       });
   }, [quartos, reserva, novaDataSaida, reservasLive, reservas]);
 
-  // Lista com apenas os quartos disponíveis para seleção
-  const quartosDisponiveis = useMemo(() => {
-    return quartosDisponibilidade.filter((q) => q.disponivelNoPeriodo);
-  }, [quartosDisponibilidade]);
-
-  // Objetos do quarto atual e novo quarto
   const quartoAtualObj = useMemo(() => {
     if (!reserva) return undefined;
     return quartos.find((q) => Number(q.quartoid) === Number(reserva.quartoid ?? (reserva as any).quartoId));
@@ -265,21 +379,29 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     return quartos.find((q) => Number(q.quartoid) === Number(novoQuartoId));
   }, [quartos, novoQuartoId, quartoAtualObj]);
 
-  // Cálculo da quantidade de dias/noites
-  const qtdDias = useMemo(() => {
-    if (!reserva?.dataentrada || !novaDataSaida) return 1;
-    if (reserva.dataentrada === novaDataSaida) return 1;
+  const dataEntradaIso = useMemo(() => {
+    const raw = reserva?.dataentrada || (reserva as any)?.dataEntrada || '';
+    return raw ? String(raw).slice(0, 10) : '';
+  }, [reserva]);
 
-    const [anoE, mesE, diaE] = reserva.dataentrada.split('-').map(Number);
-    const [anoS, mesS, diaS] = novaDataSaida.split('-').map(Number);
+  const dataSaidaIso = useMemo(() => {
+    const raw = novaDataSaida || reserva?.datasaida || (reserva as any)?.dataSaida || '';
+    return raw ? String(raw).slice(0, 10) : '';
+  }, [novaDataSaida, reserva]);
+
+  const qtdDias = useMemo(() => {
+    if (!dataEntradaIso || !dataSaidaIso) return 1;
+    if (dataEntradaIso === dataSaidaIso) return 1;
+
+    const [anoE, mesE, diaE] = dataEntradaIso.split('-').map(Number);
+    const [anoS, mesS, diaS] = dataSaidaIso.split('-').map(Number);
     const dE = new Date(anoE, mesE - 1, diaE);
     const dS = new Date(anoS, mesS - 1, diaS);
     const diffTime = dS.getTime() - dE.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     return Math.max(1, diffDays + 1);
-  }, [reserva?.dataentrada, novaDataSaida]);
+  }, [dataEntradaIso, dataSaidaIso]);
 
-  // Identificação do Pacote e Valor Base por Pessoa
   const infoPacote = useMemo(() => {
     let nomePadrao = 'Final de Semana';
     let valorPadrao = 550;
@@ -301,35 +423,65 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       valorPadrao = 950 + (qtdDias - 4) * 200;
     }
 
-    const pacoteDb = pacotes.find((p) => {
-      if (p.ativo === false) return false;
-      if (qtdDias === 1 && (p.tipopacote === 'DAY_USE' || (p.nome || '').toLowerCase().includes('day use'))) return true;
-      if (qtdDias === 2 && (Number(p.quantidadedias) === 2 || ((p.nome || '').toLowerCase().includes('final de semana') && !(p.nome || '').toLowerCase().includes('estendido')))) return true;
-      if (qtdDias === 3 && (Number(p.quantidadedias) === 3 || (p.nome || '').toLowerCase().includes('estendido'))) return true;
-      if (qtdDias === 4 && (Number(p.quantidadedias) === 4 || (p.nome || '').toLowerCase().includes('feriado'))) return true;
-      if (Number(p.quantidadedias) === qtdDias) return true;
-      return false;
-    });
+    const pacotesAtivos = (pacotes || []).filter((p: any) => getProp(p, 'ativo', 'ativo') !== false);
+    let pacoteDb: any = null;
+
+    if (dataEntradaIso && dataSaidaIso) {
+      pacoteDb = pacotesAtivos.find((p: any) => {
+        const dtIni = limparDataPacote(getProp(p, 'datainicio', 'dataInicio'));
+        const dtFim = limparDataPacote(getProp(p, 'datafim', 'dataFim'));
+        const pDias = Number(getProp(p, 'quantidadedias', 'quantidadeDias') || 0);
+
+        if (dtIni && dtFim) {
+          const bateDataExata = dataEntradaIso === dtIni && dataSaidaIso === dtFim;
+          const estaNoPeriodo = dataEntradaIso >= dtIni && dataSaidaIso <= dtFim;
+          const bateDias = pDias === 0 || pDias === qtdDias;
+          return (bateDataExata || estaNoPeriodo) && bateDias;
+        }
+        return false;
+      }) || null;
+    }
+
+    if (!pacoteDb) {
+      pacoteDb = pacotesAtivos.find((p: any) => {
+        const tipo = String(getProp(p, 'tipopacote', 'tipoPacote') || '').toUpperCase().trim();
+        const dtIni = limparDataPacote(getProp(p, 'datainicio', 'dataInicio'));
+        const dtFim = limparDataPacote(getProp(p, 'datafim', 'dataFim'));
+        const pDias = Number(getProp(p, 'quantidadedias', 'quantidadeDias') || 0);
+        const nomeLower = String(getProp(p, 'nome', 'nome') || '').toLowerCase();
+
+        if (dtIni || dtFim) return false;
+        if (tipo === 'FERIADO' && pDias !== 4) return false;
+
+        if (qtdDias === 1 && (tipo === 'DAY_USE' || pDias === 1 || nomeLower.includes('day use'))) return true;
+        if (qtdDias === 2 && (pDias === 2 || (nomeLower.includes('final de semana') && !nomeLower.includes('estendido')))) return true;
+        if (qtdDias === 3 && (pDias === 3 || nomeLower.includes('estendido'))) return true;
+        if (qtdDias === 4 && (pDias === 4 || nomeLower.includes('feriado prolongado'))) return true;
+        if (pDias === qtdDias) return true;
+        return false;
+      }) || null;
+    }
+
+    const pId = getProp(pacoteDb, 'pacoteid', 'pacoteId');
+    const pNome = getProp(pacoteDb, 'nome', 'nome');
+    const pValor = getProp(pacoteDb, 'valor', 'valor');
 
     return {
-      nome: pacoteDb?.nome || nomePadrao,
-      valorPessoa: pacoteDb?.valor ? Number(pacoteDb.valor) : valorPadrao,
-      pacoteId: pacoteDb?.pacoteid,
+      nome: pNome || nomePadrao,
+      valorPessoa: pValor && Number(pValor) > 0 ? Number(pValor) : valorPadrao,
+      pacoteId: pId,
     };
-  }, [qtdDias, pacotes]);
+  }, [qtdDias, pacotes, dataEntradaIso, dataSaidaIso]);
 
-  // Lista consolidada de candidatos a transferência (Titulares + Acompanhantes)
   const candidatosTransferencia = useMemo(() => {
     if (!reserva) return [];
 
-    // Mesclar reservas locais do contexto com as reservas live do Supabase para garantir 100% de cobertura
     const mapaRes = new Map<number, any>();
     reservas.forEach((r) => mapaRes.set(Number(r.reservaid), r));
     reservasLive.forEach((r) => mapaRes.set(Number(r.reservaid), { ...mapaRes.get(Number(r.reservaid)), ...r }));
 
     const todasReservas = Array.from(mapaRes.values());
 
-    // Filtrar reservas elegíveis: status HOSPEDADO, RESERVADO ou CONCLUIDA (excluindo a própria reserva atual)
     const elegiveis = todasReservas.filter((r) => {
       if (String(r.reservaid) === String(reserva.reservaid)) return false;
       const st = String(r.statusreserva || r.status || '').toUpperCase();
@@ -349,15 +501,13 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     elegiveis.forEach((r) => {
       const quarto = quartoMap.get(Number(r.quartoid));
       const hospede = hospedeMap.get(Number(r.hospedeid));
-      
-      // Nome do quarto priorizando o identificador de bloco (ex: D6)
+
       const quartoNum =
         quarto?.codigoidentificador ||
         (r.quartonumero && r.quartonumero !== 'N/A' && isNaN(Number(r.quartonumero)) ? r.quartonumero : null) ||
         quarto?.numero ||
         'S/N';
 
-      // 1. Titular da Reserva
       const nomeTitular = (hospede?.nomecompleto || r.hospedenome || 'Hóspede').trim();
       const idadeTitular = calcularIdade(hospede?.datanascimento);
       const catTitular = classificarFaixaEtaria(idadeTitular);
@@ -380,7 +530,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         });
       }
 
-      // 2. Acompanhantes vinculados a esta reserva (por reservaid ou cadastroid)
       const acompsDestaReserva = acompanhantesDb.filter(
         (a) =>
           (a.reservaid && Number(a.reservaid) === Number(r.reservaid)) ||
@@ -418,7 +567,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     return candidatos;
   }, [reservas, reservasLive, hospedes, hospedesLive, acompanhantesDb, quartos, reserva]);
 
-  // Candidatos agrupados por Quarto/Reserva para exibição organizada no Dropdown
   const gruposCandidatos = useMemo(() => {
     const grupos: Record<string, HospedeCandidato[]> = {};
     candidatosTransferencia.forEach((c) => {
@@ -429,7 +577,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     return grupos;
   }, [candidatosTransferencia]);
 
-  // Atualizar valores adicionais dos hóspedes transferidos caso o pacote mude
   useEffect(() => {
     setHospedesTransferidos((prev) =>
       prev.map((h) => {
@@ -445,7 +592,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     );
   }, [infoPacote.valorPessoa]);
 
-  // Adicionar candidato selecionado da lista à transferência
   const handleAdicionarCandidato = (candidatoId: string) => {
     if (!candidatoId) return;
     const cand = candidatosTransferencia.find((c) => c.id === candidatoId);
@@ -487,19 +633,16 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     setErro(null);
   };
 
-  // Remover hóspede transferido
   const handleRemoverTransferido = (id: string) => {
     setHospedesTransferidos((prev) => prev.filter((h) => h.id !== id));
   };
 
-  // Alterar valor adicional do hóspede transferido
   const handleAlterarValorAdicional = (id: string, novoValor: number) => {
     setHospedesTransferidos((prev) =>
       prev.map((h) => (h.id === id ? { ...h, valorAdicional: novoValor, editadoManualmente: true } : h))
     );
   };
 
-  // Restaurar cálculo automático para um hóspede transferido
   const handleRestaurarCalculoAutomatico = (id: string) => {
     setHospedesTransferidos((prev) =>
       prev.map((h) => {
@@ -516,7 +659,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     );
   };
 
-  // Adicionar hóspede manualmente
   const handleConfirmarAdicaoManual = () => {
     if (!manualNome.trim()) {
       setErro('Informe o nome do hóspede para adicionar manualmente.');
@@ -546,7 +688,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     setErro(null);
   };
 
-  // CÁLCULO FINANCEIRO EXATO
   const {
     subtotalOriginais,
     totalAdultosOriginais,
@@ -574,18 +715,15 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
 
     const valorBase = infoPacote.valorPessoa;
 
-    // 1. Ocupantes Originais: tarifa completa do novo pacote (ex: 2 adultos x 750 + 1 meia x 375 = 1.875)
     const calcAdultos = adultosOriginais * valorBase;
     const calcMeia = criancasMeiaOriginais * (valorBase * 0.5);
     const calcGratis = 0;
     const calcSubtotalOriginais = calcAdultos + calcMeia + calcGratis;
 
-    // 2. Hóspedes Transferidos (Upgrade de pacote): soma estrita das diferenças de cada um
     const calcAdicionalTransferidos = habilitarTransferencia
       ? hospedesTransferidos.reduce((acc, h) => acc + Number(h.valorAdicional || 0), 0)
       : 0;
 
-    // 3. Novo Total da Estadia = Subtotal Ocupantes Originais + Adicional Hóspedes Transferidos
     const totalCalculado = calcSubtotalOriginais + calcAdicionalTransferidos;
 
     const valorPagoOriginal = Number(reserva.valorpago || 0);
@@ -614,7 +752,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     hospedesTransferidos,
   ]);
 
-  // Handler para submeter a alteração
   const handleConfirmar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reserva) return;
@@ -625,7 +762,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
     try {
       const quartoMudou = Number(novoQuartoId) !== Number(reserva.quartoid);
 
-      // Validação de conflito de datas e manutenção no período selecionado
       if (quartoMudou && novoQuartoObj) {
         const quartoAlvo = quartosDisponibilidade.find((q) => Number(q.quartoid) === Number(novoQuartoId));
         if (quartoAlvo && !quartoAlvo.disponivelNoPeriodo) {
@@ -635,7 +771,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         }
       }
 
-      // Total de pessoas físicas acomodadas no quarto (para controle de capacidade)
       const transferidosAdultos = habilitarTransferencia
         ? hospedesTransferidos.filter((h) => h.categoria === 'ADULTO').length
         : 0;
@@ -664,7 +799,7 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         );
       }
       detalhesAjuste.push(
-        `Ocupantes originais: ${adultosOriginais} adulto(s), ${criancasMeiaOriginais} meia (Subtotal: ${formatarMoeda(
+        `Ocupantes originais: ${adultosOriginais} adulto(s), ${criancasMeiaOriginais} meia${criancasGratisOriginais > 0 ? `, ${criancasGratisOriginais} grátis` : ''} (Subtotal: ${formatarMoeda(
           subtotalOriginais
         )})`
       );
@@ -685,32 +820,26 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
       )}.`;
       const observacoesAtualizadas = reserva.observacoes ? `${reserva.observacoes} | ${notaAjuste}` : notaAjuste;
 
-      // 1. Atualizar a reserva via API REST C# .NET 8
-      const getVal = (obj: any, min: string, camel: string): any => {
-        if (!obj) return undefined;
-        return obj[min] !== undefined ? obj[min] : obj[camel];
-      };
-
-      const resId = Number(getVal(reserva, 'reservaid', 'reservaId'));
-      const codigoReserva = String(getVal(reserva, 'codigo', 'codigo') || '');
+      const resId = Number(getProp(reserva, 'reservaid', 'reservaId'));
+      const codigoReserva = String(getProp(reserva, 'codigo', 'codigo') || '');
       const quartoDestinoId = quartoMudou && novoQuartoObj
         ? Number(novoQuartoObj.quartoid)
-        : Number(getVal(reserva, 'quartoid', 'quartoId'));
-      const hospedeFinalId = Number(getVal(reserva, 'hospedeid', 'hospedeId'));
-      const cadastroFinalId = getVal(reserva, 'cadastroid', 'cadastroId')
-        ? Number(getVal(reserva, 'cadastroid', 'cadastroId'))
+        : Number(getProp(reserva, 'quartoid', 'quartoId'));
+      const hospedeFinalId = Number(getProp(reserva, 'hospedeid', 'hospedeId'));
+      const cadastroFinalId = getProp(reserva, 'cadastroid', 'cadastroId')
+        ? Number(getProp(reserva, 'cadastroid', 'cadastroId'))
         : null;
       const pacoteFinalId = infoPacote.pacoteId
         ? Number(infoPacote.pacoteId)
-        : (getVal(reserva, 'pacoteid', 'pacoteId') ? Number(getVal(reserva, 'pacoteid', 'pacoteId')) : null);
+        : (getProp(reserva, 'pacoteid', 'pacoteId') ? Number(getProp(reserva, 'pacoteid', 'pacoteId')) : null);
 
-      const dataEntradaRaw = String(getVal(reserva, 'dataentrada', 'dataEntrada') || '').slice(0, 10);
-      const dataSaidaRaw = String(novaDataSaida || getVal(reserva, 'datasaida', 'dataSaida') || '').slice(0, 10);
-      const dataReservaRaw = String(getVal(reserva, 'datareserva', 'dataReserva') || dataEntradaRaw).slice(0, 10);
+      const dataEntradaRaw = String(getProp(reserva, 'dataentrada', 'dataEntrada') || '').slice(0, 10);
+      const dataSaidaRaw = String(novaDataSaida || getProp(reserva, 'datasaida', 'dataSaida') || '').slice(0, 10);
+      const dataReservaRaw = String(getProp(reserva, 'datareserva', 'dataReserva') || dataEntradaRaw).slice(0, 10);
 
-      const statusReservaFinal = getVal(reserva, 'statusreserva', 'statusReserva') || 'RESERVADO';
-      const tipoAtendimentoFinal = getVal(reserva, 'tipoatendimento', 'tipoAtendimento') || 'HOSPEDAGEM';
-      const valorDiariaCalculado = qtdDias > 0 ? Number((novoTotal / qtdDias).toFixed(2)) : Number(getVal(reserva, 'valordiaria', 'valorDiaria') || 0);
+      const statusReservaFinal = getProp(reserva, 'statusreserva', 'statusReserva') || 'RESERVADO';
+      const tipoAtendimentoFinal = getProp(reserva, 'tipoatendimento', 'tipoAtendimento') || 'HOSPEDAGEM';
+      const valorDiariaCalculado = qtdDias > 0 ? Number((novoTotal / qtdDias).toFixed(2)) : Number(getProp(reserva, 'valordiaria', 'valorDiaria') || 0);
 
       const formatarHorarioTimeSpan = (h?: string | null): string | null => {
         if (!h) return null;
@@ -742,15 +871,15 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         valordiaria: valorDiariaCalculado,
         valorPago: valorPagoOriginal,
         valorpago: valorPagoOriginal,
-        formaPagamento: getVal(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
-        formapagamento: getVal(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
-        observacoesCheckout: (getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '').slice(0, 1000),
-        horarioPrevistoChegada: formatarHorarioTimeSpan(getVal(reserva, 'horarioprevistochegada', 'horarioPrevistoChegada')),
-        horarioPrevistoSaida: formatarHorarioTimeSpan(getVal(reserva, 'horarioprevistosaida', 'horarioPrevistoSaida')),
-        checkinRealizadoEm: getVal(reserva, 'checkinrealizadoem', 'checkinRealizadoEm') || null,
-        checkinUsuarioId: getVal(reserva, 'checkinusuarioid', 'checkinUsuarioId') || null,
-        checkoutRealizadoEm: getVal(reserva, 'checkoutrealizadoem', 'checkoutRealizadoEm') || null,
-        checkoutUsuarioId: getVal(reserva, 'checkoutusuarioid', 'checkoutUsuarioId') || null,
+        formaPagamento: getProp(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
+        formapagamento: getProp(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
+        observacoesCheckout: (getProp(reserva, 'observacoes_checkout', 'observacoesCheckout') || '').slice(0, 1000),
+        horarioPrevistoChegada: formatarHorarioTimeSpan(getProp(reserva, 'horarioprevistochegada', 'horarioPrevistoChegada')),
+        horarioPrevistoSaida: formatarHorarioTimeSpan(getProp(reserva, 'horarioprevistosaida', 'horarioPrevistoSaida')),
+        checkinRealizadoEm: getProp(reserva, 'checkinrealizadoem', 'checkinRealizadoEm') || null,
+        checkinUsuarioId: getProp(reserva, 'checkinusuarioid', 'checkinUsuarioId') || null,
+        checkoutRealizadoEm: getProp(reserva, 'checkoutrealizadoem', 'checkoutRealizadoEm') || null,
+        checkoutUsuarioId: getProp(reserva, 'checkoutusuarioid', 'checkoutUsuarioId') || null,
         ativo: true,
         datasaida: dataSaidaRaw,
         dataSaida: dataSaidaRaw ? `${dataSaidaRaw}T12:00:00Z` : '',
@@ -777,7 +906,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         throw new Error(resUpdate.erro || 'Falha ao gravar na API.');
       }
 
-      // 2. Se o quarto físico mudou, atualizar o status dos quartos envolvidos (apenas se for estadia em andamento hoje)
       if (quartoMudou && novoQuartoObj) {
         const estaHospedado = reserva.statusreserva === 'HOSPEDADO';
         const hojeStr = new Date().toISOString().slice(0, 10);
@@ -793,7 +921,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
         }
       }
 
-      // 3. Recarregar dados para sincronizar contexto
       await recarregarDados();
 
       if (onSucesso) {
@@ -848,7 +975,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
 
           {/* Grid de Quarto e Período */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* 1. Seleção do Quarto */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
                 Quarto Alocado
@@ -881,7 +1007,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
               </span>
             </div>
 
-            {/* 2. Nova Data de Saída */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">
                 Nova Data de Saída (Check-out)
@@ -890,14 +1015,14 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                 <input
                   type="date"
                   value={novaDataSaida}
-                  min={reserva.dataentrada}
+                  min={dataEntradaIso}
                   onChange={(e) => setNovaDataSaida(e.target.value)}
                   required
                   className="w-full px-3 py-2 rounded-xl border border-[#c1c9bf] bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#053d1e] focus:ring-1 focus:ring-[#053d1e]"
                 />
               </div>
               <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span>Entrada: <strong>{formatarData(reserva.dataentrada)}</strong></span>
+                <span>Entrada: <strong>{formatarData(dataEntradaIso)}</strong></span>
                 <span className="font-bold text-[#053d1e] bg-emerald-50 px-2 py-0.5 rounded-md">
                   {qtdDias} {qtdDias === 1 ? 'dia' : 'dias'} ({infoPacote.nome})
                 </span>
@@ -1060,7 +1185,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
 
             {habilitarTransferencia && (
               <div className="space-y-3.5 pt-2 border-t border-blue-200/60 animate-in fade-in">
-                {/* 1. Seletor de Hóspedes Elegíveis */}
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="block text-[11px] font-bold text-blue-950">
@@ -1111,7 +1235,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                   </span>
                 </div>
 
-                {/* Bloco de Adição Manual (se ativado) */}
                 {mostrarAdicaoManual && (
                   <div className="p-3 bg-white rounded-xl border border-blue-200 space-y-2.5 animate-in fade-in">
                     <span className="text-xs font-bold text-blue-950 block">
@@ -1201,7 +1324,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                   </div>
                 )}
 
-                {/* 2. Lista de Hóspedes Transferidos Adicionados */}
                 {hospedesTransferidos.length > 0 ? (
                   <div className="space-y-2">
                     <span className="text-[11px] font-bold text-blue-950 block">
@@ -1303,13 +1425,13 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
               </span>
             </div>
 
-            {/* Subtotais discriminados quando houver transferência */}
             {habilitarTransferencia && hospedesTransferidos.length > 0 && (
               <div className="p-2.5 rounded-xl bg-white border border-emerald-200/80 text-xs space-y-1">
                 <div className="flex items-center justify-between text-slate-700">
                   <span>
                     Subtotal Ocupantes Originais ({adultosOriginais} adulto{adultosOriginais > 1 ? 's' : ''}
-                    {criancasMeiaOriginais > 0 ? ` + ${criancasMeiaOriginais} meia` : ''}):
+                    {criancasMeiaOriginais > 0 ? ` + ${criancasMeiaOriginais} meia` : ''}
+                    {criancasGratisOriginais > 0 ? ` + ${criancasGratisOriginais} grátis` : ''}):
                   </span>
                   <span className="font-bold text-slate-800">{formatarMoeda(subtotalOriginais)}</span>
                 </div>
@@ -1323,9 +1445,7 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
               </div>
             )}
 
-            {/* Grid dos 4 Valores Principais */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-              {/* 1. Total Original */}
               <div className="bg-white border border-slate-200 rounded-xl p-3">
                 <span className="text-[11px] text-slate-500 block">Total Original</span>
                 <span className="text-xs sm:text-sm font-bold text-slate-700">
@@ -1333,7 +1453,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                 </span>
               </div>
 
-              {/* 2. Valor já Pago / Sinal */}
               <div className="bg-white border border-slate-200 rounded-xl p-3">
                 <span className="text-[11px] text-slate-500 block">Já Pago (Sinal)</span>
                 <span className="text-xs sm:text-sm font-bold text-emerald-700">
@@ -1341,7 +1460,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                 </span>
               </div>
 
-              {/* 3. Novo Total da Estadia */}
               <div className="bg-white border-2 border-[#053d1e] rounded-xl p-3 shadow-2xs">
                 <span className="text-[11px] text-[#053d1e] font-bold block">Novo Total</span>
                 <span className="text-xs sm:text-sm font-extrabold text-[#053d1e]">
@@ -1349,7 +1467,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
                 </span>
               </div>
 
-              {/* 4. Saldo Devedor Restante */}
               <div className={`rounded-xl p-3 border ${
                 saldoDevedorRestante > 0 ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-300'
               }`}>
@@ -1364,7 +1481,6 @@ export const ModalTrocaQuartoEAdicional: React.FC<ModalTrocaQuartoEAdicionalProp
               </div>
             </div>
 
-            {/* Variação de Tarifa da Reserva */}
             {diferencaTotal !== 0 && (
               <div className="p-2.5 rounded-xl bg-white border border-slate-200 text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-slate-600">
                 <span>Variação de tarifa da reserva:</span>
