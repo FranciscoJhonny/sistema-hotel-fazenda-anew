@@ -3,25 +3,22 @@ import {
   UserCheck,
   Search,
   CheckCircle2,
-  CreditCard,
-  Bed,
   Clock,
   KeyRound,
   Printer,
-  Calendar,
-  AlertCircle,
-  FileCheck,
+  FileText,
   LoaderCircle,
   AlertTriangle,
 } from 'lucide-react';
 import { useHotel } from '../contextos/ContextoHotel';
-import { Reserva } from '../tipos';
+import { obterClienteSupabase } from '../lib/supabaseCliente';
+import { FnrhService } from '../servicos/api/FnrhService';
 import {
   formatarMoeda,
   formatarData,
-  formatarTelefone,
   obterDataHoraAtualLocal,
 } from '../utilitarios/formatadores';
+import { exportarTermoPasseiosPdf } from '../utilitarios/geradorTermoPasseiosPdf';
 
 // Helper universal para ler tanto camelCase quanto lowercase
 const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
@@ -34,7 +31,6 @@ const extrairDataIso = (valor: any): string => {
   return String(valor).slice(0, 10);
 };
 
-
 export const PaginaCheckin: React.FC = () => {
   const { reservas, quartos, hospedes, dataSistema, realizarCheckin, usuarioAtual } = useHotel();
 
@@ -44,6 +40,7 @@ export const PaginaCheckin: React.FC = () => {
   const [feedbackErro, setFeedbackErro] = useState<string | null>(null);
   const [comprovanteCheckin, setComprovanteCheckin] = useState<any | null>(null);
   const [carregandoCheckin, setCarregandoCheckin] = useState<boolean>(false);
+  const [gerandoTermo, setGerandoTermo] = useState<boolean>(false);
 
   // Estado para capturar e enviar o momento exato do Check-in
   const [checkinRealizadoEm, setCheckinRealizadoEm] = useState<string>(obterDataHoraAtualLocal());
@@ -109,6 +106,7 @@ export const PaginaCheckin: React.FC = () => {
         hospedeid: hospedeId,
         hospedeId: hospedeId,
         HospedeId: hospedeId,
+        hospedeObj,
         dataentrada: extrairDataIso(getVal(r, 'dataentrada', 'dataEntrada')),
         datasaida: extrairDataIso(getVal(r, 'datasaida', 'dataSaida')),
         statusreserva: getVal(r, 'statusreserva', 'statusReserva') || '',
@@ -150,6 +148,71 @@ export const PaginaCheckin: React.FC = () => {
     });
   }, [reservasAguardando, busca]);
 
+  // Gera e baixa o Termo de Ciência e Responsabilidade de Passeios com dados do titular preenchidos
+  const handleImprimirTermoResponsabilidade = async (reservaAlvo: any) => {
+    if (!reservaAlvo) return;
+    setGerandoTermo(true);
+    try {
+      const resId = Number(reservaAlvo.reservaid ?? reservaAlvo.reservaId);
+      const hospId = Number(reservaAlvo.hospedeid ?? reservaAlvo.hospedeId);
+      const cadId = Number(getVal(reservaAlvo, 'cadastroid', 'cadastroId') || 0);
+
+      const hospedeCompleto =
+        reservaAlvo.hospedeObj ||
+        hospedes?.find((h: any) => Number(getVal(h, 'hospedeid', 'hospedeId')) === hospId) ||
+        null;
+
+      // Busca acompanhantes vinculados para listar no termo
+      let listaAcompanhantes: any[] = getVal(reservaAlvo, 'acompanhantes', 'acompanhantes') || [];
+
+      if (listaAcompanhantes.length === 0) {
+        try {
+          const resFnrh = await FnrhService.listarCadastrosFnrh().catch(() => ({ sucesso: false, dados: [] }));
+          if (resFnrh?.dados && Array.isArray(resFnrh.dados)) {
+            const fichaMatch = resFnrh.dados.find(
+              (c: any) =>
+                Number(getVal(c, 'reservaid', 'reservaId')) === resId ||
+                (cadId > 0 && Number(getVal(c, 'cadastroid', 'cadastroId')) === cadId)
+            );
+            if (fichaMatch) {
+              listaAcompanhantes = getVal(fichaMatch, 'acompanhantes', 'acompanhantes') || [];
+            }
+          }
+
+          if (listaAcompanhantes.length === 0) {
+            const supabase = obterClienteSupabase();
+            if (supabase) {
+              const { data } = await supabase
+                .from('acompanhante')
+                .select('*')
+                .eq('reservaid', resId)
+                .eq('ativo', true);
+              if (data && data.length > 0) {
+                listaAcompanhantes = data;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[PaginaCheckin] Aviso ao carregar acompanhantes para o termo:', err);
+        }
+      }
+
+      await exportarTermoPasseiosPdf({
+        reserva: {
+          ...reservaAlvo,
+          checkinrealizadoem: checkinRealizadoEm,
+        },
+        hospede: hospedeCompleto,
+        acompanhantes: listaAcompanhantes,
+      });
+    } catch (e) {
+      console.error('[PaginaCheckin] Erro ao gerar Termo de Responsabilidade:', e);
+      setFeedbackErro('Não foi possível gerar o PDF do Termo de Responsabilidade.');
+    } finally {
+      setGerandoTermo(false);
+    }
+  };
+
   const handleEfetivarCheckin = async (reservaItem: any) => {
     setFeedbackErro(null);
 
@@ -169,15 +232,14 @@ export const PaginaCheckin: React.FC = () => {
     try {
       const idParaCheckin = Number(reservaItem.reservaid ?? reservaItem.reservaId);
 
-      // Envia exatamente a data/hora local preenchida no input (ex: "2026-11-01T20:26:00")
       const dataHoraLocal = checkinRealizadoEm
         ? (checkinRealizadoEm.length === 16 ? `${checkinRealizadoEm}:00` : checkinRealizadoEm)
         : obterDataHoraAtualLocal() + ':00';
 
       const dadosParaEnvio = {
         ...reservaItem,
-        quartoid: qId,        
-        hospedeid: hId,        
+        quartoid: qId,
+        hospedeid: hId,
         checkinrealizadoem: dataHoraLocal,
         checkinRealizadoEm: dataHoraLocal,
         checkinUsuarioId: usuarioAtual?.usuarioid ? Number(usuarioAtual.usuarioid) : null,
@@ -219,7 +281,7 @@ export const PaginaCheckin: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-[#717971] mt-1">
-            Recepção de hóspedes, conferência de documentos, recebimento de saldo e entrega de chaves.
+            Recepção de hóspedes, conferência de documentos, impressão do termo de responsabilidade e entrega de chaves.
           </p>
         </div>
 
@@ -281,10 +343,11 @@ export const PaginaCheckin: React.FC = () => {
                       setFeedbackErro(null);
                       setReservaSelecionada(res);
                     }}
-                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${selecionado
+                    className={`bg-white border rounded-2xl p-4 transition-all cursor-pointer ${
+                      selecionado
                         ? 'border-2 border-[#053d1e] bg-[#b8f0c2]/10 ring-2 ring-[#053d1e]/20 shadow-md'
                         : 'border-[#c1c9bf] hover:border-[#053d1e] hover:shadow-xs'
-                      }`}
+                    }`}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#e1e3e4]">
                       <div className="flex items-center gap-2">
@@ -322,8 +385,9 @@ export const PaginaCheckin: React.FC = () => {
                       <div>
                         <span className="text-[#717971] text-[10px] block">Saldo a Cobrar:</span>
                         <span
-                          className={`font-bold ${res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
-                            }`}
+                          className={`font-bold ${
+                            res.saldo > 0 ? 'text-[#ba1a1a]' : 'text-[#137333]'
+                          }`}
                         >
                           {formatarMoeda(res.saldo)}
                         </span>
@@ -364,7 +428,7 @@ export const PaginaCheckin: React.FC = () => {
                   value={checkinRealizadoEm}
                   onChange={(e) => setCheckinRealizadoEm(e.target.value)}
                   className="w-full px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-lg outline-none focus:border-[#053d1e] font-bold text-[#053d1e]"
-                />               
+                />
               </div>
 
               {/* Status do Pagamento */}
@@ -385,14 +449,36 @@ export const PaginaCheckin: React.FC = () => {
                 </div>
               </div>
 
+              {/* Botões de Ação no Balcão */}
               <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  disabled={gerandoTermo}
+                  onClick={() => handleImprimirTermoResponsabilidade(reservaSelecionada)}
+                  className="w-full py-2.5 rounded-xl border border-[#053d1e] bg-emerald-50/80 hover:bg-emerald-100 text-[#053d1e] font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  title="Gera o Termo de Ciência das Regras e Responsabilidade de Passeios com Nome, RG e CPF já preenchidos"
+                >
+                  {gerandoTermo ? (
+                    <>
+                      <LoaderCircle className="w-4 h-4 animate-spin" />
+                      <span>Gerando Termo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4" />
+                      <span>Imprimir Termo de Responsabilidade</span>
+                    </>
+                  )}
+                </button>
+
                 <button
                   onClick={() => handleEfetivarCheckin(reservaSelecionada)}
                   disabled={carregandoCheckin}
-                  className={`w-full py-3 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${carregandoCheckin
+                  className={`w-full py-3 rounded-xl font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 ${
+                    carregandoCheckin
                       ? 'bg-[#053d1e]/60 cursor-not-allowed text-white/80'
                       : 'bg-[#053d1e] hover:bg-[#225533] text-white'
-                    }`}
+                  }`}
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   {carregandoCheckin ? 'Processando...' : 'Efetivar Check-in & Entregar Chave'}
@@ -404,7 +490,7 @@ export const PaginaCheckin: React.FC = () => {
               <KeyRound className="w-8 h-8 mx-auto text-[#c1c9bf] mb-2" />
               <p className="font-semibold text-sm text-[#191c1d]">Selecione uma reserva ao lado</p>
               <p className="mt-1">
-                Clique em um hóspede da lista para conferir os dados e liberar o acesso ao chalé.
+                Clique em um hóspede da lista para conferir os dados, imprimir o termo de responsabilidade e liberar o acesso ao chalé.
               </p>
             </div>
           )}
@@ -454,20 +540,36 @@ export const PaginaCheckin: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-col gap-2 pt-2">
               <button
-                onClick={() => window.print()}
-                className="flex-1 py-2 rounded-lg border border-[#c1c9bf] hover:bg-[#f3f4f5] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+                type="button"
+                disabled={gerandoTermo}
+                onClick={() => handleImprimirTermoResponsabilidade(comprovanteCheckin)}
+                className="w-full py-2.5 rounded-lg border border-[#053d1e] bg-emerald-50 hover:bg-emerald-100 text-[#053d1e] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                <Printer className="w-3.5 h-3.5" />
-                Imprimir Ficha
+                {gerandoTermo ? (
+                  <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5" />
+                )}
+                <span>Imprimir Termo de Responsabilidade (PDF)</span>
               </button>
-              <button
-                onClick={() => setComprovanteCheckin(null)}
-                className="flex-1 py-2 bg-[#053d1e] text-white rounded-lg text-xs font-bold hover:bg-[#225533] cursor-pointer"
-              >
-                Concluir
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="flex-1 py-2 rounded-lg border border-[#c1c9bf] hover:bg-[#f3f4f5] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Imprimir Ficha
+                </button>
+                <button
+                  onClick={() => setComprovanteCheckin(null)}
+                  className="flex-1 py-2 bg-[#053d1e] text-white rounded-lg text-xs font-bold hover:bg-[#225533] cursor-pointer"
+                >
+                  Concluir
+                </button>
+              </div>
             </div>
           </div>
         </div>
