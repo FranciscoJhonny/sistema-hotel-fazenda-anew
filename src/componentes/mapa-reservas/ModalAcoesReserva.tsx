@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Coins,
   Copy,
+  CreditCard,
   LoaderCircle,
   LogIn,
   LogOut,
@@ -25,7 +26,13 @@ import { useHotel } from '../../contextos/ContextoHotel';
 import { obterClienteSupabase } from '../../lib/supabaseCliente';
 import { reservaService } from '../../servicos/api';
 import { Pacote, Reserva, StatusPagamento } from '../../tipos';
-import { calcularIdadeNumerica, formatarData, formatarMoeda } from '../../utilitarios/formatadores';
+import {
+  aplicarMascaraMoeda,
+  calcularIdadeNumerica,
+  desformatarMoeda,
+  formatarData,
+  formatarMoeda
+} from '../../utilitarios/formatadores';
 
 // Helper universal para compatibilidade camelCase (.NET) e lowercase
 const getVal = (obj: any, campoMin: string, campoCamel: string): any => {
@@ -93,6 +100,12 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
   const [confirmandoSuspencao, setConfirmandoSuspencao] = useState(false);
   const [motivoSuspencao, setMotivoSuspencao] = useState('');
 
+  // Estados para Lançamento de Pagamento / Abatimento de Saldo
+  const [registrandoPagamento, setRegistrandoPagamento] = useState(false);
+  const [valorNovoPagamento, setValorNovoPagamento] = useState<string>('');
+  const [formaNovoPagamento, setFormaNovoPagamento] = useState<string>('PIX');
+  const [obsNovoPagamento, setObsNovoPagamento] = useState<string>('');
+
   // Estados para Remarcação de Datas, Quarto e Hóspedes
   const [remarcandoDatas, setRemarcandoDatas] = useState(false);
   const [novaDataEntrada, setNovaDataEntrada] = useState('');
@@ -138,10 +151,9 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     return quartosFisicos.filter((quarto: any) => {
       const qId = Number(getVal(quarto, 'quartoid', 'quartoId'));
 
-      // Verifica se existe alguma outra reserva ativa ocupando este quarto no período
       const temConflito = (reservas || []).some((r: any) => {
         const rId = Number(getVal(r, 'reservaid', 'reservaId'));
-        if (rId === resAtualId) return false; // Ignora a própria reserva
+        if (rId === resAtualId) return false;
 
         const rStatus = String(getVal(r, 'statusreserva', 'statusReserva') || '').toUpperCase();
         if (rStatus === 'CANCELADA' || rStatus === 'CREDITO') return false;
@@ -153,7 +165,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         const rSaida = String(getVal(r, 'datasaida', 'dataSaida') || '').slice(0, 10);
         if (!rEntrada || !rSaida) return false;
 
-        // Regra de colisão de datas: rEntrada < novaSaida && rSaida > novaEntrada
         return rEntrada < novaDataSaida && rSaida > novaDataEntrada;
       });
 
@@ -161,7 +172,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     });
   }, [quartosFisicos, reservas, novaDataEntrada, novaDataSaida, reserva]);
 
-  // Ajusta o quarto selecionado caso ele fique indisponível após mudar as datas
   useEffect(() => {
     if (remarcandoDatas && novoQuartoId && quartosDisponiveis.length > 0) {
       const continuaDisponivel = quartosDisponiveis.some(
@@ -177,7 +187,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     return (pacotes || []).filter((p: any) => getVal(p, 'ativo', 'ativo') !== false);
   }, [pacotes]);
 
-  // Função para calcular dias de estadia
   const calcularDias = (dIni: string, dFim: string): number => {
     if (!dIni || !dFim) return 2;
     if (dIni === dFim) return 1;
@@ -188,7 +197,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     return pernoites > 0 ? pernoites + 1 : 1;
   };
 
-  // Sugere o pacote de acordo com a quantidade de dias
   const sugerirPacotePorDias = (dias: number): Pacote | null => {
     if (dias === 1) {
       return (
@@ -308,6 +316,10 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     if (aberto && reserva) {
       setConfirmandoSuspencao(false);
       setMotivoSuspencao('');
+      setRegistrandoPagamento(false);
+      setValorNovoPagamento('');
+      setFormaNovoPagamento('PIX');
+      setObsNovoPagamento('');
       setRemarcandoDatas(false);
       setErro(null);
       setDetalhesErroModal(null);
@@ -345,7 +357,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     }
   }, [aberto, reserva]);
 
-  // Carrega acompanhantes vinculados da reserva
   useEffect(() => {
     const carregarAcompanhantesDaReserva = async () => {
       if (!aberto || !reserva) {
@@ -539,17 +550,147 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     return `${nomePacote ? `Pacote: ${nomePacote} (${dias} dias) • ` : ''}${partes.join(' + ')}`;
   }, [infoTarifa, novoAdultos, novoCriancas, novasIdadesCriancas, novaDataEntrada, novaDataSaida]);
 
+  const valorTotalAtualNum = Number(getVal(reserva, 'valortotal', 'valorTotal') || 0);
   const valorPagoNum = Number(getVal(reserva, 'valorpago', 'valorPago') || 0);
+  const saldoAtualNum = Number(
+    getVal(reserva, 'saldo', 'saldo') !== undefined
+      ? getVal(reserva, 'saldo', 'saldo')
+      : Math.max(0, valorTotalAtualNum - valorPagoNum)
+  );
   const saldoRestante = Number((novoValorTotal - valorPagoNum).toFixed(2));
+
+  // Pré-visualização do novo saldo ao registrar parcela adicional
+  const valorParcelaNum = desformatarMoeda(valorNovoPagamento);
+  const novoTotalPagoPreview = Number((valorPagoNum + (valorParcelaNum > 0 ? valorParcelaNum : 0)).toFixed(2));
+  const novoSaldoPreview = Number(Math.max(0, valorTotalAtualNum - novoTotalPagoPreview).toFixed(2));
 
   if (!aberto || !reserva) return null;
 
   const statusAtual = String(getVal(reserva, 'statusreserva', 'statusReserva') || '').toUpperCase();
   const estaHospedado = statusAtual === 'HOSPEDADO';
   const podeCheckin = statusAtual === 'RESERVADO' || statusAtual === 'PRE_RESERVA';
+  const podeRegistrarPagamento = saldoAtualNum > 0 && statusAtual !== 'CANCELADA';
   const resId = Number(getVal(reserva, 'reservaid', 'reservaId'));
   const hospedeNome = getVal(reserva, 'hospedenome', 'hospedeNome') || 'Hóspede';
   const codigoReserva = getVal(reserva, 'codigo', 'codigo') || '';
+
+  // Handler para somar novo pagamento ao valor já pago da reserva (UPDATE)
+  const handleSalvarNovoPagamento = async () => {
+    setErro(null);
+    setDetalhesErroModal(null);
+
+    if (isNaN(valorParcelaNum) || valorParcelaNum <= 0) {
+      setErro('Informe um valor de pagamento válido maior que R$ 0,00.');
+      return;
+    }
+
+    if (valorParcelaNum > saldoAtualNum + 0.01) {
+      setErro(`O valor informado (${formatarMoeda(valorParcelaNum)}) ultrapassa o saldo restante de ${formatarMoeda(saldoAtualNum)}.`);
+      return;
+    }
+
+    try {
+      setCarregando(true);
+
+      const novoValorPagoTotal = Number((valorPagoNum + valorParcelaNum).toFixed(2));
+      const novoSaldoFinal = Number(Math.max(0, valorTotalAtualNum - novoValorPagoTotal).toFixed(2));
+      const novoStatusPag: StatusPagamento =
+        novoSaldoFinal <= 0 ? 'PAGO' : novoValorPagoTotal > 0 ? 'PARCIAL' : 'PENDENTE';
+
+      const dataHojeBr = new Date().toLocaleDateString('pt-BR');
+      const obsAtual = String(getVal(reserva, 'observacoes', 'observacoes') || '').trim();
+      const notaPagamento = `[Pagamento adicional em ${dataHojeBr}: +${formatarMoeda(valorParcelaNum)} via ${formaNovoPagamento}${
+        obsNovoPagamento.trim() ? ` (${obsNovoPagamento.trim()})` : ''
+      } | Total Pago: ${formatarMoeda(novoValorPagoTotal)} | Saldo: ${formatarMoeda(novoSaldoFinal)}]`;
+      const observacoesAtualizadas = obsAtual ? `${obsAtual}\n${notaPagamento}` : notaPagamento;
+
+      const dEntrada = String(getVal(reserva, 'dataentrada', 'dataEntrada') || '').slice(0, 10);
+      const dSaida = String(getVal(reserva, 'datasaida', 'dataSaida') || '').slice(0, 10);
+      const dReserva = String(getVal(reserva, 'datareserva', 'dataReserva') || dEntrada).slice(0, 10);
+      const diasCalculados = Math.max(1, calcularDias(dEntrada, dSaida));
+      const valorDiariaCalculado = Number((valorTotalAtualNum / diasCalculados).toFixed(2));
+
+      const updatePayload: any = {
+        reservaId: resId,
+        codigo: codigoReserva,
+        quartoId: Number(getVal(reserva, 'quartoid', 'quartoId')),
+        hospedeId: Number(getVal(reserva, 'hospedeid', 'hospedeId')),
+        cadastroId: getVal(reserva, 'cadastroid', 'cadastroId') ? Number(getVal(reserva, 'cadastroid', 'cadastroId')) : null,
+        pacoteId: getVal(reserva, 'pacoteid', 'pacoteId') ? Number(getVal(reserva, 'pacoteid', 'pacoteId')) : null,
+        dataEntrada: formatarDataParaApi(dEntrada),
+        dataSaida: formatarDataParaApi(dSaida),
+        dataReserva: formatarDataParaApi(dReserva),
+        statusReserva: statusAtual || 'RESERVADO',
+        tipoAtendimento: getVal(reserva, 'tipoatendimento', 'tipoAtendimento') || 'HOSPEDAGEM',
+        adultos: Number(getVal(reserva, 'adultos', 'adultos') || 1),
+        criancas: Number(getVal(reserva, 'criancas', 'criancas') || 0),
+        valorDiaria: valorDiariaCalculado,
+        valorTotal: valorTotalAtualNum,
+        valorPago: novoValorPagoTotal,
+        saldo: novoSaldoFinal,
+        formaPagamento: formaNovoPagamento,
+        statusPagamento: novoStatusPag,
+        observacoes: observacoesAtualizadas.slice(0, 1000),
+        observacoesCheckout: (getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '').slice(0, 1000),
+        ativo: true,
+      };
+
+      const resUpdate = await reservaService.atualizar(resId, updatePayload);
+
+      if (!resUpdate.sucesso) {
+        const respAny = resUpdate as any;
+        let mensagemErroFormatada = resUpdate.erro || 'Erro ao atualizar pagamento da reserva.';
+        const errosObj = respAny?.detalhes?.errors || respAny?.dados?.errors || respAny?.errors;
+        if (errosObj && typeof errosObj === 'object') {
+          const listaErros = Object.entries(errosObj)
+            .map(([campo, msgs]: [string, any]) => `• ${campo}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+            .join('\n');
+          mensagemErroFormatada = `Falha na validação do servidor:\n${listaErros}`;
+        }
+        setErro(mensagemErroFormatada);
+        setDetalhesErroModal(JSON.stringify(resUpdate, null, 2));
+        return;
+      }
+
+      // Registra também o histórico na tabela pagamento (se Supabase estiver acessível)
+      try {
+        const supabase = obterClienteSupabase();
+        if (supabase) {
+          await supabase.from('pagamento').insert({
+            reservaid: resId,
+            tipolancamento: novoSaldoFinal <= 0 ? 'SALDO_RESERVA' : 'SINAL_RESERVA',
+            valor: valorParcelaNum,
+            formapagamento: formaNovoPagamento,
+            datapagamento: new Date().toISOString(),
+            observacoes: obsNovoPagamento.trim() || `Parcela adicional registrada via Mapa de Reservas (${dataHojeBr})`,
+            ativo: true,
+            datainclusao: new Date().toISOString(),
+            dataoperacao: new Date().toISOString(),
+            usuariooperacao: usuarioAtual?.usuarioid ? Number(usuarioAtual.usuarioid) : null,
+            naturezaoperacao: 'INSERT',
+          });
+        }
+      } catch (e) {
+        console.warn('Aviso ao registrar histórico na tabela pagamento:', e);
+      }
+
+      await recarregarDados();
+
+      if (onSucesso) {
+        onSucesso(
+          `Pagamento de ${formatarMoeda(valorParcelaNum)} registrado na reserva ${codigoReserva}! Total pago: ${formatarMoeda(
+            novoValorPagoTotal
+          )} | Saldo restante: ${formatarMoeda(novoSaldoFinal)}.`
+        );
+      }
+      onFechar();
+    } catch (err: any) {
+      setErro(err?.message || 'Erro inesperado ao registrar pagamento.');
+      setDetalhesErroModal(JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+    } finally {
+      setCarregando(false);
+    }
+  };
 
   const handleConfirmarRemarcacao = async () => {
     setErro(null);
@@ -858,7 +999,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] pt-2 border-t border-slate-200/70">
                 <div>
-                  <span className="text-slate-400 block">Quarto Anterior:</span>
+                  <span className="text-slate-400 block">Quarto Atual:</span>
                   <span className="font-bold text-slate-800 text-xs">
                     Quarto #{getVal(reserva, 'quartonumero', 'quartoNumero') || 'S/N'}{' '}
                     {getVal(reserva, 'quartocategoria', 'quartoCategoria') ? `(${getVal(reserva, 'quartocategoria', 'quartoCategoria')})` : ''}
@@ -880,33 +1021,148 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                 </div>
                 <div>
                   <span className="text-slate-400 block">Valor Total:</span>
-                  <span className="font-bold text-slate-800">{formatarMoeda(getVal(reserva, 'valortotal', 'valorTotal'))}</span>
+                  <span className="font-bold text-slate-800">{formatarMoeda(valorTotalAtualNum)}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Valor Já Pago (Crédito):</span>
+                  <span className="text-slate-400 block">Valor Já Pago (Sinal):</span>
                   <span className="font-bold text-emerald-700">{formatarMoeda(valorPagoNum)}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block">Saldo Restante:</span>
                   <span
-                    className={`font-bold ${Number(getVal(reserva, 'saldo', 'saldo') || 0) > 0 ? 'text-red-700' : 'text-emerald-700'
-                      }`}
+                    className={`font-bold ${saldoAtualNum > 0 ? 'text-red-700' : 'text-emerald-700'}`}
                   >
-                    {formatarMoeda(getVal(reserva, 'saldo', 'saldo'))}
+                    {formatarMoeda(saldoAtualNum)}
                   </span>
                 </div>
               </div>
 
               {reserva.observacoes && (
-                <div className="p-2.5 bg-slate-100/70 rounded-lg text-[11px] text-slate-700 border border-slate-200">
+                <div className="p-2.5 bg-slate-100/70 rounded-lg text-[11px] text-slate-700 border border-slate-200 whitespace-pre-line">
                   <span className="font-bold text-slate-900">Observações: </span>
                   {reserva.observacoes}
                 </div>
               )}
             </div>
 
-            {/* PAINEL 1: REMARCAÇÃO COM RECÁLCULO */}
-            {remarcandoDatas ? (
+            {/* PAINEL 0: LANÇAR PAGAMENTO ADICIONAL / ABATER SALDO */}
+            {registrandoPagamento ? (
+              <div className="bg-emerald-50/80 border border-emerald-300 rounded-xl p-4 space-y-3.5 animate-in fade-in">
+                <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
+                  <div className="flex items-center gap-2 text-[#053d1e] font-bold text-xs">
+                    <CreditCard className="w-4 h-4 text-[#053d1e] shrink-0" />
+                    <span>Registrar Pagamento Adicional / Abater Saldo</span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-[#053d1e] text-white px-2 py-0.5 rounded-full">
+                    Saldo Atual: {formatarMoeda(saldoAtualNum)}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-emerald-950 leading-relaxed">
+                  O valor informado abaixo será <strong>somado</strong> aos <strong>{formatarMoeda(valorPagoNum)}</strong> já pagos pelo hóspede.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold text-slate-700">
+                        Valor Recebido Agora (R$) *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setValorNovoPagamento(aplicarMascaraMoeda(saldoAtualNum))}
+                        className="text-[10px] font-bold text-emerald-800 hover:underline cursor-pointer"
+                      >
+                        Quitar Total ({formatarMoeda(saldoAtualNum)})
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="R$ 0,00"
+                      value={valorNovoPagamento}
+                      onChange={(e) => setValorNovoPagamento(aplicarMascaraMoeda(e.target.value))}
+                      className="w-full px-3 py-2 text-sm bg-white border border-emerald-300 rounded-lg outline-none focus:border-[#053d1e] font-extrabold text-[#053d1e]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Forma de Pagamento *
+                    </label>
+                    <select
+                      value={formaNovoPagamento}
+                      onChange={(e) => setFormaNovoPagamento(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-bold text-slate-800 h-[38px]"
+                    >
+                      <option value="PIX">PIX</option>
+                      <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                      <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                      <option value="TRANSFERENCIA">Transferência Bancária</option>
+                      <option value="DINHEIRO">Dinheiro</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Observação / Comprovante (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 2ª parcela do sinal paga via PIX em 05/12"
+                    value={obsNovoPagamento}
+                    onChange={(e) => setObsNovoPagamento(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e]"
+                  />
+                </div>
+
+                {/* Demonstrativo Atualizado */}
+                <div className="grid grid-cols-3 gap-2 text-center bg-white p-2.5 rounded-xl border border-emerald-200">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">Total da Reserva</span>
+                    <span className="font-bold text-xs text-slate-900">{formatarMoeda(valorTotalAtualNum)}</span>
+                  </div>
+                  <div className="border-x border-slate-100">
+                    <span className="text-[10px] text-emerald-700 block">Novo Total Pago</span>
+                    <span className="font-extrabold text-xs text-emerald-800">{formatarMoeda(novoTotalPagoPreview)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">Novo Saldo Restante</span>
+                    <span className={`font-extrabold text-xs ${novoSaldoPreview > 0 ? 'text-amber-800' : 'text-emerald-700'}`}>
+                      {formatarMoeda(novoSaldoPreview)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegistrandoPagamento(false);
+                      setErro(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={carregando || valorParcelaNum <= 0}
+                    onClick={handleSalvarNovoPagamento}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white bg-[#053d1e] hover:bg-[#043017] cursor-pointer shadow-xs disabled:opacity-50 transition-all"
+                  >
+                    {carregando ? (
+                      <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    )}
+                    <span>Confirmar & Atualizar Saldo</span>
+                  </button>
+                </div>
+              </div>
+            ) : remarcandoDatas ? (
+              /* PAINEL 1: REMARCAÇÃO COM RECÁLCULO */
               <div className="bg-emerald-50/70 border border-emerald-300 rounded-xl p-4 space-y-4 animate-in fade-in">
                 <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
                   <div className="flex items-center gap-2 text-[#053d1e] font-bold text-xs">
@@ -1343,6 +1599,21 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                 <span className="text-xs font-bold text-slate-700 block mb-1">Ações Operacionais Disponíveis:</span>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {podeRegistrarPagamento && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegistrandoPagamento(true);
+                        setValorNovoPagamento('');
+                        setErro(null);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-400 bg-[#053d1e] hover:bg-[#043017] text-white text-xs font-bold transition-all cursor-pointer shadow-xs"
+                    >
+                      <CreditCard className="w-4 h-4 text-emerald-300 shrink-0" />
+                      <span>Registrar Pagamento</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => setRemarcandoDatas(true)}

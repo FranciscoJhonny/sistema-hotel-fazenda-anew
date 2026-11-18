@@ -32,7 +32,7 @@ import {
   formatarCpf,
   formatarData,
   formatarMoeda,
-  formatarTelefone,  
+  formatarTelefone,
 } from '../utilitarios/formatadores';
 
 // Helper universal para compatibilidade camelCase (.NET) e lowercase (Supabase)
@@ -112,11 +112,8 @@ export const calcularValoresReserva = (
       const dtIni = limparData(getVal(p, 'datainicio', 'dataInicio'));
       const dtFim = limparData(getVal(p, 'datafim', 'dataFim'));
 
-      // Se for FERIADO com data válida
       if (tipo === 'FERIADO' && dtIni && dtFim) {
-        // Se já venceu, ignora
         if (dtFim < hojeIso) return false;
-        // Bate as datas
         return (dataEntradaStr === dtIni && dataSaidaStr === dtFim) ||
           (dataEntradaStr >= dtIni && dataSaidaStr <= dtFim);
       }
@@ -132,13 +129,12 @@ export const calcularValoresReserva = (
       const dtFim = limparData(getVal(p, 'datafim', 'dataFim'));
       const pDias = Number(getVal(p, 'quantidadedias', 'quantidadeDias') || 0);
 
-      // Pacote de hospedagem comum: tipo HOSPEDAGEM OU sem datas definidas
       const ehHospedagemComum = tipo === 'HOSPEDAGEM' || (!dtIni && !dtFim);
       return ehHospedagemComum && pDias === dias;
     }) || null;
   }
 
-  // 4. Se ainda não achou, faz a busca mais tolerante possível (apenas por quantidadedias sem data)
+  // 4. Se ainda não achou, faz a busca mais tolerante possível
   if (!pacoteObjeto) {
     pacoteObjeto = pacotes.find((p: any) => {
       const dtIni = limparData(getVal(p, 'datainicio', 'dataInicio'));
@@ -148,7 +144,7 @@ export const calcularValoresReserva = (
     }) || null;
   }
 
-  // 5. Nome e Valor vêm do Pacote encontrado no banco (com fallback de segurança)
+  // 5. Nome e Valor vêm do Pacote encontrado no banco
   let nomePacote = '';
   let valorPorPessoa = 0;
 
@@ -156,7 +152,6 @@ export const calcularValoresReserva = (
     nomePacote = String(pacoteObjeto.nome || '');
     valorPorPessoa = Number(pacoteObjeto.valor || 0);
   } else {
-    // Fallback caso não exista o pacote cadastrado no banco para esses dias
     if (dias === 1) {
       nomePacote = 'Day Use';
       valorPorPessoa = 200;
@@ -198,7 +193,6 @@ export const calcularValoresReserva = (
   let qtdCriancasMeia = criancasMeia;
   let qtdCriancasGratis = criancasGratis;
 
-  // Se não houver lista de acompanhantes preenchida, usa os campos do cadastro
   if (!listaAcomp || listaAcomp.length === 0) {
     qtdAdultos = Math.max(1, Number(getVal(cadastro, 'adultos', 'adultos') || 1));
     qtdCriancasMeia = Number(getVal(cadastro, 'criancas', 'criancas') || 0);
@@ -229,6 +223,7 @@ export const calcularValoresReserva = (
     totalHospedesFisicos,
   };
 };
+
 const ITENS_POR_PAGINA = 15;
 
 export const PaginaFnrhAdmin: React.FC = () => {
@@ -266,24 +261,65 @@ export const PaginaFnrhAdmin: React.FC = () => {
   // Controle de cópia rápida
   const [copiadoId, setCopiadoId] = useState<number | null>(null);
 
-  // Localiza a reserva vinculada por reservaid, hospedeid ou CPF do titular
+  // IDs de reservas já vinculadas explicitamente a algum cadastro FNRH
+  const reservasJaVinculadasMap = useMemo(() => {
+    const mapa = new Map<number, number>(); // reservaid -> cadastroid
+    cadastros.forEach((c: any) => {
+      const rId = Number(getVal(c, 'reservaid', 'reservaId') || 0);
+      const cId = Number(getVal(c, 'cadastroid', 'cadastroId') || 0);
+      if (rId > 0 && cId > 0) {
+        mapa.set(rId, cId);
+      }
+    });
+    return mapa;
+  }, [cadastros]);
+
+  // Localiza a reserva vinculada SOMENTE se pertencer a este cadastro (mesmo reservaid ou mesmo hóspede + mesma data de entrada)
   const obterReservaDoCadastro = (item: any): Reserva | null => {
-    const itemReservaId = getVal(item, 'reservaid', 'reservaId');
-    if (itemReservaId) {
-      const r = reservas.find((res: any) => Number(getVal(res, 'reservaid', 'reservaId')) === Number(itemReservaId));
+    const cId = Number(getVal(item, 'cadastroid', 'cadastroId') || 0);
+    const itemReservaId = Number(getVal(item, 'reservaid', 'reservaId') || 0);
+
+    // 1. Vínculo direto pelo reservaid gravado no cadastro
+    if (itemReservaId > 0) {
+      const r = reservas.find((res: any) => Number(getVal(res, 'reservaid', 'reservaId')) === itemReservaId);
       if (r) return r;
     }
 
-    const itemHospedeId = getVal(item, 'hospedeid', 'hospedeId');
-    if (itemHospedeId) {
+    const cEntrada = extrairDataIso(getVal(item, 'dataentrada', 'dataEntrada'));
+    if (!cEntrada) return null;
+
+    // Verifica se a reserva candidata já não pertence a OUTRO cadastro FNRH e se tem a mesma data de entrada
+    const reservaCorrespondeAoCadastro = (res: any): boolean => {
+      const rId = Number(getVal(res, 'reservaid', 'reservaId') || 0);
+      const rStatus = String(getVal(res, 'statusreserva', 'statusReserva') || '').toUpperCase();
+      if (rStatus === 'CANCELADA') return false;
+
+      // Se esta reserva já está vinculada a outro cadastro FNRH diferente, não pode ser associada aqui
+      const donoCadastroId = reservasJaVinculadasMap.get(rId);
+      if (donoCadastroId && donoCadastroId !== cId) return false;
+
+      // A reserva também pode trazer o cadastroid preenchido no banco
+      const rCadId = Number(getVal(res, 'cadastroid', 'cadastroId') || 0);
+      if (rCadId > 0) {
+        return rCadId === cId;
+      }
+
+      // Caso ainda não tenha vínculo explícito, exige que a data de entrada seja idêntica
+      const rEntrada = extrairDataIso(getVal(res, 'dataentrada', 'dataEntrada'));
+      return rEntrada === cEntrada;
+    };
+
+    // 2. Busca por hospedeid + data de entrada correspondente
+    const itemHospedeId = Number(getVal(item, 'hospedeid', 'hospedeId') || 0);
+    if (itemHospedeId > 0) {
       const r = reservas.find((res: any) => {
-        const rHospId = Number(getVal(res, 'hospedeid', 'hospedeId'));
-        const rStatus = getVal(res, 'statusreserva', 'statusReserva');
-        return rHospId === Number(itemHospedeId) && rStatus !== 'CANCELADA';
+        const rHospId = Number(getVal(res, 'hospedeid', 'hospedeId') || 0);
+        return rHospId === itemHospedeId && reservaCorrespondeAoCadastro(res);
       });
       if (r) return r;
     }
 
+    // 3. Busca por CPF + data de entrada correspondente
     const itemCpf = getVal(item, 'cpf', 'cpf');
     if (itemCpf) {
       const cpfLimpo = String(itemCpf).replace(/\D/g, '');
@@ -293,11 +329,10 @@ export const PaginaFnrhAdmin: React.FC = () => {
           return hCpf && String(hCpf).replace(/\D/g, '') === cpfLimpo;
         });
         if (hEncontrado) {
-          const hId = Number(getVal(hEncontrado, 'hospedeid', 'hospedeId'));
+          const hId = Number(getVal(hEncontrado, 'hospedeid', 'hospedeId') || 0);
           const r = reservas.find((res: any) => {
-            const rHospId = Number(getVal(res, 'hospedeid', 'hospedeId'));
-            const rStatus = getVal(res, 'statusreserva', 'statusReserva');
-            return rHospId === hId && rStatus !== 'CANCELADA';
+            const rHospId = Number(getVal(res, 'hospedeid', 'hospedeId') || 0);
+            return rHospId === hId && reservaCorrespondeAoCadastro(res);
           });
           if (r) return r;
         }
@@ -400,7 +435,6 @@ export const PaginaFnrhAdmin: React.FC = () => {
   // Controle do card de detalhes do pacote aberto por clique
   const [tooltipAbertoId, setTooltipAbertoId] = useState<number | null>(null);
 
-  // Fecha o tooltip se o usuário clicar em qualquer outro lugar da tela
   useEffect(() => {
     const fecharAoClicarFora = (e: MouseEvent) => {
       const alvo = e.target as HTMLElement;
@@ -469,15 +503,16 @@ Qualquer dúvida, estamos à disposição!`;
     }
   };
 
-  // Sincroniza em background o status no banco caso a reserva já exista no sistema
+  // Sincroniza em background apenas quando a reserva corresponde exatamente ao período deste cadastro
   useEffect(() => {
     if (!cadastros.length || !reservas.length) return;
 
     cadastros.forEach(async (c: any) => {
-      const r: any = obterReservaDoCadastro(c);
-      const cStatus = getVal(c, 'status', 'status');
-      const cResId = getVal(c, 'reservaid', 'reservaId');
+      const cStatus = String(getVal(c, 'status', 'status') || '').toUpperCase();
+      const cResId = Number(getVal(c, 'reservaid', 'reservaId') || 0);
+      if (cStatus === 'RESERVA_CRIADA' && cResId > 0) return;
 
+      const r: any = obterReservaDoCadastro(c);
       if (r && (cStatus !== 'RESERVA_CRIADA' || !cResId)) {
         await FnrhService.vincularReservaAoCadastroFnrh({
           cadastroid: Number(getVal(c, 'cadastroid', 'cadastroId')),
@@ -523,7 +558,7 @@ Qualquer dúvida, estamos à disposição!`;
     });
 
     return { total, aguardandoPreenchimento, preenchidoAguardandoSinal, liberadas, reservasCriadas };
-  }, [cadastros, reservas, hospedes]);
+  }, [cadastros, reservas, hospedes, reservasJaVinculadasMap]);
 
   const obterPrioridadeStatus = (c: any): number => {
     const statusUpper = String(getVal(c, 'status', 'status') || '').toUpperCase();
@@ -542,7 +577,6 @@ Qualquer dúvida, estamos à disposição!`;
     const decl = getVal(c, 'declaracao_aceita', 'declaracaoAceita');
     const temDados = Boolean(nome && cpf && decl);
 
-    // 1º: Aguardando Preenchimento
     if (
       statusUpper === 'PENDENTE' ||
       statusUpper === 'AGUARDANDO_PREENCHIMENTO' ||
@@ -551,7 +585,6 @@ Qualquer dúvida, estamos à disposição!`;
       return 1;
     }
 
-    // 2º: Ficha Preenchida / Aguardando Sinal
     if (
       (statusUpper === 'AGUARDANDO_PAGAMENTO' && temDados && !jaReserva) ||
       statusUpper === 'LIBERADA_PARA_RESERVA' ||
@@ -560,7 +593,6 @@ Qualquer dúvida, estamos à disposição!`;
       return 2;
     }
 
-    // 3º: Reservas Concluídas
     if (
       jaReserva ||
       statusUpper === 'CONCLUIDO' ||
@@ -643,7 +675,7 @@ Qualquer dúvida, estamos à disposição!`;
     });
 
     return filtrados.sort(compararPorPrioridade);
-  }, [cadastros, busca, filtroStatus, reservas, hospedes]);
+  }, [cadastros, busca, filtroStatus, reservas, hospedes, reservasJaVinculadasMap]);
 
   const totalPaginas = Math.max(1, Math.ceil(cadastrosFiltrados.length / ITENS_POR_PAGINA));
 
@@ -808,7 +840,6 @@ Qualquer dúvida, estamos à disposição!`;
       {/* Barra de Filtros e Busca */}
       <div className="bg-white p-4 rounded-2xl border border-[#c1c9bf] shadow-2xs space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          {/* Campo de Busca */}
           <div className="relative w-full lg:max-w-md shrink-0">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
@@ -820,7 +851,6 @@ Qualquer dúvida, estamos à disposição!`;
             />
           </div>
 
-          {/* Botões de Filtros (com flex-wrap para nunca gerar scroll horizontal indesejado) */}
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               onClick={() => setFiltroStatus('TODOS')}
@@ -1058,7 +1088,6 @@ Qualquer dúvida, estamos à disposição!`;
                               <span className="text-[11px] text-emerald-700 select-none">✨</span>
                             </button>
 
-                            {/* Popover/Tooltip aberto apenas no clique */}
                             {tooltipAbertoId === cId && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
@@ -1066,7 +1095,7 @@ Qualquer dúvida, estamos à disposição!`;
                               >
                                 <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-700/80">
                                   <span className="text-[10px] font-bold text-[#86efac] uppercase tracking-wider">
-                                    Pacote  
+                                    Pacote
                                   </span>
                                   <button
                                     type="button"
