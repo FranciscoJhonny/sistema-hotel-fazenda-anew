@@ -86,7 +86,7 @@ const nomesStatusReserva: Record<string, string> = {
 };
 
 export const PaginaMapaReservas: React.FC = () => {
-  const { quartos, reservas, hospedes, recarregarDados, navegarPara } = useHotel();
+  const { quartos, reservas, hospedes, pacotes, recarregarDados, navegarPara } = useHotel();
 
   const quartosFisicos = useMemo(() => {
     return quartos.filter((q: any) => {
@@ -106,9 +106,15 @@ export const PaginaMapaReservas: React.FC = () => {
   const [quartoSelecionado, setQuartoSelecionado] = useState<Quarto | null>(null);
   const [dataSelecionada, setDataSelecionada] = useState<string | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
+  const [mensagemAviso, setMensagemAviso] = useState<string | null>(null);
   const [carregandoReserva, setCarregandoReserva] = useState(false);
   const [carregandoAtualizacao, setCarregandoAtualizacao] = useState(false);
-  const [hospedeFnrhAviso, setHospedeFnrhAviso] = useState<{ nome: string; dataentrada?: string } | null>(null);
+  const [hospedeFnrhAviso, setHospedeFnrhAviso] = useState<{
+    nome: string;
+    dataentrada?: string;
+    pacoteid?: string | number;
+    ehDayUse?: boolean;
+  } | null>(null);
   const [modoDayUse, setModoDayUse] = useState(false);
 
   // Modais de Ações de Reserva e Troca de Quarto
@@ -128,11 +134,9 @@ export const PaginaMapaReservas: React.FC = () => {
   };
 
   const handleAbrirDayUse = () => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('fnrh_reserva_preenchimento');
-    }
     setQuartoSelecionado(null);
-    setDataSelecionada(new Date().toISOString().slice(0, 10));
+    const dataInicial = hospedeFnrhAviso?.dataentrada || new Date().toISOString().slice(0, 10);
+    setDataSelecionada(dataInicial);
     setModoDayUse(true);
     setModalAberto(true);
   };
@@ -144,9 +148,18 @@ export const PaginaMapaReservas: React.FC = () => {
         try {
           const parsed = JSON.parse(raw);
           if (parsed.nomecompleto) {
+            const pct = pacotes.find((p: any) => String(p.pacoteid) === String(parsed.pacoteid));
+            const ehDayUse = Boolean(
+              pct && (
+                String(pct.tipopacote || '').toUpperCase() === 'DAY_USE' ||
+                (pct.nome || '').toLowerCase().includes('day use')
+              )
+            );
             setHospedeFnrhAviso({
               nome: parsed.nomecompleto,
               dataentrada: parsed.dataentrada || parsed.dataEntrada,
+              pacoteid: parsed.pacoteid,
+              ehDayUse,
             });
           }
         } catch (e) {
@@ -154,7 +167,7 @@ export const PaginaMapaReservas: React.FC = () => {
         }
       }
     }
-  }, []);
+  }, [pacotes]);
 
   const numeroDias = 12;
   const datasVisiveis = useMemo(
@@ -447,6 +460,15 @@ export const PaginaMapaReservas: React.FC = () => {
                 onClick={() => {
                   if (quartoBloqueado || reservaAtiva) return;
                   if (isDataPassada(dataIso)) return;
+
+                  if (hospedeFnrhAviso?.ehDayUse) {
+                    setMensagemAviso(
+                      `O pré-cadastro de ${hospedeFnrhAviso.nome} é para DAY USE e não ocupa quartos físicos. Por favor, utilize o botão "+ Criar Day Use" no topo da tela.`
+                    );
+                    window.setTimeout(() => setMensagemAviso(null), 6000);
+                    return;
+                  }
+
                   setModoDayUse(false);
                   setQuartoSelecionado(quarto);
                   setDataSelecionada(dataIso);
@@ -542,6 +564,23 @@ export const PaginaMapaReservas: React.FC = () => {
         </div>
       )}
 
+      {mensagemAviso && (
+        <div
+          role="alert"
+          className="fixed right-4 top-16 z-[100] flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950 shadow-lg animate-in fade-in max-w-md"
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+          <span>{mensagemAviso}</span>
+          <button
+            type="button"
+            onClick={() => setMensagemAviso(null)}
+            className="ml-auto text-amber-800 hover:text-amber-950 font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Banner de Aviso de Hóspede Confirmado pelo FNRH */}
       {hospedeFnrhAviso && (
         <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs font-semibold text-[#053d1e] shadow-xs flex items-center justify-between gap-3 animate-in fade-in">
@@ -549,21 +588,45 @@ export const PaginaMapaReservas: React.FC = () => {
             <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
             <div>
               <p className="font-bold text-sm text-[#053d1e]">
-                Pré-cadastro de {hospedeFnrhAviso.nome} pronto para alocação de quarto!
+                Pré-cadastro de {hospedeFnrhAviso.nome} pronto para {hospedeFnrhAviso.ehDayUse ? 'conclusão de Day Use' : 'alocação de quarto'}!
               </p>
               <p className="text-[#205235] font-normal mt-0.5">
-                Clique sobre o quarto e data desejados no mapa abaixo para concluir a reserva. Os dados do hóspede
-                serão selecionados automaticamente.
+                {hospedeFnrhAviso.ehDayUse ? (
+                  <>
+                    Este pré-cadastro é de <strong>Day Use</strong>. Clique no botão <strong>"+ Criar Day Use"</strong> para concluir a reserva (Day Use não ocupa quartos físicos).
+                  </>
+                ) : (
+                  <>
+                    Clique sobre o quarto e data desejados no mapa abaixo para concluir a reserva. Os dados do hóspede serão selecionados automaticamente.
+                  </>
+                )}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setHospedeFnrhAviso(null)}
-            className="text-emerald-800 hover:text-emerald-950 font-bold px-3 py-1.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-100 transition-colors shrink-0 cursor-pointer"
-          >
-            Dispensar
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {hospedeFnrhAviso.ehDayUse && (
+              <button
+                type="button"
+                onClick={handleAbrirDayUse}
+                className="flex items-center gap-1.5 rounded-xl bg-[#053d1e] text-white px-3.5 py-1.5 font-bold hover:bg-[#043017] transition-all cursor-pointer shadow-xs"
+              >
+                <Sun className="h-4 w-4 text-amber-300" />
+                <span>Criar Day Use</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setHospedeFnrhAviso(null);
+                if (typeof window !== 'undefined') {
+                  sessionStorage.removeItem('fnrh_reserva_preenchimento');
+                }
+              }}
+              className="text-emerald-800 hover:text-emerald-950 font-bold px-3 py-1.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-100 transition-colors shrink-0 cursor-pointer"
+            >
+              Dispensar
+            </button>
+          </div>
         </div>
       )}
 

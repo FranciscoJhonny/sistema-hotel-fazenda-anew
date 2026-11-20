@@ -217,7 +217,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             if (parsed.cadastroid) cadastroidPre = Number(parsed.cadastroid);
             if (parsed.hospedeid) hospedePre = String(parsed.hospedeid);
             if (parsed.datareserva) dataReservaPre = parsed.datareserva;
-            if (!modoDayUse) {
+
               if (parsed.adultos) adultosPre = Number(parsed.adultos);
               if (parsed.criancas !== undefined) criancasPre = Number(parsed.criancas);
               if (parsed.idades_criancas && Array.isArray(parsed.idades_criancas)) {
@@ -225,7 +225,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                   .map(Number)
                   .filter((id: number) => id >= 0 && id <= 11);
               }
-            }
+
             if (parsed.dataentrada) entradaPre = parsed.dataentrada;
             if (parsed.datasaida) saidaPre = parsed.datasaida;
             if (parsed.pacoteid) pacotePre = String(parsed.pacoteid);
@@ -235,10 +235,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             } else if (parsed.valor_sinal === 0) {
               autorizarExcecaoPre = true;
             }
-            sessionStorage.removeItem('fnrh_reserva_preenchimento');
           } catch (e) {
             console.warn('Erro ao ler fnrh_reserva_preenchimento:', e);
-            sessionStorage.removeItem('fnrh_reserva_preenchimento');
           }
         }
       }
@@ -246,9 +244,9 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       setCadastroidFnrh(cadastroidPre);
       setHospedeId(hospedePre);
       setDataReserva(dataReservaPre);
-      setAdultos(modoDayUse ? 1 : adultosPre);
-      setCriancas(modoDayUse ? 0 : (idadesCriancasPre.length > 0 ? idadesCriancasPre.length : criancasPre));
-      setIdadesCriancas(modoDayUse ? [] : idadesCriancasPre);
+      setAdultos(adultosPre);
+      setCriancas(idadesCriancasPre.length > 0 ? idadesCriancasPre.length : criancasPre);
+      setIdadesCriancas(idadesCriancasPre);
       setObservacoes('');
       setPreReserva(false);
       setValorPago(valorPagoPre);
@@ -263,7 +261,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       if (modoDayUse) {
         setTipoAtendimento('DAY_USE');
         setDataSaida(entradaPre);
-        const pDayUse = pacotesAtivos.find(
+        const pDayUsePre = pacotePre ? pacotesAtivos.find((p) => String(p.pacoteid) === pacotePre) : null;
+        const pDayUse = pDayUsePre || pacotesAtivos.find(
           (p) => String(p.tipopacote || '').toUpperCase() === 'DAY_USE' || (p.nome || '').toLowerCase().includes('day use')
         );
         if (pDayUse) {
@@ -305,12 +304,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
   useEffect(() => {
     const carregarOcupantesDoBanco = async () => {
       if (!aberto || (!hospedeId && !cadastroidFnrh)) return;
-      if (modoDayUse) {
-        setAdultos(1);
-        setCriancas(0);
-        setIdadesCriancas([]);
-        return;
-      }
+
       const cliente = obterClienteSupabase();
       if (!cliente) return;
 
@@ -494,17 +488,17 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
       return;
     }
 
-    if (!modoDayUse && adultos < 1) {
+    if (adultos < 1) {
       setErro('Selecione pelo menos 1 adulto para realizar a reserva.');
       return;
     }
 
-    if (!modoDayUse && adultos > 10) {
+    if (adultos > 10) {
       setErro('A quantidade de adultos não pode ultrapassar 10.');
       return;
     }
 
-    if (!modoDayUse && criancas > capacidadeMaxCriancas) {
+    if (criancas > capacidadeMaxCriancas) {
       setErro(`A quantidade de crianças não pode ultrapassar ${capacidadeMaxCriancas}.`);
       return;
     }
@@ -556,8 +550,8 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
         quartonumero: modoDayUse ? 'DU' : (quartoEfetivo?.numero || 'DU'),
         quartocodigo: modoDayUse ? 'DAY_USE' : (quartoEfetivo?.codigoidentificador || 'DAY_USE'),
         quartocategoria: modoDayUse ? 'Day Use' : (quartoEfetivo?.categoria || 'Day Use'),
-        adultos: modoDayUse ? 1 : adultos,
-        criancas: modoDayUse ? 0 : criancas,
+        adultos: adultos,
+        criancas: criancas,
         dataentrada: dataEntrada,
         datasaida: modoDayUse ? dataEntrada : dataSaida,
         // Aplicação do formatador para compatibilidade com System.TimeSpan do C#
@@ -633,7 +627,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             </h3>
             <p className="text-xs text-white/70">
               {modoDayUse
-                ? 'Reserva individual de Day Use (sem hospedagem)'
+                ? 'Reserva de Day Use (sem hospedagem)'
                 : quarto
                 ? `Quarto ${quarto.numero} - ${quarto.quantidadecamascasal ?? 0} Cama(s) Casal, ${quarto.quantidadecamassolteiro ?? 0} Cama(s) Solteiro`
                 : ''}
@@ -763,7 +757,6 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             <div className="mt-4 pt-4 border-t border-[#e5e7eb]">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#717971] mb-3 flex items-center gap-1">
                 <Users className="w-3.5 h-3.5" /> Ocupantes
-                {modoDayUse && <span className="text-[10px] text-amber-800 font-bold lowercase">(estritamente 1 adulto)</span>}
               </p>
               
               <div className="grid gap-3 sm:grid-cols-2">
@@ -772,23 +765,18 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                   <select
                     value={adultos}
                     onChange={(e) => {
-                      if (modoDayUse) return;
                       const val = Number(e.target.value);
                       setAdultos(val);
                       if (val >= 1) {
                         setErro(null);
                       }
                     }}
-                    disabled={enviando || modoDayUse}
+                    disabled={enviando}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 font-bold text-[#191c1d] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
-                    {modoDayUse ? (
-                      <option value={1}>1 (Individual - Day Use)</option>
-                    ) : (
-                      Array.from({ length: 11 }, (_, i) => i).map((val) => (
-                        <option key={val} value={val}>{val}</option>
-                      ))
-                    )}
+                    {Array.from({ length: 11 }, (_, i) => i).map((val) => (
+                      <option key={val} value={val}>{val}</option>
+                    ))}
                   </select>
                 </label>
 
@@ -797,21 +785,16 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                   <select
                     value={criancas}
                     onChange={(e) => {
-                      if (modoDayUse) return;
                       const val = Number(e.target.value);
                       setCriancas(val);
                       setErro(null);
                     }}
-                    disabled={enviando || modoDayUse}
+                    disabled={enviando}
                     className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 font-bold text-[#191c1d] disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
-                    {modoDayUse ? (
-                      <option value={0}>0 (Não permitido)</option>
-                    ) : (
-                      Array.from({ length: 11 }, (_, i) => i).map((val) => (
-                        <option key={val} value={val}>{val}</option>
-                      ))
-                    )}
+                    {Array.from({ length: 11 }, (_, i) => i).map((val) => (
+                      <option key={val} value={val}>{val}</option>
+                    ))}
                   </select>
                 </label>
               </div>
@@ -842,7 +825,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
             )}
 
             {/* Idades das Crianças (0 a 11 anos) */}
-            {criancas > 0 && !modoDayUse && (
+            {criancas > 0 && (
               <div className="space-y-2 rounded-xl border border-[#c1c9bf] bg-white p-3">
                 <p className="text-[11px] font-bold text-[#414941] mb-1">
                   Idade de cada criança (0 a 11 anos):
@@ -976,7 +959,7 @@ export const ModalReservaRapida: React.FC<ModalReservaRapidaProps> = ({
                 onChange={(e) => {
                   const val = e.target.value;
                   setHospedeId(val);
-                  if (val && adultos < 1 && !modoDayUse) setAdultos(1);
+                  if (val && adultos < 1) setAdultos(1);
                 }}
                 disabled={enviando}
                 className="w-full rounded-lg border border-[#c1c9bf] bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#053d1e]/20 disabled:bg-gray-100 disabled:cursor-not-allowed"
