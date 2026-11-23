@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Trash2,
   User,
+  UserPlus,
   Users,
   X
 } from 'lucide-react';
@@ -62,6 +63,14 @@ const extrairIdadesDasObservacoes = (obs: string, qtdCriancas: number): number[]
 
   return idadesEncontradas.slice(0, qtdCriancas);
 };
+
+interface NovoAcompanhanteTemp {
+  tempId: string;
+  nomecompleto: string;
+  documento: string;
+  datanascimento: string;
+  categoria: 'ADULTO' | 'MEIA' | 'GRATIS';
+}
 
 interface ModalAcoesReservaProps {
   aberto: boolean;
@@ -116,13 +125,24 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
   const [novasIdadesCriancas, setNovasIdadesCriancas] = useState<number[]>([]);
   const [novoPacoteId, setNovoPacoteId] = useState<string>('');
   const [novoValorTotal, setNovoValorTotal] = useState<number>(0);
+  const [novoValorTotalTexto, setNovoValorTotalTexto] = useState<string>('R$ 0,00');
   const [novoValorTotalCustomizado, setNovoValorTotalCustomizado] = useState<boolean>(false);
   const [novasObservacoes, setNovasObservacoes] = useState<string>('');
 
-  // Acompanhantes carregados do banco de dados
+  // Pagamento complementar opcional durante a alteração de hóspedes/remarcação
+  const [pagamentoComplementarRemarcacao, setPagamentoComplementarRemarcacao] = useState<string>('');
+  const [formaComplementarRemarcacao, setFormaComplementarRemarcacao] = useState<string>('PIX');
+
+  // Acompanhantes carregados do banco de dados & novos acompanhantes adicionados
   const [acompanhantes, setAcompanhantes] = useState<any[]>([]);
   const [carregandoAcomp, setCarregandoAcomp] = useState(false);
-  const [acompanhantesRemovidosIds, setAcompanhantesRemovidosIds] = useState<number[]>([]);
+  const [acompanhantesRemovidos, setAcompanhantesRemovidos] = useState<any[]>([]);
+  const [novosAcompanhantes, setNovosAcompanhantes] = useState<NovoAcompanhanteTemp[]>([]);
+  const [exibindoFormNovoAcomp, setExibindoFormNovoAcomp] = useState(false);
+  const [nomeNovoAcomp, setNomeNovoAcomp] = useState('');
+  const [docNovoAcomp, setDocNovoAcomp] = useState('');
+  const [nascNovoAcomp, setNascNovoAcomp] = useState('');
+  const [catNovoAcomp, setCatNovoAcomp] = useState<'ADULTO' | 'MEIA' | 'GRATIS'>('ADULTO');
 
   const quartosFisicos = useMemo(() => {
     return (quartos || [])
@@ -309,6 +329,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     const { valorPorPessoa } = obterValorPorPessoa(pctId, dEntrada, dSaida);
     const total = calcularTotalFormula(ad, cr, valorPorPessoa, idades);
     setNovoValorTotal(total);
+    setNovoValorTotalTexto(aplicarMascaraMoeda(total));
     setNovoValorTotalCustomizado(false);
   };
 
@@ -321,6 +342,11 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       setFormaNovoPagamento('PIX');
       setObsNovoPagamento('');
       setRemarcandoDatas(false);
+      setPagamentoComplementarRemarcacao('');
+      setFormaComplementarRemarcacao('PIX');
+      setExibindoFormNovoAcomp(false);
+      setNovosAcompanhantes([]);
+      setAcompanhantesRemovidos([]);
       setErro(null);
       setDetalhesErroModal(null);
       setCarregando(false);
@@ -336,7 +362,10 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       setNovoAdultos(ad);
       setNovoCriancas(cr);
       setNovoPacoteId(String(getVal(reserva, 'pacoteid', 'pacoteId') || ''));
-      setNovoValorTotal(Number(getVal(reserva, 'valortotal', 'valorTotal') || 0));
+
+      const valorInicial = Number(getVal(reserva, 'valortotal', 'valorTotal') || 0);
+      setNovoValorTotal(valorInicial);
+      setNovoValorTotalTexto(aplicarMascaraMoeda(valorInicial));
       setNovoValorTotalCustomizado(false);
       setNovasObservacoes(getVal(reserva, 'observacoes', 'observacoes') || '');
 
@@ -352,8 +381,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         const idadesIniciais = Array.from({ length: cr }).map(() => 6);
         setNovasIdadesCriancas(idadesIniciais);
       }
-
-      setAcompanhantesRemovidosIds([]);
     }
   }, [aberto, reserva]);
 
@@ -361,7 +388,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     const carregarAcompanhantesDaReserva = async () => {
       if (!aberto || !reserva) {
         setAcompanhantes([]);
-        setAcompanhantesRemovidosIds([]);
+        setAcompanhantesRemovidos([]);
         return;
       }
 
@@ -494,21 +521,47 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
     recalcularTotal(novoAdultos, novoCriancas, novoPacoteId, novaDataEntrada, novaDataSaida, idades);
   };
 
+  // Detecta automaticamente se o acompanhante cadastrado é menor (0–11 anos) ou adulto (12+)
+  const verificarSeAcompanhanteEhCrianca = (acomp: any): { ehCrianca: boolean; idade: number } => {
+    const dtNasc = getVal(acomp, 'datanascimento', 'dataNascimento');
+    if (dtNasc) {
+      const idade = calcularIdadeNumerica(dtNasc);
+      if (idade >= 0 && idade <= 11) {
+        return { ehCrianca: true, idade };
+      }
+      return { ehCrianca: false, idade };
+    }
+    if (getVal(acomp, 'menoridade', 'menoridade')) {
+      return { ehCrianca: true, idade: 6 };
+    }
+    return { ehCrianca: false, idade: 18 };
+  };
+
   const handleRemoverAcompanhante = (acomp: any) => {
     const id = Number(acomp.acompanhanteid || acomp.id);
-    setAcompanhantesRemovidosIds((prev) => [...prev, id]);
+    setAcompanhantesRemovidos((prev) => [...prev, acomp]);
     setAcompanhantes((prev) => prev.filter((a) => Number(a.acompanhanteid || a.id) !== id));
 
-    if (acomp.menoridade && novoCriancas > 0) {
+    const { ehCrianca, idade } = verificarSeAcompanhanteEhCrianca(acomp);
+
+    if (ehCrianca && novoCriancas > 0) {
       const proximoCriancas = Math.max(0, novoCriancas - 1);
+      const idxRemover = novasIdadesCriancas.findIndex((i) => i === idade);
+      const proximasIdades = [...novasIdadesCriancas];
+      if (idxRemover >= 0) {
+        proximasIdades.splice(idxRemover, 1);
+      } else {
+        proximasIdades.pop();
+      }
       setNovoCriancas(proximoCriancas);
+      setNovasIdadesCriancas(proximasIdades);
       recalcularTotal(
         novoAdultos,
         proximoCriancas,
         novoPacoteId,
         novaDataEntrada,
         novaDataSaida,
-        novasIdadesCriancas.slice(0, proximoCriancas)
+        proximasIdades
       );
     } else if (novoAdultos > 1) {
       const proximoAdultos = Math.max(1, novoAdultos - 1);
@@ -521,6 +574,75 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         novaDataSaida,
         novasIdadesCriancas
       );
+    }
+  };
+
+  const handleDataNascNovoAcompChange = (dataStr: string) => {
+    setNascNovoAcomp(dataStr);
+    if (!dataStr) return;
+    const idade = calcularIdadeNumerica(dataStr);
+    if (idade >= 0 && idade <= 5) {
+      setCatNovoAcomp('GRATIS');
+    } else if (idade >= 6 && idade <= 11) {
+      setCatNovoAcomp('MEIA');
+    } else {
+      setCatNovoAcomp('ADULTO');
+    }
+  };
+
+  const handleConfirmarNovoAcompanhante = () => {
+    if (!nomeNovoAcomp.trim()) {
+      setErro('Informe o nome completo do novo acompanhante.');
+      return;
+    }
+    setErro(null);
+
+    const novoItem: NovoAcompanhanteTemp = {
+      tempId: `novo-${Date.now()}`,
+      nomecompleto: nomeNovoAcomp.trim().toUpperCase(),
+      documento: docNovoAcomp.trim(),
+      datanascimento: nascNovoAcomp,
+      categoria: catNovoAcomp,
+    };
+
+    setNovosAcompanhantes((prev) => [...prev, novoItem]);
+
+    if (catNovoAcomp === 'ADULTO') {
+      const proximoAdultos = novoAdultos + 1;
+      setNovoAdultos(proximoAdultos);
+      recalcularTotal(proximoAdultos, novoCriancas, novoPacoteId, novaDataEntrada, novaDataSaida, novasIdadesCriancas);
+    } else {
+      const idadeEstimada = nascNovoAcomp
+        ? Math.min(11, Math.max(0, calcularIdadeNumerica(nascNovoAcomp)))
+        : catNovoAcomp === 'GRATIS'
+          ? 3
+          : 8;
+      const proximoCriancas = novoCriancas + 1;
+      const proximasIdades = [...novasIdadesCriancas, idadeEstimada];
+      setNovoCriancas(proximoCriancas);
+      setNovasIdadesCriancas(proximasIdades);
+      recalcularTotal(novoAdultos, proximoCriancas, novoPacoteId, novaDataEntrada, novaDataSaida, proximasIdades);
+    }
+
+    setNomeNovoAcomp('');
+    setDocNovoAcomp('');
+    setNascNovoAcomp('');
+    setCatNovoAcomp('ADULTO');
+    setExibindoFormNovoAcomp(false);
+  };
+
+  const handleRemoverNovoAcompanhanteTemp = (item: NovoAcompanhanteTemp) => {
+    setNovosAcompanhantes((prev) => prev.filter((a) => a.tempId !== item.tempId));
+    if (item.categoria === 'ADULTO' && novoAdultos > 1) {
+      const proximoAdultos = novoAdultos - 1;
+      setNovoAdultos(proximoAdultos);
+      recalcularTotal(proximoAdultos, novoCriancas, novoPacoteId, novaDataEntrada, novaDataSaida, novasIdadesCriancas);
+    } else if (item.categoria !== 'ADULTO' && novoCriancas > 0) {
+      const proximoCriancas = novoCriancas - 1;
+      const proximasIdades = novasIdadesCriancas.slice(0, proximoCriancas);
+      setNovoCriancas(proximoCriancas);
+      setNovasIdadesCriancas(proximasIdades);
+      recalcularTotal(novoAdultos, proximoCriancas, novoPacoteId, novaDataEntrada, novaDataSaida, proximasIdades);
     }
   };
 
@@ -557,7 +679,12 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       ? getVal(reserva, 'saldo', 'saldo')
       : Math.max(0, valorTotalAtualNum - valorPagoNum)
   );
-  const saldoRestante = Number((novoValorTotal - valorPagoNum).toFixed(2));
+
+  // Cálculo em tempo real considerando eventual pagamento complementar na alteração
+  const valorComplementarNum = desformatarMoeda(pagamentoComplementarRemarcacao);
+  const valorPagoComComplemento = Number((valorPagoNum + (valorComplementarNum > 0 ? valorComplementarNum : 0)).toFixed(2));
+  const saldoRestante = Number((novoValorTotal - valorPagoComComplemento).toFixed(2));
+  const diferencaPacote = Number((novoValorTotal - valorTotalAtualNum).toFixed(2));
 
   // Pré-visualização do novo saldo ao registrar parcela adicional
   const valorParcelaNum = desformatarMoeda(valorNovoPagamento);
@@ -652,7 +779,6 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         return;
       }
 
-      // Registra também o histórico na tabela pagamento (se Supabase estiver acessível)
       try {
         const supabase = obterClienteSupabase();
         if (supabase) {
@@ -712,6 +838,11 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       return;
     }
 
+    if (valorComplementarNum > 0 && valorPagoComComplemento > novoValorTotal + 0.01) {
+      setErro(`O pagamento complementar (${formatarMoeda(valorComplementarNum)}) ultrapassa o novo valor total da reserva (${formatarMoeda(novoValorTotal)}).`);
+      return;
+    }
+
     try {
       setCarregando(true);
 
@@ -741,25 +872,33 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
 
       const quartoEscolhido: any = (quartos || []).find((q: any) => Number(getVal(q, 'quartoid', 'quartoId')) === quartoDestinoId);
       const agora = new Date().toISOString();
-      const novoSaldo = Number((novoValorTotal - valorPagoNum).toFixed(2));
+      const novoSaldo = Number((novoValorTotal - valorPagoComComplemento).toFixed(2));
       const novoStatusPagamento: StatusPagamento =
-        novoSaldo <= 0 ? 'PAGO' : valorPagoNum > 0 ? 'PARCIAL' : 'PENDENTE';
+        novoSaldo <= 0 ? 'PAGO' : valorPagoComComplemento > 0 ? 'PARCIAL' : 'PENDENTE';
 
       const resumoSaldoTexto =
         novoSaldo > 0
-          ? `Saldo a pagar: ${formatarMoeda(novoSaldo)}`
+          ? `Saldo a pagar no check-out: ${formatarMoeda(novoSaldo)}`
           : novoSaldo < 0
             ? `Crédito excedente para consumo ou devolução: ${formatarMoeda(Math.abs(novoSaldo))}`
             : 'Reserva 100% quitada com crédito';
 
       const codQuartoEscolhido = getVal(quartoEscolhido, 'codigoidentificador', 'codigoIdentificador') || getVal(quartoEscolhido, 'numero', 'numero') || quartoDestinoId;
 
-      const notaAutomatica = `[Remarcação em ${new Date().toLocaleDateString('pt-BR')}: ${novoAdultos} adulto(s)${novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
+      const detalhesAcompTexto = [
+        acompanhantesRemovidos.length > 0 ? `Retirado(s): ${acompanhantesRemovidos.map((a) => a.nomecompleto).join(', ')}` : '',
+        novosAcompanhantes.length > 0 ? `Incluído(s): ${novosAcompanhantes.map((a) => a.nomecompleto).join(', ')}` : '',
+        valorComplementarNum > 0 ? `Sinal adicional: +${formatarMoeda(valorComplementarNum)} (${formaComplementarRemarcacao})` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      const notaAutomatica = `[Alteração em ${new Date().toLocaleDateString('pt-BR')}: ${novoAdultos} adulto(s)${novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
         } no Quarto #${codQuartoEscolhido} (${formatarData(
           novaDataEntrada
-        )} a ${formatarData(novaDataSaida)}). Pacote: ${infoTarifa.nomePacote || 'Padrão'}. Novo Total: ${formatarMoeda(
+        )} a ${formatarData(novaDataSaida)}).${detalhesAcompTexto ? ` ${detalhesAcompTexto}.` : ''} Novo Total: ${formatarMoeda(
           novoValorTotal
-        )} | Crédito aproveitado: ${formatarMoeda(valorPagoNum)} | ${resumoSaldoTexto}]`;
+        )} | Já Pago: ${formatarMoeda(valorPagoComComplemento)} | ${resumoSaldoTexto}]`;
 
       let observacoesFinal = novasObservacoes.trim();
       if (!observacoesFinal.includes(notaAutomatica)) {
@@ -788,9 +927,9 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         criancas: Number(novoCriancas),
         valorDiaria: valorDiariaCalculado,
         valorTotal: Number(novoValorTotal),
-        valorPago: valorPagoNum,
+        valorPago: valorPagoComComplemento,
         saldo: novoSaldo,
-        formaPagamento: getVal(reserva, 'formapagamento', 'formaPagamento') || 'PIX',
+        formaPagamento: valorComplementarNum > 0 ? formaComplementarRemarcacao : (getVal(reserva, 'formapagamento', 'formaPagamento') || 'PIX'),
         statusPagamento: novoStatusPagamento,
         observacoes: observacoesFinal.slice(0, 1000),
         observacoesCheckout: (getVal(reserva, 'observacoes_checkout', 'observacoesCheckout') || '').slice(0, 1000),
@@ -816,18 +955,64 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
         return;
       }
 
-      if (acompanhantesRemovidosIds.length > 0) {
-        const supabase = obterClienteSupabase();
-        if (supabase) {
-          for (const acompId of acompanhantesRemovidosIds) {
-            try {
+      const supabase = obterClienteSupabase();
+      if (supabase) {
+        // 1. Remove/desvincula acompanhantes retirados (suporta tanto tabela 'acompanhante' quanto 'cadastro_fnrh_acompanhante')
+        for (const acompRem of acompanhantesRemovidos) {
+          try {
+            if (acompRem.acompanhanteid) {
               await supabase
                 .from('acompanhante')
                 .update({ ativo: false, reservaid: null, dataoperacao: agora })
-                .eq('acompanhanteid', acompId);
-            } catch (e) {
-              console.warn('Aviso ao desvincular acompanhante:', e);
+                .eq('acompanhanteid', acompRem.acompanhanteid);
+            } else if (acompRem.id) {
+              await supabase
+                .from('cadastro_fnrh_acompanhante')
+                .delete()
+                .eq('id', acompRem.id);
             }
+          } catch (e) {
+            console.warn('Aviso ao desvincular acompanhante:', e);
+          }
+        }
+
+        // 2. Insere novos acompanhantes adicionados
+        for (const novoAc of novosAcompanhantes) {
+          try {
+            await supabase.from('acompanhante').insert({
+              reservaid: resId,
+              cadastroid: cadastroId ? Number(cadastroId) : hospedeId,
+              nomecompleto: novoAc.nomecompleto,
+              documento: novoAc.documento || null,
+              datanascimento: novoAc.datanascimento || null,
+              menoridade: novoAc.categoria !== 'ADULTO',
+              ativo: true,
+              datainclusao: agora,
+              dataoperacao: agora,
+            });
+          } catch (e) {
+            console.warn('Aviso ao inserir novo acompanhante:', e);
+          }
+        }
+
+        // 3. Registra histórico de pagamento complementar se houver
+        if (valorComplementarNum > 0) {
+          try {
+            await supabase.from('pagamento').insert({
+              reservaid: resId,
+              tipolancamento: novoSaldo <= 0 ? 'SALDO_RESERVA' : 'SINAL_RESERVA',
+              valor: valorComplementarNum,
+              formapagamento: formaComplementarRemarcacao,
+              datapagamento: agora,
+              observacoes: `Complemento por inclusão de hóspede na reserva ${codigoReserva}`,
+              ativo: true,
+              datainclusao: agora,
+              dataoperacao: agora,
+              usuariooperacao: usuarioAtual?.usuarioid ? Number(usuarioAtual.usuarioid) : null,
+              naturezaoperacao: 'INSERT',
+            });
+          } catch (e) {
+            console.warn('Aviso ao registrar pagamento complementar:', e);
           }
         }
       }
@@ -843,18 +1028,14 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
       await recarregarDados();
 
       if (onSucesso) {
-        const statusMsg = statusAtual === 'CREDITO' ? ' reativada com status RESERVADO e' : '';
         onSucesso(
-          `Reserva ${codigoReserva}${statusMsg} remarcada com sucesso para ${formatarData(
-            novaDataEntrada
-          )} até ${formatarData(novaDataSaida)} (${novoAdultos} adulto(s)${novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
-          }) no Quarto #${codQuartoEscolhido}! Novo Saldo: ${novoSaldo >= 0 ? formatarMoeda(novoSaldo) : `Crédito de ${formatarMoeda(Math.abs(novoSaldo))}`
-          }.`
+          `Reserva ${codigoReserva} atualizada com sucesso (${novoAdultos} adulto(s)${novoCriancas > 0 ? `, ${novoCriancas} criança(s)` : ''
+          })! Novo Total: ${formatarMoeda(novoValorTotal)} | Já Pago: ${formatarMoeda(valorPagoComComplemento)} | ${resumoSaldoTexto}.`
         );
       }
       onFechar();
     } catch (err: any) {
-      setErro(err?.message || 'Erro inesperado ao remarcar datas.');
+      setErro(err?.message || 'Erro inesperado ao salvar alterações.');
       setDetalhesErroModal(JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
     } finally {
       setCarregando(false);
@@ -1162,32 +1343,32 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                 </div>
               </div>
             ) : remarcandoDatas ? (
-              /* PAINEL 1: REMARCAÇÃO COM RECÁLCULO */
+              /* PAINEL 1: ALTERAR HÓSPEDES / REMARCAR COM RECÁLCULO */
               <div className="bg-emerald-50/70 border border-emerald-300 rounded-xl p-4 space-y-4 animate-in fade-in">
                 <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2">
                   <div className="flex items-center gap-2 text-[#053d1e] font-bold text-xs">
-                    <CalendarDays className="w-4 h-4 text-[#053d1e] shrink-0" />
+                    <Users className="w-4 h-4 text-[#053d1e] shrink-0" />
                     <span>
                       {statusAtual === 'CREDITO'
                         ? 'Remarcar / Reativar Reserva em Crédito'
-                        : 'Remarcar Datas da Reserva'}
+                        : 'Alterar Hóspedes, Quarto ou Datas'}
                     </span>
                   </div>
                   <span className="text-[10px] font-bold bg-[#053d1e] text-white px-2 py-0.5 rounded-full">
-                    Crédito Retido: {formatarMoeda(valorPagoNum)}
+                    Sinal Já Pago: {formatarMoeda(valorPagoNum)}
                   </span>
                 </div>
 
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
-                  Altere datas, acomodação e quantidade de hóspedes. O crédito pago de{' '}
-                  <strong>{formatarMoeda(valorPagoNum)}</strong> será mantido e o saldo recalculado automaticamente.
+                  Retire ou adicione acompanhantes, ou ajuste datas e acomodação. Os{' '}
+                  <strong>{formatarMoeda(valorPagoNum)}</strong> já pagos ficam mantidos como abatimento direto no saldo do check-out.
                 </p>
 
                 {/* Linha 1: Datas */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nova Data de Entrada:
+                      Data de Entrada:
                     </label>
                     <input
                       type="date"
@@ -1198,7 +1379,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Nova Data de Saída:
+                      Data de Saída:
                     </label>
                     <input
                       type="date"
@@ -1215,7 +1396,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-[11px] font-bold text-slate-700">
-                        Nova Acomodação / Quarto:
+                        Acomodação / Quarto:
                       </label>
                       <span className="text-[10px] font-bold text-emerald-700">
                         ({quartosDisponiveis.length} disponíveis)
@@ -1373,53 +1554,166 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     </div>
                   )}
 
-                  {/* Acompanhantes vinculados */}
-                  {acompanhantes.length > 0 && (
-                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-600">
-                          Acompanhantes vinculados no sistema ({acompanhantes.length}):
-                        </span>
-                        <span className="text-[10px] text-slate-400">Clique para retirar da reserva</span>
+                  {/* Lista nominal de acompanhantes (Retirar ou Adicionar) */}
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-700">
+                        Acompanhantes da Reserva ({acompanhantes.length + novosAcompanhantes.length}):
+                      </span>
+                      {!exibindoFormNovoAcomp && (
+                        <button
+                          type="button"
+                          onClick={() => setExibindoFormNovoAcomp(true)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-[#053d1e] bg-emerald-100/80 hover:bg-emerald-200/80 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                        >
+                          <UserPlus className="w-3 h-3" />
+                          <span>+ Incluir Acompanhante</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Formulário rápido para incluir novo acompanhante */}
+                    {exibindoFormNovoAcomp && (
+                      <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-[11px] text-[#053d1e]">Novo Acompanhante</span>
+                          <button
+                            type="button"
+                            onClick={() => setExibindoFormNovoAcomp(false)}
+                            className="text-slate-400 hover:text-slate-700"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            placeholder="Nome completo *"
+                            value={nomeNovoAcomp}
+                            onChange={(e) => setNomeNovoAcomp(e.target.value.toUpperCase())}
+                            className="px-2.5 py-1.5 rounded bg-white border border-slate-300 text-xs font-semibold uppercase outline-none focus:border-[#053d1e]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="CPF ou RG (opcional)"
+                            value={docNovoAcomp}
+                            onChange={(e) => setDocNovoAcomp(e.target.value)}
+                            className="px-2.5 py-1.5 rounded bg-white border border-slate-300 text-xs outline-none focus:border-[#053d1e]"
+                          />
+                          <div>
+                            <label className="text-[10px] text-slate-500 block">Data Nascimento (opcional)</label>
+                            <input
+                              type="date"
+                              value={nascNovoAcomp}
+                              onChange={(e) => handleDataNascNovoAcompChange(e.target.value)}
+                              className="w-full px-2 py-1 rounded bg-white border border-slate-300 text-xs outline-none focus:border-[#053d1e]"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-slate-500 block">Tarifa Aplicada</label>
+                            <select
+                              value={catNovoAcomp}
+                              onChange={(e) => setCatNovoAcomp(e.target.value as any)}
+                              className="w-full px-2 py-1 rounded bg-white border border-slate-300 text-xs font-bold text-[#053d1e] outline-none"
+                            >
+                              <option value="ADULTO">Adulto — Inteira (100%)</option>
+                              <option value="MEIA">Criança 6–11 anos — Meia (50%)</option>
+                              <option value="GRATIS">Criança 0–5 anos — Grátis (0%)</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setExibindoFormNovoAcomp(false)}
+                            className="px-2.5 py-1 rounded border border-slate-300 text-[11px] font-semibold text-slate-600 hover:bg-white"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleConfirmarNovoAcompanhante}
+                            className="px-3 py-1 rounded bg-[#053d1e] text-white text-[11px] font-bold hover:bg-[#043017] cursor-pointer"
+                          >
+                            Adicionar & Recalcular
+                          </button>
+                        </div>
                       </div>
-                      <div className="space-y-1 max-h-32 overflow-y-auto">
-                        {acompanhantes.map((acomp) => (
+                    )}
+
+                    {/* Acompanhantes já existentes no banco */}
+                    {carregandoAcomp ? (
+                      <p className="text-[11px] text-slate-400 italic">Carregando acompanhantes...</p>
+                    ) : (
+                      <div className="space-y-1 max-h-36 overflow-y-auto">
+                        {acompanhantes.map((acomp) => {
+                          const { ehCrianca, idade } = verificarSeAcompanhanteEhCrianca(acomp);
+                          return (
+                            <div
+                              key={acomp.acompanhanteid || acomp.id}
+                              className="flex items-center justify-between p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                            >
+                              <div className="flex items-center gap-1.5 truncate">
+                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="font-semibold text-slate-800 truncate">
+                                  {acomp.nomecompleto}
+                                </span>
+                                {ehCrianca ? (
+                                  <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">
+                                    {idade <= 5 ? 'Grátis' : 'Meia (50%)'}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded shrink-0">
+                                    Inteira
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoverAcompanhante(acomp)}
+                                title="Retirar este acompanhante e abater seu valor da reserva"
+                                className="text-red-600 hover:text-red-800 px-2 py-0.5 hover:bg-red-50 rounded transition-colors text-[11px] font-semibold flex items-center gap-1 cursor-pointer shrink-0"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Retirar</span>
+                              </button>
+                            </div>
+                          );
+                        })}
+
+                        {/* Novos acompanhantes adicionados nesta sessão */}
+                        {novosAcompanhantes.map((novoAc) => (
                           <div
-                            key={acomp.acompanhanteid || acomp.id}
-                            className="flex items-center justify-between p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                            key={novoAc.tempId}
+                            className="flex items-center justify-between p-1.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs"
                           >
                             <div className="flex items-center gap-1.5 truncate">
-                              <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="font-semibold text-slate-800 truncate">
-                                {acomp.nomecompleto}
+                              <UserPlus className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                              <span className="font-bold text-[#053d1e] truncate">{novoAc.nomecompleto}</span>
+                              <span className="text-[9px] font-bold bg-[#053d1e] text-white px-1.5 py-0.5 rounded shrink-0">
+                                Novo ({novoAc.categoria})
                               </span>
-                              {acomp.menoridade && (
-                                <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1 rounded shrink-0">
-                                  Menor
-                                </span>
-                              )}
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleRemoverAcompanhante(acomp)}
-                              title="Retirar este acompanhante da reserva remarcada"
-                              className="text-red-600 hover:text-red-800 p-1 hover:bg-red-50 rounded transition-colors text-[11px] flex items-center gap-1 cursor-pointer shrink-0"
+                              onClick={() => handleRemoverNovoAcompanhanteTemp(novoAc)}
+                              className="text-red-600 hover:text-red-800 px-2 py-0.5 hover:bg-red-50 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer shrink-0"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Retirar</span>
+                              <X className="w-3 h-3" />
+                              <span>Desfazer</span>
                             </button>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
-                {/* Linha 4: Valor Total */}
+                {/* Linha 4: Valor Total (com máscara de moeda do sistema) */}
                 <div className="bg-white rounded-xl border border-[#c1c9bf] p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="block text-[11px] font-bold text-slate-800">
-                      Valor Total da Hospedagem (R$):
+                      Novo Valor Total da Hospedagem (R$):
                     </label>
                     <button
                       type="button"
@@ -1441,28 +1735,39 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                   </div>
 
                   <input
-                    type="number"
-                    step="0.01"
-                    value={novoValorTotal}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="R$ 0,00"
+                    value={novoValorTotalTexto}
                     onChange={(e) => {
-                      setNovoValorTotal(Number(e.target.value) || 0);
+                      const mascarado = aplicarMascaraMoeda(e.target.value);
+                      setNovoValorTotalTexto(mascarado);
+                      setNovoValorTotal(desformatarMoeda(mascarado));
                       setNovoValorTotalCustomizado(true);
                     }}
-                    className="w-full px-3 py-1.5 text-base bg-slate-50 border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-extrabold text-[#053d1e]"
+                    className="w-full px-3 py-2 text-base bg-slate-50 border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] font-extrabold text-[#053d1e]"
                   />
                   <p className="text-[10px] text-slate-500">{detalhamentoCalculo}</p>
                 </div>
 
-                {/* Linha 5: Demonstrativo Financeiro */}
+                {/* Linha 5: Demonstrativo Financeiro + Pagamento Complementar Opcional */}
                 <div className="rounded-xl border border-emerald-200 bg-white p-3.5 space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
                       <Coins className="w-4 h-4 text-emerald-700" />
-                      Balanço Financeiro da Remarcação
+                      Balanço Financeiro Atualizado
                     </span>
-                    {novoValorTotalCustomizado && (
-                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                        Valor Editado Manualmente
+                    {diferencaPacote !== 0 && (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                          diferencaPacote < 0
+                            ? 'text-blue-800 bg-blue-50 border-blue-200'
+                            : 'text-amber-800 bg-amber-50 border-amber-200'
+                        }`}
+                      >
+                        {diferencaPacote < 0
+                          ? `Redução de ${formatarMoeda(Math.abs(diferencaPacote))}`
+                          : `Acréscimo de +${formatarMoeda(diferencaPacote)}`}
                       </span>
                     )}
                   </div>
@@ -1476,9 +1781,9 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     </div>
 
                     <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200">
-                      <span className="text-[10px] text-emerald-800 block">Crédito Retido</span>
+                      <span className="text-[10px] text-emerald-800 block">Sinal / Crédito Mantido</span>
                       <span className="font-['Manrope'] font-extrabold text-xs text-emerald-800 block mt-0.5">
-                        {formatarMoeda(valorPagoNum)}
+                        {formatarMoeda(valorPagoComComplemento)}
                       </span>
                     </div>
 
@@ -1492,7 +1797,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     >
                       <span className="text-[10px] block font-semibold">
                         {saldoRestante > 0
-                          ? 'Saldo a Pagar'
+                          ? 'Saldo no Check-out'
                           : saldoRestante < 0
                             ? 'Crédito Excedente'
                             : 'Saldo Restante'}
@@ -1506,6 +1811,45 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {/* Opção para cobrar sinal complementar agora caso tenha entrado novo hóspede */}
+                  {diferencaPacote > 0 && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2 bg-amber-50/50 p-2.5 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-700">
+                          Receber sinal complementar agora? (Deixe vazio para cobrar tudo no check-out)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPagamentoComplementarRemarcacao(aplicarMascaraMoeda(diferencaPacote * 0.5))}
+                          className="text-[10px] font-bold text-[#053d1e] hover:underline cursor-pointer shrink-0 ml-2"
+                        >
+                          Usar 50% (+{formatarMoeda(diferencaPacote * 0.5)})
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="R$ 0,00 (Pagar no check-out)"
+                          value={pagamentoComplementarRemarcacao}
+                          onChange={(e) => setPagamentoComplementarRemarcacao(aplicarMascaraMoeda(e.target.value))}
+                          className="px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg font-bold text-[#053d1e] outline-none"
+                        />
+                        <select
+                          value={formaComplementarRemarcacao}
+                          onChange={(e) => setFormaComplementarRemarcacao(e.target.value)}
+                          className="px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-bold text-slate-700 outline-none"
+                        >
+                          <option value="PIX">PIX</option>
+                          <option value="CARTAO_CREDITO">Cartão de Crédito</option>
+                          <option value="CARTAO_DEBITO">Cartão de Débito</option>
+                          <option value="TRANSFERENCIA">Transferência</option>
+                          <option value="DINHEIRO">Dinheiro</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Linha 6: Observações */}
@@ -1517,12 +1861,12 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     rows={2}
                     value={novasObservacoes}
                     onChange={(e) => setNovasObservacoes(e.target.value)}
-                    placeholder="Informações adicionais da remarcação..."
+                    placeholder="Informações adicionais da alteração..."
                     className="w-full px-3 py-1.5 text-xs bg-white border border-[#c1c9bf] rounded-lg outline-none focus:border-[#053d1e] text-slate-800"
                   />
                 </div>
 
-                {/* Botões do Formulário de Remarcação */}
+                {/* Botões do Formulário de Alteração / Remarcação */}
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-emerald-200/60">
                   <button
                     type="button"
@@ -1542,7 +1886,7 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     ) : (
                       <CheckCircle2 className="w-3.5 h-3.5" />
                     )}
-                    <span>Salvar Novo Período & Recalcular Saldo</span>
+                    <span>Salvar Alteração & Recalcular Saldo</span>
                   </button>
                 </div>
               </div>
@@ -1619,9 +1963,9 @@ export const ModalAcoesReserva: React.FC<ModalAcoesReservaProps> = ({
                     onClick={() => setRemarcandoDatas(true)}
                     className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-bold transition-all cursor-pointer shadow-2xs"
                   >
-                    <CalendarDays className="w-4 h-4 text-[#053d1e] shrink-0" />
+                    <Users className="w-4 h-4 text-[#053d1e] shrink-0" />
                     <span>
-                      {statusAtual === 'CREDITO' ? '📅 Remarcar / Reativar' : '📅 Remarcar Datas'}
+                      {statusAtual === 'CREDITO' ? '📅 Remarcar / Reativar' : '👥 Alterar Hóspedes / Datas'}
                     </span>
                   </button>
 

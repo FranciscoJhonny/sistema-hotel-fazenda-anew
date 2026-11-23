@@ -40,6 +40,7 @@ import {
   exportarFichaFnrhPdf,
   TarifaIndividual
 } from '../../utilitarios/geradorPdfFnrh';
+import { exportarVoucherReservaPdf } from '../../utilitarios/geradorVoucherPdf';
 import { Validate } from '../../utilitarios/validate';
 
 export { calcularTarifaHospede };
@@ -71,6 +72,7 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
   const { usuarioAtual, recarregarDados, pacotes, quartos } = useHotel();
   const [copiado, setCopiado] = useState(false);
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [gerandoVoucher, setGerandoVoucher] = useState(false);
   const [modoEdicao, setModoEdicao] = useState(false);
   const [cadastroAtual, setCadastroAtual] = useState<CadastroFnrh | null>(cadastro);
   const [dadosEditados, setDadosEditados] = useState<Partial<CadastroFnrh>>({});
@@ -118,6 +120,14 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
     reservaVinculada
   );
 
+  // Permite emitir/reimprimir o Voucher se o sinal já foi confirmado ou se a reserva já foi criada
+  const podeEmitirVoucher = Boolean(
+    jaPossuiReserva ||
+    c.status === 'LIBERADA_PARA_RESERVA' ||
+    (c.valor_sinal && c.valor_sinal > 0) ||
+    Boolean(c.pagamento_confirmado_em)
+  );
+
   const codigoOuIdReserva =
     reservaVinculada?.codigo ||
     (c.reservaid ? `#${c.reservaid}` : (reservaVinculada?.reservaid ? `#${reservaVinculada.reservaid}` : ''));
@@ -162,6 +172,33 @@ export const ModalDetalhesFnrh: React.FC<ModalDetalhesFnrhProps> = ({
       console.error('[ModalDetalhesFnrh] Erro ao exportar PDF da FNRH:', e);
     } finally {
       setGerandoPdf(false);
+    }
+  };
+
+  const handleEmitirVoucherPdf = async () => {
+    if (!c) return;
+    setGerandoVoucher(true);
+    try {
+      const cadastroParaVoucher: CadastroFnrh = dadosEditados.cadastroid
+        ? ({
+            ...c,
+            ...dadosEditados,
+            acompanhantes: acompanhantesEditados.length > 0 ? acompanhantesEditados : c.acompanhantes,
+          } as CadastroFnrh)
+        : c;
+
+      await exportarVoucherReservaPdf({
+        cadastro: cadastroParaVoucher,
+        reservaVinculada,
+        pacotes,
+        quartos,
+        valorTotalOverride: valorTotalSugerido,
+        pacoteSugerido,
+      });
+    } catch (e) {
+      console.error('[ModalDetalhesFnrh] Erro ao emitir Voucher PDF:', e);
+    } finally {
+      setGerandoVoucher(false);
     }
   };
 
@@ -377,6 +414,22 @@ Qualquer dúvida estamos à disposição!`;
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {podeEmitirVoucher && (
+              <button
+                type="button"
+                disabled={gerandoVoucher}
+                onClick={handleEmitirVoucherPdf}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-xs font-bold text-white transition-colors cursor-pointer border border-white/30 disabled:opacity-50 shadow-2xs"
+                title="Emitir / Reimprimir Voucher de Confirmação de Reserva e Recibo do Sinal"
+              >
+                {gerandoVoucher ? (
+                  <LoaderCircle className="w-3.5 h-3.5 animate-spin text-emerald-200" />
+                ) : (
+                  <FileDown className="w-3.5 h-3.5 text-emerald-300" />
+                )}
+                <span>Emitir Voucher (PDF)</span>
+              </button>
+            )}
             {jaPossuiReserva && (
               <button
                 type="button"
@@ -1158,13 +1211,37 @@ Qualquer dúvida estamos à disposição!`;
 
         {/* Rodapé com Ações */}
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onFechar}
-            className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            Fechar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onFechar}
+              className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              Fechar
+            </button>
+
+            {!modoEdicao && podeEmitirVoucher && (
+              <button
+                type="button"
+                disabled={gerandoVoucher}
+                onClick={handleEmitirVoucherPdf}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-emerald-600/40 bg-emerald-50 hover:bg-emerald-100 text-xs font-bold text-[#053d1e] transition-colors cursor-pointer disabled:opacity-50"
+                title="Baixar / Reimprimir o Voucher e Recibo do Sinal em PDF"
+              >
+                {gerandoVoucher ? (
+                  <>
+                    <LoaderCircle className="w-4 h-4 animate-spin text-[#053d1e]" />
+                    <span>Gerando Voucher...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="w-4 h-4 text-[#053d1e]" />
+                    <span>Baixar Voucher / Recibo (PDF)</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-2">
             {modoEdicao ? (

@@ -48,6 +48,16 @@ if (typeof window !== 'undefined') {
   obterLogoBase64();
 }
 
+/**
+ * Remove emojis e símbolos fora do padrão Latin-1 para evitar
+ * espaçamento duplo e corte de linha na fonte padrão do jsPDF.
+ */
+const limparEmojisParaPdf = (texto: string): string =>
+  texto
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
 export interface DadosVoucherInput {
   cadastro: CadastroFnrh;
   reservaVinculada?: Reserva | null;
@@ -151,12 +161,14 @@ export async function exportarVoucherReservaPdf({
     ? `Quarto #${reservaVinculada.quartoid}`
     : 'A definir no Check-in';
 
-  const nomePacoteFinal =
+  const nomePacoteBruto =
     pacoteSugerido?.nome ||
     (pacotes.length > 0 && valorTotalOverride
       ? pacotes.find((p) => Number(p.valor) === valorTotalOverride)?.nome
       : '') ||
     'Pacote Hospedagem (Pensão Completa)';
+
+  const nomePacoteFinal = limparEmojisParaPdf(nomePacoteBruto);
 
   autoTable(doc, {
     startY: 47,
@@ -164,15 +176,16 @@ export async function exportarVoucherReservaPdf({
     theme: 'grid',
     styles: {
       fontSize: 8,
-      cellPadding: 2.3,
+      cellPadding: 2.2,
       lineColor: [193, 201, 191],
       lineWidth: 0.2,
       textColor: [25, 28, 29],
+      overflow: 'linebreak',
     },
     body: [
       [
         {
-          content: '1. DADOS DO HÓSPEDE TITULAR E ESTADIA',
+          content: '1. DADOS DO HÓSPEDE TITULAR E ESTADA',
           colSpan: 4,
           styles: { fillColor: [30, 70, 32], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
         },
@@ -197,7 +210,14 @@ export async function exportarVoucherReservaPdf({
         { content: 'Acomodação:', styles: { fontStyle: 'bold', textColor: [65, 73, 65] } },
         { content: quartoTexto, styles: { fontStyle: 'bold' } },
         { content: 'Pacote / Regime:', styles: { fontStyle: 'bold', textColor: [65, 73, 65] } },
-        { content: nomePacoteFinal, styles: { fontStyle: 'bold' } },
+        {
+          content: nomePacoteFinal,
+          styles: {
+            fontStyle: 'bold',
+            fontSize: nomePacoteFinal.length > 26 ? 7.3 : 8,
+            overflow: 'linebreak',
+          },
+        },
       ],
     ],
   });
@@ -249,7 +269,7 @@ export async function exportarVoucherReservaPdf({
   }
 
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 4,
+    startY: (doc as any).lastAutoTable.finalY + 3.5,
     margin: { left: 10, right: 10 },
     theme: 'grid',
     head: [
@@ -272,7 +292,7 @@ export async function exportarVoucherReservaPdf({
     },
     styles: {
       fontSize: 7.8,
-      cellPadding: 2,
+      cellPadding: 1.9,
       lineColor: [193, 201, 191],
       lineWidth: 0.2,
       textColor: [25, 28, 29],
@@ -310,12 +330,12 @@ export async function exportarVoucherReservaPdf({
       : 'RESERVA LIBERADA PARA PAGAMENTO INTEGRAL NO CHECK-IN';
 
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 4,
+    startY: (doc as any).lastAutoTable.finalY + 3.5,
     margin: { left: 10, right: 10 },
     theme: 'grid',
     styles: {
       fontSize: 8.5,
-      cellPadding: 2.5,
+      cellPadding: 2.3,
       lineColor: [193, 201, 191],
       lineWidth: 0.2,
       textColor: [25, 28, 29],
@@ -330,7 +350,7 @@ export async function exportarVoucherReservaPdf({
       ],
       [
         {
-          content: `VALOR TOTAL DA ESTADIA\n${formatarMoeda(valorTotalFinal)}`,
+          content: `VALOR TOTAL DA ESTADA\n${formatarMoeda(valorTotalFinal)}`,
           styles: { halign: 'center', fontStyle: 'bold', fillColor: [248, 250, 249], cellWidth: 63.3 },
         },
         {
@@ -338,7 +358,7 @@ export async function exportarVoucherReservaPdf({
           styles: { halign: 'center', fontStyle: 'bold', fillColor: [230, 244, 234], textColor: [5, 61, 30], cellWidth: 63.3 },
         },
         {
-          content: `SALDO A PAGAR NO CHECK-IN\n${formatarMoeda(saldoRestante)}`,
+          content: `SALDO A PAGAR NO CHECK-OUT\n${formatarMoeda(saldoRestante)}`,
           styles: {
             halign: 'center',
             fontStyle: 'bold',
@@ -362,12 +382,12 @@ export async function exportarVoucherReservaPdf({
   // 5. ORIENTAÇÕES IMPORTANTES & POLÍTICAS DO HOTEL FAZENDA
   // =========================================================================
   autoTable(doc, {
-    startY: (doc as any).lastAutoTable.finalY + 4,
+    startY: (doc as any).lastAutoTable.finalY + 3.5,
     margin: { left: 10, right: 10 },
     theme: 'grid',
     styles: {
-      fontSize: 7.2,
-      cellPadding: 2.5,
+      fontSize: 7.0,
+      cellPadding: 2.1,
       lineColor: [193, 201, 191],
       lineWidth: 0.2,
       textColor: [40, 45, 42],
@@ -375,7 +395,7 @@ export async function exportarVoucherReservaPdf({
     body: [
       [
         {
-          content: '4. INFORMAÇÕES IMPORTANTES PARA SUA ESTADIA',
+          content: '4. INFORMAÇÕES IMPORTANTES PARA SUA ESTADA',
           styles: { fillColor: [72, 119, 77], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
         },
       ],
@@ -384,9 +404,10 @@ export async function exportarVoucherReservaPdf({
           content:
             '• O que está incluso: Pensão completa (café da manhã, almoço e jantar conforme pacote), acesso às piscinas (07h às 22h) e passeios guiados (cachoeira, cavalgada, pôr do sol e vivência rural).\n\n' +
             '• O que trazer: Trajes de banho (proibido uso de jeans ou roupas que soltem tinta na piscina), protetor solar, repelente, medicamentos de uso contínuo (estamos em área rural a ~40km de centro urbano) e calçado fechado + calça comprida (obrigatórios para cavalgada).\n\n' +
+            '• Natureza e Fauna Local: Como a fazenda está localizada em região rural, não estamos imunes à presença de insetos, animais peçonhentos e fauna silvestre como sapos, lagartixas e outros. Caso encontre algum desses animais ou não se sinta confortável com a presença deles, favor comunicar imediatamente a equipe de atendimento da hotelaria.\n\n' +
             '• Documentação Obrigatória (ECA - Lei 8.069/90): Apresentação obrigatória de documento original com foto ou certidão de nascimento de todos os hóspedes, inclusive crianças e adolescentes.\n\n' +
             '• Regras de Convivência: Não é permitido fumar no interior dos chalés, entrar com animais de estimação nas dependências do hotel, portar recipientes de vidro nas áreas de lazer/piscina ou acessar o refeitório em trajes de banho/sem camisa.\n\n' +
-            '• Política de Remarcação / Cancelamento: Alterações de data devem ser solicitadas com antecedência mínima de 72 horas antes do check-in para manutenção do crédito pago.',
+            '• Política de Remarcação / Cancelamento: Alterações de data devem ser solicitadas com antecedência mínima de 72 horas antes do check-in, sendo retidos 20% do valor pago para custos administrativos e manutenção.',
           styles: { fillColor: [250, 251, 250] },
         },
       ],
@@ -396,7 +417,7 @@ export async function exportarVoucherReservaPdf({
   // =========================================================================
   // RODAPÉ & ASSINATURA DIGITAL
   // =========================================================================
-  const finalY = Math.min((doc as any).lastAutoTable.finalY + 12, 276);
+  const finalY = Math.min((doc as any).lastAutoTable.finalY + 11, 276);
   doc.setDrawColor(150, 160, 150);
   doc.setLineWidth(0.3);
   doc.line(65, finalY, 145, finalY);

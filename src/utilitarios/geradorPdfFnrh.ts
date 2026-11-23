@@ -231,7 +231,7 @@ if (typeof window !== 'undefined') {
 
 /**
  * Gera e realiza o download do documento PDF oficial da Ficha FNRH do Hóspede
- * seguindo a identidade visual e o padrão da Folha de Estadia do Hotel Fazenda Anew.
+ * seguindo a identidade visual e o padrão da Folha de Estada do Hotel Fazenda Anew.
  */
 export async function exportarFichaFnrhPdf(
   cadastro: CadastroFnrh,
@@ -355,7 +355,7 @@ export async function exportarFichaFnrhPdf(
   });
 
   // =========================================================================
-  // BLOCO 2: DADOS DA ESTADIA E TRANSPORTE
+  // BLOCO 2: DADOS DA ESTADA E TRANSPORTE
   // =========================================================================
   const quartoIdAlvo = reservaVinculada?.quartoid || (cadastro as any).quartoid;
   const quartoEncontrado = quartos.find((q) => q.quartoid === quartoIdAlvo);
@@ -386,7 +386,7 @@ export async function exportarFichaFnrhPdf(
     body: [
       [
         {
-          content: '2. DADOS DA ESTADIA E TRANSPORTE',
+          content: '2. DADOS DA ESTADA E TRANSPORTE',
           colSpan: 4,
           styles: { fillColor: [30, 70, 32], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 }
         }
@@ -599,7 +599,7 @@ export async function exportarFichaFnrhPdf(
     pacoteSugerido?.nome ||
     (pacotes.length > 0
       ? pacotes.find((p) => Number(p.valor) === valorTotalFinal)?.nome || 'Pacote Padrão'
-      : 'Pacote Estadia');
+      : 'Pacote Estada');
 
   const statusPagamentoTexto = cadastro.pagamento_confirmado_em
     ? `Sinal Confirmado em ${formatarDataHora(cadastro.pagamento_confirmado_em)}`
@@ -627,7 +627,7 @@ export async function exportarFichaFnrhPdf(
         }
       ],
       [
-        { content: 'Total Previsto da Estadia:', styles: { fontStyle: 'bold', textColor: [65, 73, 65], cellWidth: 42 } },
+        { content: 'Total Previsto da Estada:', styles: { fontStyle: 'bold', textColor: [65, 73, 65], cellWidth: 42 } },
         { content: formatarMoeda(valorTotalFinal), styles: { fontStyle: 'bold', fontSize: 8.5, textColor: [5, 61, 30], cellWidth: 53 } },
         { content: 'Pacote Aplicado:', styles: { fontStyle: 'bold', textColor: [65, 73, 65], cellWidth: 38 } },
         { content: nomePacoteFinal, styles: { fontStyle: 'bold', cellWidth: 57 } }
